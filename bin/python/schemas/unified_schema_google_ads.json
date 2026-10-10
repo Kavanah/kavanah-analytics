@@ -1,0 +1,59 @@
+{
+  "properties": {
+    "@timestamp": {"type": "date"},
+    "kibana_date": {"type": "date"},
+    "record_type": {"type": "keyword"},
+    "campaign_id": {"type": "keyword"},
+    "campaign_name": {
+      "type": "text",
+      "fields": {"keyword": {"type": "keyword"}}
+    },
+    "campaign_channel_type": {"type": "keyword"},
+    "campaign_status": {"type": "keyword"},
+    "campaign_labels": {"type": "keyword"},
+    "campaign_start_date_time": {"type": "date"},
+    "campaign_end_date_time": {"type": "date"},
+    "app_id": {"type": "keyword"},
+    "app_store": {"type": "keyword"},
+    "ad_group_id": {"type": "keyword"},
+    "ad_group_name": {
+      "type": "text",
+      "fields": {"keyword": {"type": "keyword"}}
+    },
+    "ad_group_status": {"type": "keyword"},
+    "ad_id": {"type": "keyword"},
+    "ad_name": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+    "impressions": {"type": "long"},
+    "clicks": {"type": "long"},
+    "cost_micros": {"type": "long"},
+    "cost": {"type": "float"},
+    "conversions": {"type": "float"},
+    "all_conversions": {"type": "float"},
+    "ctr": {"type": "float"},
+    "app_installs": {"type": "float"},
+    "cost_per_install": {"type": "float"},
+    "conversion_rate": {"type": "float"},
+    "cost_per_conversion": {"type": "float"},
+    "date": {"type": "date", "format": "yyyy-MM-dd"},
+    "geo_criterion_id": {"type": "long"},
+    "geo_country_code": {"type": "keyword"},
+    "geo_country_name": {"type": "keyword"},
+    "location": {"type": "geo_point"},
+    "team_esid": {"type": "keyword"},
+    "team_title": {"type": "keyword"},
+    "team_url": {"type": "keyword"},
+    "team_country": {"type": "keyword"},
+    "team_city": {"type": "keyword"},
+    "organization_title": {
+      "type": "text",
+      "fields": {"keyword": {"type": "keyword"}}
+    },
+    "google_ads_customer_id": {"type": "keyword"},
+    "google_ads_metric_customer_id": {"type": "keyword"},
+    "google_ads_customer_esid": {"type": "keyword"},
+    "google_ads_customer_title": {
+      "type": "text",
+      "fields": {"keyword": {"type": "keyword"}}
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "digital-engagement-dashboard",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "test:e2e": "npx playwright test",
+    "test:e2e:ui": "npx playwright test --ui",
+    "test:visual": "npx playwright test --project=visual",
+    "test:visual:update": "npx playwright test --project=visual --update-snapshots",
+    "test:visual:ui": "npx playwright test --project=visual --ui",
+    "docs:capture": "npx playwright test --project=docs-capture"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "otpauth": "^9.5.1"
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "connector_id": "disciple_tools",
+  "created_at": "2026-05-25T17:26:27.248440+00:00",
+  "description": "",
+  "echarts_config": {
+    "charts": [
+      {
+        "aggregation": "count",
+        "breakdown": "meta.overall_status.keyword",
+        "chart_id": "c59da733-dc2c-457f-8972-9804287d23ea",
+        "chart_type": "metric",
+        "data_view": "disciple-tools",
+        "filters": [],
+        "height": "200px",
+        "title": "Contact Status",
+        "width": "calc(25% - 8px)",
+        "x_field": "",
+        "y_fields": []
+      },
+      {
+        "aggregation": "count",
+        "breakdown": "meta.faith_status.keyword",
+        "chart_id": "f6c4c4b5-59f2-487d-a3f7-5e98c871b370",
+        "chart_type": "metric",
+        "data_view": "disciple-tools",
+        "filters": [],
+        "height": "200px",
+        "title": "Faith Status",
+        "width": "calc(25% - 8px)",
+        "x_field": "",
+        "y_fields": []
+      },
+      {
+        "aggregation": "count",
+        "breakdown": "meta.milestone.formatted.keyword",
+        "chart_id": "89b14172-bae6-4f39-be2c-ea181c9bdc92",
+        "chart_type": "metric",
+        "data_view": "disciple-tools",
+        "filters": [],
+        "height": "200px",
+        "title": "Faith Milestones",
+        "width": "calc(25% - 8px)",
+        "x_field": "",
+        "y_fields": []
+      }
+    ],
+    "global_date_range": null
+  },
+  "frozen_from_dashboard_id": "bd877a34-fafa-4b05-b84a-843c0afe2708",
+  "menu_position": 0,
+  "menu_title": "DT",
+  "name": "Contacts",
+  "pack_id": "disciple_tools",
+  "placeholder_field": null,
+  "required_sources": [
+    "disciple_tools"
+  ],
+  "template_id": "disciple_tools",
+  "updated_at": "2026-05-25T17:26:27.248440+00:00"
+}

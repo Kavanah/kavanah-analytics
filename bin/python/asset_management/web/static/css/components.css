@@ -1,0 +1,705 @@
+/* ============================================================
+   Cloudscape Component Styles
+   Shared UI components for the redesigned pages
+   ============================================================ */
+
+
+/* ============================================================
+   Buttons
+   ============================================================ */
+
+.cs-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-family: var(--cs-font);
+    font-size: var(--cs-font-size-m);
+    font-weight: var(--cs-font-weight-medium);
+    line-height: 1;
+    padding: 8px 16px;
+    border-radius: var(--cs-radius-s);
+    border: 2px solid transparent;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background var(--cs-transition-fast),
+                border-color var(--cs-transition-fast),
+                color var(--cs-transition-fast);
+    text-decoration: none;
+}
+
+.cs-btn:hover { text-decoration: none; }
+.cs-btn:focus-visible {
+    outline: 2px solid var(--cs-btn-primary-bg);
+    outline-offset: 2px;
+}
+
+/* Primary */
+.cs-btn-primary {
+    background: var(--cs-btn-primary-bg);
+    color: var(--cs-btn-primary-text);
+    border-color: var(--cs-btn-primary-bg);
+}
+.cs-btn-primary:hover {
+    background: var(--cs-btn-primary-bg-hover);
+    border-color: var(--cs-btn-primary-bg-hover);
+    color: var(--cs-btn-primary-text);
+}
+
+/* Normal (outlined) */
+.cs-btn-normal {
+    background: var(--cs-btn-normal-bg);
+    color: var(--cs-btn-normal-text);
+    border-color: var(--cs-btn-normal-border);
+}
+.cs-btn-normal:hover {
+    background: var(--cs-btn-normal-hover-bg);
+    color: var(--cs-text-primary);
+}
+
+/* Link-style */
+.cs-btn-link {
+    background: transparent;
+    color: var(--cs-text-link);
+    border-color: transparent;
+    padding: 4px 8px;
+}
+.cs-btn-link:hover {
+    color: var(--cs-text-link-hover);
+    text-decoration: underline;
+}
+
+/* Icon-only */
+.cs-btn-icon {
+    background: transparent;
+    border-color: transparent;
+    color: var(--cs-text-secondary);
+    padding: 6px;
+    border-radius: var(--cs-radius-s);
+}
+.cs-btn-icon:hover {
+    background: var(--cs-bg-hover);
+    color: var(--cs-text-primary);
+}
+
+/* Sizes */
+.cs-btn-sm { font-size: var(--cs-font-size-xs); padding: 4px 10px; }
+.cs-btn-lg { font-size: var(--cs-font-size-l); padding: 10px 20px; }
+
+/* Disabled — works for any cs-btn variant. Mirrors the equivalent
+ * .db-btn:disabled rule in builder.css so disabled buttons look
+ * consistent across pages regardless of which design-system class
+ * the page happens to use. */
+.cs-btn:disabled,
+.cs-btn[disabled] {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+.cs-btn:disabled:hover,
+.cs-btn[disabled]:hover {
+    /* Stop hover-darken from running on a disabled button. */
+    background: var(--cs-btn-primary-bg);
+    border-color: var(--cs-btn-primary-bg);
+}
+.cs-btn-normal:disabled:hover,
+.cs-btn-normal[disabled]:hover {
+    background: var(--cs-btn-normal-bg);
+    border-color: var(--cs-btn-normal-border);
+}
+
+
+/* ============================================================
+   Cards
+   ============================================================ */
+
+.cs-card {
+    background: var(--cs-bg-primary);
+    border: 1px solid var(--cs-border-default);
+    border-radius: var(--cs-radius-m);
+    box-shadow: var(--cs-shadow-xs);
+}
+
+.cs-card-header {
+    padding: var(--cs-space-m) var(--cs-space-l);
+    border-bottom: 1px solid var(--cs-border-divider);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.cs-card-header h2,
+.cs-card-header h3 {
+    font-size: var(--cs-font-size-l);
+    font-weight: var(--cs-font-weight-bold);
+    margin: 0;
+}
+
+.cs-card-body {
+    padding: var(--cs-space-l);
+}
+
+.cs-card-footer {
+    padding: var(--cs-space-s) var(--cs-space-l);
+    border-top: 1px solid var(--cs-border-divider);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--cs-space-xs);
+}
+
+
+/* ============================================================
+   Flash bars (notifications)
+   ============================================================ */
+
+.cs-flash-bar {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--cs-space-xs);
+    padding: var(--cs-space-s) var(--cs-space-m);
+    border-radius: var(--cs-radius-m);
+    border: 1px solid;
+    font-size: var(--cs-font-size-m);
+    margin-bottom: var(--cs-space-m);
+}
+
+.cs-flash-bar-info    { background: var(--cs-info-bg);    border-color: var(--cs-info);    color: var(--cs-info); }
+.cs-flash-bar-success { background: var(--cs-success-bg); border-color: var(--cs-success); color: var(--cs-success); }
+.cs-flash-bar-warning { background: var(--cs-warning-bg); border-color: var(--cs-warning); color: var(--cs-warning); }
+.cs-flash-bar-error   { background: var(--cs-error-bg);   border-color: var(--cs-error);   color: var(--cs-error); }
+
+.cs-flash-bar-icon { flex-shrink: 0; font-size: 16px; margin-top: 1px; }
+.cs-flash-bar-content { flex: 1; color: var(--cs-text-primary); }
+.cs-flash-bar-dismiss {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    color: var(--cs-text-secondary);
+    padding: 0;
+    line-height: 1;
+}
+.cs-flash-bar-dismiss:hover { color: var(--cs-text-primary); }
+
+
+/* ============================================================
+   Breadcrumbs
+   ============================================================ */
+
+.cs-breadcrumbs {
+    display: flex;
+    align-items: center;
+    gap: var(--cs-space-xxs);
+    font-size: var(--cs-font-size-s);
+    padding: var(--cs-space-xs) 0;
+}
+
+.cs-breadcrumbs a {
+    color: var(--cs-text-link);
+    text-decoration: none;
+}
+
+.cs-breadcrumbs a:hover {
+    text-decoration: underline;
+}
+
+.cs-breadcrumbs-separator {
+    color: var(--cs-text-tertiary);
+    font-size: 10px;
+}
+
+.cs-breadcrumbs-current {
+    color: var(--cs-text-secondary);
+}
+
+
+/* ============================================================
+   Badges
+   ============================================================ */
+
+.cs-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: var(--cs-font-size-xs);
+    font-weight: var(--cs-font-weight-medium);
+    padding: 2px 8px;
+    border-radius: var(--cs-radius-s);
+    line-height: 1.4;
+}
+
+.cs-badge-default { background: var(--cs-bg-secondary); color: var(--cs-text-secondary); }
+.cs-badge-success { background: var(--cs-success-bg); color: var(--cs-success); }
+.cs-badge-warning { background: var(--cs-warning-bg); color: var(--cs-warning); }
+.cs-badge-error   { background: var(--cs-error-bg);   color: var(--cs-error); }
+.cs-badge-info    { background: var(--cs-info-bg);     color: var(--cs-info); }
+
+
+/* ============================================================
+   Form fields
+   ============================================================ */
+
+.cs-form-field {
+    margin-bottom: var(--cs-space-m);
+}
+
+.cs-form-field label {
+    display: block;
+    font-size: var(--cs-font-size-m);
+    font-weight: var(--cs-font-weight-medium);
+    color: var(--cs-text-primary);
+    margin-bottom: var(--cs-space-xxs);
+}
+
+.cs-form-field .cs-hint {
+    font-size: var(--cs-font-size-xs);
+    color: var(--cs-text-secondary);
+    margin-bottom: var(--cs-space-xxs);
+}
+
+.cs-input,
+.cs-select {
+    width: 100%;
+    padding: 8px 12px;
+    font-family: var(--cs-font);
+    font-size: var(--cs-font-size-m);
+    color: var(--cs-text-primary);
+    background: var(--cs-bg-primary);
+    border: 1px solid var(--cs-border-input);
+    border-radius: var(--cs-radius-s);
+    transition: border-color var(--cs-transition-fast),
+                box-shadow var(--cs-transition-fast);
+}
+
+.cs-input:focus,
+.cs-select:focus {
+    outline: none;
+    border-color: var(--cs-border-input-focus);
+    box-shadow: 0 0 0 2px rgba(9, 114, 211, 0.2);
+}
+
+.cs-input::placeholder {
+    color: var(--cs-text-disabled);
+}
+
+/* follow-up: app-wide base styling for bare <select> elements.
+ *
+ * Every <select> in the app is bare (no class — .cs-select is defined but
+ * unused), so without this rule they all render the inconsistent NATIVE
+ * browser dropdown arrow. This gives them the same custom SVG chevron + token
+ * border/padding/font used elsewhere, so dropdowns look consistent app-wide
+ * (the Dashboard Builder already themed its own via builder.css; those rules
+ * have higher specificity and continue to win, so this does not disturb them).
+ *
+ * Deliberately conservative: NO width is set (so inline/flex-sized selects keep
+ * their layout), and per-page rules with higher specificity still override.
+ * background-color (not the `background` shorthand) so the chevron image is not
+ * reset.
+ *
+ * ``[multiple]`` is excluded — a multi-row list box must not get the single-
+ * select chevron or the appearance:none collapse. */
+select:not([multiple]) {
+    font-family: var(--cs-font);
+    font-size: var(--cs-font-size-s, 13px);
+    color: var(--cs-text-primary, #000716);
+    background-color: var(--cs-bg-primary, #FFFFFF);
+    border: 1px solid var(--cs-border-input, #7D8998);
+    border-radius: var(--cs-radius-s, 4px);
+    padding: 5px 26px 5px 8px;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='7'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%235F6B7A' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+}
+
+select:not([multiple]):hover {
+    border-color: var(--cs-text-secondary, #5F6B7A);
+}
+
+.cs-input-error {
+    border-color: var(--cs-error);
+}
+
+.cs-input-error:focus {
+    box-shadow: 0 0 0 2px rgba(209, 50, 18, 0.2);
+}
+
+.cs-form-error {
+    font-size: var(--cs-font-size-xs);
+    color: var(--cs-error);
+    margin-top: var(--cs-space-xxs);
+}
+
+
+/* ============================================================
+   Tables
+   ============================================================ */
+
+.cs-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--cs-font-size-m);
+}
+
+.cs-table th {
+    text-align: left;
+    font-weight: var(--cs-font-weight-medium);
+    color: var(--cs-text-secondary);
+    font-size: var(--cs-font-size-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: var(--cs-space-xs) var(--cs-space-m);
+    border-bottom: 1px solid var(--cs-border-default);
+    background: var(--cs-bg-secondary);
+}
+
+.cs-table td {
+    padding: var(--cs-space-s) var(--cs-space-m);
+    border-bottom: 1px solid var(--cs-border-divider);
+    color: var(--cs-text-primary);
+}
+
+.cs-table tbody tr:hover {
+    background: var(--cs-bg-hover);
+}
+
+.cs-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+
+/* ============================================================
+   Modals
+   ============================================================ */
+
+.cs-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 28, 36, 0.5);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(2px);
+}
+
+.cs-modal-overlay.cs-hidden { display: none; }
+
+.cs-modal {
+    background: var(--cs-bg-primary);
+    border-radius: var(--cs-radius-l);
+    box-shadow: var(--cs-shadow-modal);
+    width: 480px;
+    max-width: 95vw;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.cs-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--cs-space-m) var(--cs-space-l);
+    border-bottom: 1px solid var(--cs-border-divider);
+}
+
+.cs-modal-header h3 {
+    font-size: var(--cs-font-size-l);
+    font-weight: var(--cs-font-weight-bold);
+    margin: 0;
+}
+
+.cs-modal-close {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 18px;
+    color: var(--cs-text-secondary);
+    padding: 4px;
+    border-radius: var(--cs-radius-s);
+    line-height: 1;
+    transition: background var(--cs-transition-fast);
+}
+
+.cs-modal-close:hover {
+    background: var(--cs-bg-hover);
+    color: var(--cs-text-primary);
+}
+
+.cs-modal-body {
+    padding: var(--cs-space-l);
+    overflow-y: auto;
+    flex: 1;
+}
+
+.cs-modal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--cs-space-xs);
+    padding: var(--cs-space-s) var(--cs-space-l);
+    border-top: 1px solid var(--cs-border-divider);
+}
+
+
+/* ============================================================
+   Empty state
+   ============================================================ */
+
+.cs-empty-state {
+    text-align: center;
+    padding: var(--cs-space-xxxl) var(--cs-space-l);
+    color: var(--cs-text-secondary);
+}
+
+.cs-empty-state-icon {
+    font-size: 48px;
+    color: var(--cs-text-disabled);
+    margin-bottom: var(--cs-space-m);
+}
+
+.cs-empty-state h3 {
+    font-size: var(--cs-font-size-xl);
+    color: var(--cs-text-primary);
+    margin-bottom: var(--cs-space-xs);
+}
+
+.cs-empty-state p {
+    color: var(--cs-text-secondary);
+    max-width: 400px;
+    margin: 0 auto;
+}
+
+
+/* ============================================================
+   Loading spinner
+   ============================================================ */
+
+.cs-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid var(--cs-border-divider);
+    border-top-color: var(--cs-btn-primary-bg);
+    border-radius: 50%;
+    animation: cs-spin 0.8s linear infinite;
+}
+
+@keyframes cs-spin {
+    to { transform: rotate(360deg); }
+}
+
+.cs-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--cs-space-m);
+    padding: var(--cs-space-xxxl);
+}
+
+.cs-loading-text {
+    color: var(--cs-text-secondary);
+    font-size: var(--cs-font-size-m);
+}
+
+
+/* ============================================================
+   Dropdown menu
+   ============================================================ */
+
+.cs-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    background: var(--cs-bg-primary);
+    border: 1px solid var(--cs-border-default);
+    border-radius: var(--cs-radius-m);
+    box-shadow: var(--cs-shadow-dropdown);
+    min-width: 200px;
+    z-index: 500;
+    padding: var(--cs-space-xxs) 0;
+}
+
+.cs-dropdown.cs-hidden { display: none; }
+
+.cs-dropdown-item {
+    display: block;
+    padding: 10px var(--cs-space-m);
+    color: var(--cs-text-primary);
+    font-size: var(--cs-font-size-m);
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background var(--cs-transition-fast),
+                color var(--cs-transition-fast);
+}
+
+.cs-dropdown-item:hover {
+    background: var(--cs-bg-hover);
+    text-decoration: none;
+    color: var(--cs-text-link);
+}
+
+.cs-dropdown-divider {
+    height: 1px;
+    background: var(--cs-border-divider);
+    margin: var(--cs-space-xxs) 0;
+}
+
+
+/* ============================================================
+   Page header
+   ============================================================ */
+
+.cs-page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--cs-space-l) var(--cs-space-xl);
+    background: var(--cs-bg-primary);
+    border-bottom: 1px solid var(--cs-border-divider);
+}
+
+.cs-page-header h1 {
+    font-size: var(--cs-font-size-xxl);
+    margin: 0;
+}
+
+.cs-page-header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--cs-space-xs);
+}
+
+
+/* ============================================================
+   Checkboxes — site-wide custom rendering
+   ============================================================
+ * Replaces the default browser checkbox (which is OS-specific and
+ * looks pasted-in next to every other Cloudscape-styled control)
+ * with a unified Cloudscape-aligned box across every page that
+ * extends base_v2.html.
+ *
+ * Per-context overrides in builder.css (.chart-legend-item,
+ * .db-form-group--checkbox, .db-toggle-item) only set cursor /
+ * margin / width — they compose with this rule, they don't conflict.
+ */
+
+input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    width: 16px;
+    height: 16px;
+    border: 1.5px solid var(--cs-border-input, #7D8998);
+    border-radius: 3px;
+    background: var(--cs-bg-primary, #FFFFFF);
+    cursor: pointer;
+    position: relative;
+    display: inline-block;
+    vertical-align: middle;
+    margin: 0;
+    flex-shrink: 0;
+    transition: background 90ms ease-out, border-color 90ms ease-out,
+                box-shadow 90ms ease-out;
+}
+
+input[type="checkbox"]:hover {
+    border-color: var(--cs-text-secondary, #5F6B7A);
+}
+
+input[type="checkbox"]:focus-visible {
+    outline: none;
+    border-color: var(--cs-border-input-focus, #0972D3);
+    box-shadow: 0 0 0 2px rgba(9, 114, 211, 0.25);
+}
+
+input[type="checkbox"]:checked {
+    background: var(--cs-btn-primary-bg, #0972D3);
+    border-color: var(--cs-btn-primary-bg, #0972D3);
+}
+
+input[type="checkbox"]:checked::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='white' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round' d='M3 8.5l3.5 3.5 6.5-7.5'/%3E%3C/svg%3E");
+    background-size: 12px 12px;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+/* Indeterminate state for "select all when some are selected" cases
+ * (e.g. the bulk-action header checkbox in user management). */
+input[type="checkbox"]:indeterminate {
+    background: var(--cs-btn-primary-bg, #0972D3);
+    border-color: var(--cs-btn-primary-bg, #0972D3);
+}
+
+input[type="checkbox"]:indeterminate::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 25%;
+    right: 25%;
+    height: 2px;
+    background: #fff;
+    border-radius: 1px;
+    transform: translateY(-50%);
+}
+
+input[type="checkbox"]:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+input[type="checkbox"]:disabled:hover {
+    border-color: var(--cs-border-input, #7D8998);
+}
+
+
+/* ============================================================
+   Date inputs — site-wide custom rendering
+   ============================================================
+ * Native <input type="date"> renders very differently across
+ * browsers / OSes (Chrome's blue calendar icon, Firefox's plain
+ * spinner, Edge's pill chevrons). This rule gives every date
+ * input across the product a consistent toolbar-friendly look:
+ * 32 px tall, Cloudscape-style border, focus ring matching the
+ * select / button pattern. Width is intentionally not set —
+ * context-specific rules (toolbar, asset forms) can override.
+ *
+ * The previous .db-topbar-right input[type="date"] rule in
+ * builder.css now only sets the toolbar width override on top.
+ */
+
+input[type="date"] {
+    font-size: 13px;
+    font-family: inherit;
+    padding: 4px 8px;
+    height: 32px;
+    border: 1px solid var(--cs-border-input, #7D8998);
+    border-radius: 4px;
+    background: var(--cs-bg-primary, #FFFFFF);
+    color: var(--cs-text-primary, #000716);
+    box-sizing: border-box;
+    transition: border-color 90ms ease-out, box-shadow 90ms ease-out;
+}
+
+input[type="date"]:hover {
+    border-color: var(--cs-text-secondary, #5F6B7A);
+}
+
+input[type="date"]:focus,
+input[type="date"]:focus-visible {
+    outline: none;
+    border-color: var(--cs-border-input-focus, #0972D3);
+    box-shadow: 0 0 0 2px rgba(9, 114, 211, 0.25);
+}
+
+input[type="date"]:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}

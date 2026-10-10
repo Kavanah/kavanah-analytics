@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <meta name="cv-icon-base" content="{{ url_for('static', filename='dashboard_builder/icons') }}">
+  <meta name="cv-map-url" content="{{ url_for('static', filename='dashboard_builder/map_with_countries.svg') }}">
+  <meta name="session-idle-timeout" content="{{ session_idle_timeout|default(0) }}">
+  <title>Canvas Builder</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5">
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/session-timeout.js') }}?v=20260615b"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/cloudscape.css') }}">
+  {# builder.css carries the shared dashboard-filter strip /
+     popover / modal styles (.db-filter-*,.db-modal-*). Loaded
+     before canvas_editor.css so canvas rules win any overlap. #}
+  <link rel="stylesheet" href="{{ url_for('static', filename='dashboard_builder/builder.css') }}?v=20260710a">
+  <link rel="stylesheet" href="{{ url_for('static', filename='dashboard_builder/canvas_editor.css') }}?v=20260728a">
+</head>
+<body class="mode-edit">
+  {# Two-row topbar: row 1 is the document & view controls (page identity,
+     file actions, history, AI, zoom, preview); row 2 is the Insert toolbar,
+     grouped by what the buttons add — seed | static content | live data |
+     layout. Keeps every control on-screen without one overlong strip. #}
+  <div class="cv-topbar">
+    <div class="cv-topbar-row">
+      <a class="cv-back" href="{{ url_for('dashboard_builder.index') }}" title="Back to Dashboard Builder">&#8592; Builder</a>
+      <span class="cv-title">Canvas Builder</span>
+      <input type="text" id="cv-doc-title" class="cv-doc-title" maxlength="200" value="Untitled Canvas"
+             aria-label="Canvas page title" title="Page title">
+      <button id="cv-save" type="button" class="cv-primary">Save</button>
+      <button id="cv-open" type="button">Open</button>
+      <button id="cv-new" type="button">New</button>
+      <span class="cv-sep"></span>
+      <button id="cv-undo" type="button" disabled title="Undo (Ctrl+Z)">&#8630; Undo</button>
+      <button id="cv-redo" type="button" disabled title="Redo (Ctrl+Y)">&#8631; Redo</button>
+      <span class="cv-spacer"></span>
+      {# AI chat panel toggle. Rendered only when the canvas_ai
+         feature flag is on; the /api/ai/chat endpoint re-checks server-side. #}
+      {% if canvas_ai_enabled %}
+      <button id="cv-ai-toggle" type="button" title="Ask the AI assistant (chat Q&amp;A — it can't edit the page yet)">&#10024; AI</button>
+      {% endif %}
+      <label for="cv-zoom">Zoom</label>
+      <select id="cv-zoom">
+        <option value="0.5">50%</option>
+        <option value="0.75">75%</option>
+        <option value="1" selected>100%</option>
+        <option value="1.25">125%</option>
+        <option value="1.5">150%</option>
+      </select>
+      <button id="cv-mode-toggle" type="button">Preview</button>
+    </div>
+    <div class="cv-topbar-row cv-topbar-insert">
+      <span class="cv-insert-label">Insert</span>
+      <button id="cv-seed" type="button"
+              title="Start a canvas page from an existing report (Summary / Facebook / Google Impact)">From report&#8230;</button>
+      <span class="cv-sep"></span>
+      <button id="cv-add-text" type="button" title="Insert a text box">+ Text</button>
+      <button id="cv-add-icon" type="button" title="Insert an icon from the library">+ Icon</button>
+      {# shapes + images #}
+      <button id="cv-add-shape" type="button" title="Insert a shape (rectangle, ellipse, line, arrow, callout)">+ Shape</button>
+      <button id="cv-add-image" type="button" title="Insert an image (PNG, JPG, GIF, WebP, or SVG — max ~700KB)">+ Image</button>
+      <input type="file" id="cv-image-file" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" style="display:none;">
+      <span class="cv-sep"></span>
+      <button id="cv-add-field" type="button" title="Insert a live data field">+ Field</button>
+      {# calculated field: a formula over named metric variables #}
+      <button id="cv-add-calc" type="button" title="Insert a calculated field (a formula over live metric variables, e.g. conversions / reach)">+ Calc</button>
+      {# live table via the existing table builder #}
+      <button id="cv-add-table" type="button" title="Insert a live table (configured through the existing table builder)">+ Table</button>
+      {# live time pill (the Digital Impact Report's date pill) #}
+      <button id="cv-add-timepill" type="button" title="Insert a time pill that always shows the report's current time range">+ Time pill</button>
+      <span class="cv-sep"></span>
+      <button id="cv-add-section" type="button" title="Add a section (a titled header band — use + Field for its metrics)">+ Section</button>
+    </div>
+  </div>
+
+  {# live org/team/time filters (the Dashboard Builder's topbar
+     filters). Preview-only: they drive the editor's live data queries via
+     DASHBOARD_EXTRA_FILTERS / DASHBOARD_TIME_RANGE and are never saved with
+     the page. The filter-options endpoint scopes the org/team lists to the
+     caller's roles server-side, so narrow-scope users just see
+     their own orgs/teams here. #}
+  <div class="cv-live-filters" id="cv-live-filters">
+    <span class="cv-lf-title">Live data</span>
+    <label for="cv-filter-org">Org:</label>
+    <select id="cv-filter-org"><option value="">All Organizations</option></select>
+    <label for="cv-filter-team">Team:</label>
+    <select id="cv-filter-team"><option value="">All Teams</option></select>
+    <span class="cv-lf-sep"></span>
+    <label for="cv-time-preset">Time range:</label>
+    {# Keep this option set in sync with TIME_PRESETS in
+       time_preset_service.py — the cal:* values are sentinels
+       the client converts to explicit ISO from/to windows. #}
+    <select id="cv-time-preset">
+      <option value="" selected>All time</option>
+      <option value="now-7d/d">Last 7 days</option>
+      <option value="now-30d/d">Last 30 days</option>
+      <option value="now-90d/d">Last 90 days</option>
+      <option value="now-6M/d">Last 6 months</option>
+      <option value="now-1y/d">Last 12 months</option>
+      <option value="cal:this_month">This Month</option>
+      <option value="cal:last_month">Last Month</option>
+      <option value="cal:this_quarter">This Quarter</option>
+      <option value="cal:last_quarter">Last Quarter</option>
+      <option value="custom">Custom range&hellip;</option>
+    </select>
+    <div id="cv-custom-date-range" style="display:none; align-items:center; gap:6px;">
+      <input type="date" id="cv-time-from">
+      <span>to</span>
+      <input type="date" id="cv-time-to">
+      <button type="button" id="cv-time-apply" disabled>Apply</button>
+    </div>
+    <span class="cv-lf-note">Filters preview live data &mdash; they aren't saved with the page</span>
+  </div>
+
+  <!-- dashboard-level filter strip. Rendered by
+       renderDashboardFilterStrip(); the "+ Filters" entry button opens the
+       editor modal below. Sits outside the page div, so it can never leak
+       into published output. -->
+  <div class="db-filter-strip" id="dashboard-filter-strip"></div>
+
+  <div class="cv-main">
+    <div class="cv-workarea" id="cv-workarea">
+      <div class="cv-scaler" id="cv-scaler">
+        <div class="cv-page-wrap" id="cv-page-wrap">
+          <div class="cv-ruler-corner cv-chrome" id="cv-ruler-corner"></div>
+          <div class="cv-ruler cv-ruler-top cv-chrome" id="cv-ruler-top"
+               title="Click to add a vertical guide"></div>
+          <div class="cv-ruler cv-ruler-left cv-chrome" id="cv-ruler-left"
+               title="Click to add a horizontal guide"></div>
+          <div class="cv-page" id="cv-page"></div>
+        </div>
+      </div>
+    </div>
+
+    {# collapsible AI chat side panel (foundation ticket: chat
+       Q&A + attachments only; the assistant cannot write to the page yet).
+       Hidden until the topbar AI button opens it; absent entirely when the
+       canvas_ai feature flag is off. #}
+    {% if canvas_ai_enabled %}
+    <div class="cv-ai-panel" id="cv-ai-panel" style="display:none;">
+      <div class="cv-ai-head">
+        <span class="cv-ai-title">&#10024; AI assistant</span>
+        <button type="button" id="cv-ai-new" class="cv-mini-btn" title="Start a fresh conversation">New chat</button>
+        <button type="button" id="cv-ai-close" class="cv-ai-close" aria-label="Close AI panel">&#10005;</button>
+      </div>
+      <div class="cv-ai-messages" id="cv-ai-messages">
+        <div class="cv-ai-empty" id="cv-ai-empty">
+          Ask about the Canvas Builder, or attach a report screenshot,
+          PDF, or CSV to analyze. The assistant can't edit your page yet
+          &mdash; that's coming next.
+        </div>
+      </div>
+      <div class="cv-ai-attach-strip" id="cv-ai-attach-strip"></div>
+      <div class="cv-ai-inputrow">
+        {# a plus sign, not the paperclip emoji: the glyph reads
+           as "add a file" at this size where the paperclip didn't. #}
+        <button type="button" id="cv-ai-attach" title="Attach a file (PNG, JPEG, GIF, WebP, PDF, TXT, CSV — max 20 MB)">+</button>
+        <input type="file" id="cv-ai-file" multiple style="display:none;"
+               accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/plain,text/csv,.csv,.txt">
+        <textarea id="cv-ai-input" rows="2" maxlength="4000"
+                  placeholder="Ask the AI assistant&hellip;"></textarea>
+        <button type="button" id="cv-ai-send" class="cv-primary" disabled>Send</button>
+      </div>
+      <div class="cv-ai-footrow">
+        <label class="cv-check cv-ai-complex" title="Route this conversation to the most capable (and most expensive) model — for dense or ambiguous source material">
+          <input type="checkbox" id="cv-ai-complex"> Complex mode</label>
+        <span class="cv-ai-model" id="cv-ai-model" title="Model tier used for the last reply"></span>
+        {# current-cycle workspace AI spend. Server-rendered at
+           page load and refreshed from each chat response; blank (never an
+           error string) when the readout can't be computed. #}
+        <span class="cv-ai-spend" id="cv-ai-spend"
+              title="{{ canvas_ai_spend.title if canvas_ai_spend else '' }}">{{ canvas_ai_spend.label if canvas_ai_spend else '' }}</span>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="cv-panel" id="cv-panel">
+      <div id="cv-object-panel" style="display:none;">
+        <h3>Selected object <span id="cv-obj-type" class="cv-obj-type"></span></h3>
+
+        <div id="cv-obj-field-fields" style="display:none;">
+          <div class="cv-field">
+            <label for="cv-obj-label">Label</label>
+            <input type="text" id="cv-obj-label" maxlength="200">
+          </div>
+          <div id="cv-obj-computed-note" style="display:none;">
+            <div class="cv-hint">
+              Calculated field &mdash; its value is derived from two bound
+              metrics (numerator &divide; denominator). Edit its label, or
+              unlink it to bind it manually like any other field.
+            </div>
+            <button type="button" id="cv-obj-unlink" class="cv-mini-btn">Unlink &amp; bind manually</button>
+          </div>
+          <div id="cv-obj-binding-fields">
+            <div class="cv-field">
+              <label for="cv-obj-dv">Data view</label>
+              <select id="cv-obj-dv"><option value="">Choose&#8230;</option></select>
+            </div>
+            <div class="cv-field">
+              <label for="cv-obj-field">Field</label>
+              <select id="cv-obj-field"><option value="">Pick a data view first</option></select>
+            </div>
+            <div class="cv-field">
+              <label for="cv-obj-agg">Aggregation</label>
+              <select id="cv-obj-agg">
+                <option value="sum">Sum</option>
+                <option value="avg">Average</option>
+                <option value="min">Min</option>
+                <option value="max">Max</option>
+                <option value="cardinality">Unique count</option>
+                <option value="equals">Count where equals&#8230;</option>
+                <option value="exists">Count where exists</option>
+              </select>
+            </div>
+            <div class="cv-field" id="cv-obj-equals-field" style="display:none;">
+              <label for="cv-obj-equals">Equals value</label>
+              <input type="text" id="cv-obj-equals" maxlength="200">
+            </div>
+            {# per-binding row filters: field = value pairs ANDed
+               onto the metric query. #}
+            <div class="cv-field">
+              <label>Filters (field = value)</label>
+              <div id="cv-obj-filters-list"></div>
+              <button type="button" id="cv-obj-filter-add" class="cv-mini-btn">+ Add filter</button>
+            </div>
+            {# per-field time-range override: when checked, this
+               field queries its own range and ignores the page's time-range
+               filter. The preset options mirror the toolbar's #cv-time-preset
+               set (keep both in sync with TIME_PRESETS in
+               time_preset_service.py); only "Custom range…" reveals the
+               fixed from/to date inputs. #}
+            <div class="cv-field">
+              <label class="cv-check"><input type="checkbox" id="cv-obj-tr-override">
+                Override Time Range</label>
+              <div id="cv-obj-tr-fields" style="display:none; flex-direction:column; gap:6px;">
+                <select id="cv-obj-tr-preset">
+                  <option value="" selected>All time</option>
+                  <option value="now-7d/d">Last 7 days</option>
+                  <option value="now-30d/d">Last 30 days</option>
+                  <option value="now-90d/d">Last 90 days</option>
+                  <option value="now-6M/d">Last 6 months</option>
+                  <option value="now-1y/d">Last 12 months</option>
+                  <option value="cal:this_month">This Month</option>
+                  <option value="cal:last_month">Last Month</option>
+                  <option value="cal:this_quarter">This Quarter</option>
+                  <option value="cal:last_quarter">Last Quarter</option>
+                  <option value="custom">Custom range&hellip;</option>
+                </select>
+                <div id="cv-obj-tr-custom" style="display:none; align-items:center; gap:6px;">
+                  <input type="date" id="cv-obj-tr-from" title="From">
+                  <span>to</span>
+                  <input type="date" id="cv-obj-tr-to" title="To">
+                </div>
+              </div>
+            </div>
+            <button type="button" id="cv-obj-apply" class="cv-mini-btn">Apply binding</button>
+          </div>
+
+          {# calculated fields: the binding pickers above swap for
+             this formula editor (calc_field objects only). Variables are
+             named earlier metric bindings the formula references by
+             name; the grammar is the calculation-column grammar (+ - * /,
+             parentheses, numbers) shared with the Dashboard Builder. #}
+          <div id="cv-obj-calc-fields" style="display:none;">
+            <div class="cv-field">
+              <label for="cv-calc-formula">Formula</label>
+              <input type="text" id="cv-calc-formula" maxlength="200"
+                     placeholder="e.g. conversions / reach"
+                     title="Arithmetic over the variable names below: + - * / and parentheses">
+              <div id="cv-calc-formula-err" class="cv-calc-err" style="display:none;"></div>
+            </div>
+            <div class="cv-field">
+              <label>Variables (name &rarr; metric)</label>
+              <div id="cv-calc-vars-list"></div>
+              <button type="button" id="cv-calc-var-add" class="cv-mini-btn">+ Add variable</button>
+            </div>
+            <button type="button" id="cv-calc-apply" class="cv-mini-btn">Apply calculation</button>
+            <div class="cv-hint">
+              Division by zero or a variable with no data shows &mdash; instead
+              of a number.
+            </div>
+          </div>
+
+          {# value formatting. Sibling of the binding pickers so
+             calculated fields (binding pickers hidden) keep it. Stored under
+             the object's style — survives save/reload with the binding. #}
+          <div class="cv-field-row">
+            <div class="cv-field">
+              <label for="cv-obj-format">Format</label>
+              <select id="cv-obj-format">
+                <option value="number">Number</option>
+                <option value="percent">Percent (%)</option>
+                <option value="currency">Currency ($)</option>
+              </select>
+            </div>
+            <div class="cv-field">
+              <label for="cv-obj-decimals">Decimals</label>
+              <input type="number" id="cv-obj-decimals" min="0" max="6" step="1" placeholder="auto">
+            </div>
+          </div>
+          <label class="cv-check"><input type="checkbox" id="cv-obj-abbrev">
+            Abbreviate large numbers (1.2M) &mdash; needs Decimals on auto</label>
+          <label class="cv-check"><input type="checkbox" id="cv-obj-thousands"> Thousands separators</label>
+          <div class="cv-field-row">
+            <div class="cv-field">
+              <label for="cv-obj-value-size">Value font size</label>
+              <input type="number" id="cv-obj-value-size" min="6" max="200" step="1" placeholder="auto">
+            </div>
+            <div class="cv-field">
+              <label for="cv-obj-value-color">Value color</label>
+              <input type="color" id="cv-obj-value-color" value="#1a2744">
+            </div>
+          </div>
+          <div class="cv-field">
+            <label for="cv-obj-label-size">Label font size</label>
+            <input type="number" id="cv-obj-label-size" min="6" max="200" step="1" placeholder="auto">
+          </div>
+          <div class="cv-field">
+            <label for="cv-obj-align">Align</label>
+            <select id="cv-obj-align">
+              <option value="">Default</option>
+              <option value="left">Left</option>
+              <option value="center">Center</option>
+              <option value="right">Right</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="cv-obj-icon-fields" style="display:none;">
+          <div class="cv-field">
+            <button type="button" id="cv-obj-change-icon" class="cv-mini-btn">Replace icon&#8230;</button>
+          </div>
+        </div>
+
+        {# shape styling: fill (hidden for line/arrow), border
+           color/width/style, corner radius (rect/callout), opacity. #}
+        <div id="cv-obj-shape-fields" style="display:none;">
+          <div class="cv-field-row" id="cv-obj-shape-fill-row">
+            <div class="cv-field">
+              <label class="cv-check"><input type="checkbox" id="cv-obj-shape-fill-on"> Fill</label>
+            </div>
+            <div class="cv-field">
+              <label for="cv-obj-shape-fill">Fill color</label>
+              <input type="color" id="cv-obj-shape-fill" value="#dbe7f5">
+            </div>
+          </div>
+          <div class="cv-field-row">
+            <div class="cv-field">
+              <label for="cv-obj-shape-border-width">Border width</label>
+              <input type="number" id="cv-obj-shape-border-width" min="0" max="20" step="1" placeholder="none">
+            </div>
+            <div class="cv-field">
+              <label for="cv-obj-shape-border-color">Border color</label>
+              <input type="color" id="cv-obj-shape-border-color" value="#1a2744">
+            </div>
+          </div>
+          <div class="cv-field-row">
+            <div class="cv-field">
+              <label for="cv-obj-shape-border-style">Border style</label>
+              <select id="cv-obj-shape-border-style">
+                <option value="solid">Solid</option>
+                <option value="dashed">Dashed</option>
+                <option value="dotted">Dotted</option>
+              </select>
+            </div>
+            <div class="cv-field" id="cv-obj-shape-radius-field">
+              <label for="cv-obj-shape-radius">Corner radius</label>
+              <input type="number" id="cv-obj-shape-radius" min="0" max="200" step="1" placeholder="0">
+            </div>
+          </div>
+          <div class="cv-field">
+            <label for="cv-obj-shape-opacity">Opacity (%)</label>
+            <input type="number" id="cv-obj-shape-opacity" min="10" max="100" step="5" placeholder="100">
+          </div>
+          <div class="cv-hint" id="cv-obj-shape-callout-hint" style="display:none;">
+            Double-click the callout to edit its text &mdash; the formatting
+            toolbar works exactly as it does on text boxes.
+          </div>
+        </div>
+
+        {# image styling: fit, border, corner radius, opacity. #}
+        <div id="cv-obj-image-fields" style="display:none;">
+          <div class="cv-field">
+            <button type="button" id="cv-obj-change-image" class="cv-mini-btn">Replace image&#8230;</button>
+          </div>
+          <div class="cv-field">
+            <label for="cv-obj-image-fit">Fit</label>
+            <select id="cv-obj-image-fit">
+              <option value="contain">Contain (whole image visible)</option>
+              <option value="cover">Cover (fill the box, crop edges)</option>
+              <option value="fill">Stretch</option>
+            </select>
+          </div>
+          <div class="cv-field-row">
+            <div class="cv-field">
+              <label for="cv-obj-image-border-width">Border width</label>
+              <input type="number" id="cv-obj-image-border-width" min="0" max="20" step="1" placeholder="none">
+            </div>
+            <div class="cv-field">
+              <label for="cv-obj-image-border-color">Border color</label>
+              <input type="color" id="cv-obj-image-border-color" value="#1a2744">
+            </div>
+          </div>
+          <div class="cv-field-row">
+            <div class="cv-field">
+              <label for="cv-obj-image-radius">Corner radius</label>
+              <input type="number" id="cv-obj-image-radius" min="0" max="200" step="1" placeholder="0">
+            </div>
+            <div class="cv-field">
+              <label for="cv-obj-image-opacity">Opacity (%)</label>
+              <input type="number" id="cv-obj-image-opacity" min="10" max="100" step="5" placeholder="100">
+            </div>
+          </div>
+        </div>
+
+        {# table object config: the REAL table builder panel.
+           The three partials are the exact markup index.html renders inside
+           #config-panel, so populateTablePanel() (builder.js) hydrates the
+           same element ids here. No .db-config-panel wrapper — the builder's
+           edit/properties tab CSS doesn't apply, so every group shows at
+           once when populateTablePanel reveals it. #}
+        <div id="cv-obj-table-fields" style="display:none;">
+          {% include "dashboard_builder/_table_field_section.html" %}
+          {% include "dashboard_builder/_table_totals_controls.html" %}
+          {% include "dashboard_builder/_table_display_controls.html" %}
+          {# Column show/hide toggles — populateTableToggles (charts.js)
+             renders into #display-toggles-list when the table is selected. #}
+          <div class="db-form-group">
+            <label>Columns shown</label>
+            <div id="display-toggles-list"></div>
+          </div>
+        </div>
+
+        <div id="cv-obj-text-fields" style="display:none;">
+          <div class="cv-field-row">
+            <div class="cv-field">
+              <label for="cv-obj-font-size">Font size</label>
+              <input type="number" id="cv-obj-font-size" min="6" max="200" step="1">
+            </div>
+            <div class="cv-field">
+              <label for="cv-obj-color">Color</label>
+              <input type="color" id="cv-obj-color" value="#16191f">
+            </div>
+          </div>
+          <label class="cv-check"><input type="checkbox" id="cv-obj-bold"> Bold</label>
+          {# box-level formatting: theme font, fill (pre-existing),
+             border, padding, transparency. Font options are populated from
+             cvTextTokens() so the theme has one source of truth. #}
+          <div class="cv-field">
+            <label for="cv-obj-font-family">Font (theme)</label>
+            <select id="cv-obj-font-family">
+              <option value="">Default (Sans)</option>
+            </select>
+          </div>
+          <div class="cv-field-row">
+            <div class="cv-field">
+              <label class="cv-check"><input type="checkbox" id="cv-obj-bg-on"> Fill</label>
+            </div>
+            <div class="cv-field">
+              <label for="cv-obj-bg">Fill color</label>
+              <input type="color" id="cv-obj-bg" value="#ffffff">
+            </div>
+          </div>
+          <div class="cv-field-row">
+            <div class="cv-field">
+              <label for="cv-obj-border-width">Border width</label>
+              <input type="number" id="cv-obj-border-width" min="0" max="20" step="1" placeholder="none">
+            </div>
+            <div class="cv-field">
+              <label for="cv-obj-border-color">Border color</label>
+              <input type="color" id="cv-obj-border-color" value="#16191f">
+            </div>
+          </div>
+          <div class="cv-field-row">
+            <div class="cv-field">
+              <label for="cv-obj-padding">Padding (px)</label>
+              <input type="number" id="cv-obj-padding" min="0" max="100" step="1" placeholder="auto">
+            </div>
+            <div class="cv-field">
+              <label for="cv-obj-opacity">Opacity (%)</label>
+              <input type="number" id="cv-obj-opacity" min="10" max="100" step="5" placeholder="100">
+            </div>
+          </div>
+          <div class="cv-hint">
+            Double-click the text box to edit its wording &mdash; a formatting
+            toolbar appears for bold/italic/underline, theme fonts &amp;
+            colors, size, alignment, and lists on the selected text.
+          </div>
+        </div>
+
+        <div class="cv-field" id="cv-group-field" style="display:none;">
+          <label>Group</label>
+          <div class="cv-align-row">
+            <button type="button" id="cv-obj-group" class="cv-mini-btn"
+                    title="Group the selected objects (Ctrl+G) — a group moves, resizes, locks, and deletes as one unit">Group</button>
+            <button type="button" id="cv-obj-ungroup" class="cv-mini-btn"
+                    title="Ungroup the selected group(s) (Ctrl+Shift+G)">Ungroup</button>
+          </div>
+        </div>
+
+        <div class="cv-field" id="cv-align-field">
+          <label>Align &amp; distribute</label>
+          <div class="cv-align-row" id="cv-align-row">
+            <button type="button" class="cv-mini-btn" data-align="left" title="Align left (multi-select: to the left-most selected object; single: to the page margin)">&#8676;</button>
+            <button type="button" class="cv-mini-btn" data-align="center" title="Distribute horizontally (space evenly between the outermost selected objects; single object: center on page)">&#8596;</button>
+            <button type="button" class="cv-mini-btn" data-align="right" title="Align right (multi-select: to the right-most selected object; single: to the page margin)">&#8677;</button>
+            <button type="button" class="cv-mini-btn" data-align="top" title="Align top (multi-select: to the top-most selected object; single: to the page margin)">&#10514;</button>
+            <button type="button" class="cv-mini-btn" data-align="middle" title="Distribute vertically (space evenly between the outermost selected objects; single object: center on page)">&#8597;</button>
+            <button type="button" class="cv-mini-btn" data-align="bottom" title="Align bottom (multi-select: to the bottom-most selected object; single: to the page margin)">&#10515;</button>
+          </div>
+        </div>
+
+        <div class="cv-field" id="cv-layer-field">
+          <label>Layer</label>
+          <div class="cv-align-row" id="cv-layer-row">
+            <button type="button" class="cv-mini-btn" data-layer="back" title="Send to back">&#8659;</button>
+            <button type="button" class="cv-mini-btn" data-layer="backward" title="Send backward">&#8595;</button>
+            <button type="button" class="cv-mini-btn" data-layer="forward" title="Bring forward">&#8593;</button>
+            <button type="button" class="cv-mini-btn" data-layer="front" title="Bring to front">&#8657;</button>
+          </div>
+        </div>
+
+        <div class="cv-field" id="cv-rotation-field">
+          <label for="cv-obj-rotation">Rotation (&deg;)</label>
+          <div class="cv-field-row">
+            <input type="number" id="cv-obj-rotation" min="-180" max="180" step="1">
+            <button type="button" id="cv-obj-rotate-toggle" class="cv-mini-btn"
+                    title="Show the rotation handle on the selected object (drag it to rotate; hold Shift for 15&deg; steps)">Rotate</button>
+          </div>
+        </div>
+
+        {# restyle ONE object with a chosen theme. The theme's
+           concrete colors are written into the object's style (token
+           resolution is page-scoped), so the object keeps this look even if
+           the page theme changes later. #}
+        <div class="cv-field" id="cv-obj-theme-field">
+          <label for="cv-obj-theme">Apply theme to object</label>
+          <div class="cv-field-row">
+            <select id="cv-obj-theme"></select>
+            <button type="button" id="cv-obj-theme-apply" class="cv-mini-btn"
+                    title="Write this theme's colors into the selected object — it restyles now and keeps these colors even if the page theme changes later">Apply</button>
+          </div>
+        </div>
+
+        <div class="cv-field" id="cv-obj-lock-field">
+          <label class="cv-check"><input type="checkbox" id="cv-obj-locked"> Locked</label>
+          <div class="cv-hint" id="cv-obj-locked-note" style="display:none;">
+            Locked &mdash; this object can't be moved, resized, edited, layered,
+            or deleted until you untick Locked.
+          </div>
+        </div>
+
+        <div class="cv-obj-actions">
+          <button type="button" id="cv-obj-delete" class="cv-mini-btn cv-danger">Delete object</button>
+          <button type="button" id="cv-obj-remove-section" class="cv-mini-btn cv-danger" style="display:none;">Remove section</button>
+        </div>
+        <div class="cv-hint">
+          Drag to move; corner handle resizes; the Rotate button shows a
+          rotation handle (hold Shift for 15&deg; steps); double-click text
+          to edit its wording.
+          Arrow keys nudge, Delete removes. Drag a box on empty page (or
+          Shift-click) to select several objects and move, layer, or delete
+          them together. Right-click for Copy / Paste / Duplicate / Select
+          section (Ctrl+C / Ctrl+V / Ctrl+D). Layer buttons change what
+          overlaps what; Locked pins an object until unlocked. Group (Ctrl+G)
+          makes several objects move, resize, lock, and delete as one &mdash;
+          clicking any member selects the whole group; Ungroup (Ctrl+Shift+G)
+          to edit members individually. Dragging snaps to nearby objects,
+          guides, and margins &mdash; hold Alt to drag free, or untick Smart
+          guides under Rulers &amp; guides to turn snapping off.
+        </div>
+        <hr class="cv-panel-rule">
+      </div>
+
+      <h3>Page setup</h3>
+
+      <div class="cv-field-row">
+        <div class="cv-field">
+          <label for="cv-page-width">Width (px)</label>
+          <input type="number" id="cv-page-width" min="200" max="10000" step="1">
+        </div>
+        <div class="cv-field">
+          <label for="cv-page-height">Height (px)</label>
+          <input type="number" id="cv-page-height" min="200" max="10000" step="1">
+        </div>
+      </div>
+
+      <div class="cv-field">
+        <label>Orientation</label>
+        <div class="cv-seg" role="radiogroup" aria-label="Page orientation">
+          <button type="button" id="cv-orient-landscape" class="cv-seg-btn">Landscape</button>
+          <button type="button" id="cv-orient-portrait" class="cv-seg-btn">Portrait</button>
+        </div>
+      </div>
+
+      {# apply a built-in theme to THIS page: clicking a card
+         swaps canvas_config.page.theme so every token-keyed style
+         re-resolves; raw colors matching the outgoing theme follow along
+         (canvas_editor.js applyThemeToDoc). Cards render from the
+         template-injected window.CANVAS_THEME_TOKENS — no fetch. #}
+      <h3>Theme</h3>
+      <div class="cv-theme-row" id="cv-theme-row"></div>
+      <div class="cv-hint">
+        Restyles this page in place. Colors you picked yourself are kept
+        unless you choose &ldquo;Restyle everything&rdquo; when asked.
+      </div>
+
+      <h3>Background</h3>
+      <div class="cv-field">
+        <label for="cv-bg-type">Type</label>
+        <select id="cv-bg-type">
+          <option value="color">Solid color</option>
+          <option value="image">Image</option>
+        </select>
+      </div>
+      <div class="cv-field" id="cv-bg-color-field">
+        <label for="cv-bg-color">Color</label>
+        <input type="color" id="cv-bg-color" value="#ffffff">
+      </div>
+      <div class="cv-field" id="cv-bg-image-field">
+        <label for="cv-bg-image">Image (max ~700KB)</label>
+        <input type="file" id="cv-bg-image" accept="image/png,image/jpeg,image/webp,image/gif">
+        <button type="button" id="cv-bg-image-clear" class="cv-mini-btn">Remove image</button>
+      </div>
+
+      <h3>Margins</h3>
+      <label class="cv-check"><input type="checkbox" id="cv-margins-show"> Show margin guides</label>
+      <div class="cv-field-row">
+        <div class="cv-field"><label for="cv-margin-top">Top</label>
+          <input type="number" id="cv-margin-top" min="0" max="2000" step="1"></div>
+        <div class="cv-field"><label for="cv-margin-right">Right</label>
+          <input type="number" id="cv-margin-right" min="0" max="2000" step="1"></div>
+      </div>
+      <div class="cv-field-row">
+        <div class="cv-field"><label for="cv-margin-bottom">Bottom</label>
+          <input type="number" id="cv-margin-bottom" min="0" max="2000" step="1"></div>
+        <div class="cv-field"><label for="cv-margin-left">Left</label>
+          <input type="number" id="cv-margin-left" min="0" max="2000" step="1"></div>
+      </div>
+
+      <h3>Grid</h3>
+      <label class="cv-check"><input type="checkbox" id="cv-grid-show"> Show grid</label>
+      <label class="cv-check"><input type="checkbox" id="cv-grid-snap"> Snap to grid</label>
+      <div class="cv-field">
+        <label for="cv-grid-size">Grid size (px)</label>
+        <input type="number" id="cv-grid-size" min="4" max="500" step="1">
+      </div>
+
+      <h3>Rulers &amp; guides</h3>
+      <label class="cv-check"><input type="checkbox" id="cv-rulers-show"> Show rulers</label>
+      <label class="cv-check"><input type="checkbox" id="cv-guides-show"> Show guides</label>
+      <label class="cv-check"><input type="checkbox" id="cv-smart-snap"> Smart guides (snap to objects &amp; guides)</label>
+      <button type="button" id="cv-guides-clear" class="cv-mini-btn">Clear all guides</button>
+      <div class="cv-hint">
+        Click a ruler to add a guide. Drag a guide to move it; double-click a
+        guide to remove it. Smart guides snap dragged objects to nearby
+        objects, guides, margins, and the page center (hold Alt to drag
+        free). Rulers, guides, grid, and margin guides are editor
+        aids only — they never appear in preview or published output.
+      </div>
+    </div>
+  </div>
+
+  <div class="cv-modal" id="cv-open-modal">
+    <div class="cv-modal-box">
+      <header>
+        <span>Open canvas page</span>
+        <button id="cv-open-close" type="button" aria-label="Close">&#10005;</button>
+      </header>
+      <div class="cv-open-list" id="cv-open-list"></div>
+    </div>
+  </div>
+
+  <div class="cv-modal" id="cv-seed-modal">
+    <div class="cv-modal-box">
+      <header>
+        <span>New canvas from an existing report</span>
+        <button id="cv-seed-close" type="button" aria-label="Close">&#10005;</button>
+      </header>
+      <div class="cv-open-list" id="cv-seed-list"></div>
+    </div>
+  </div>
+
+  {# raw-override confirm: shown only when the page/object holds
+     colors that are neither token keys nor the outgoing theme's palette
+     (i.e. the user's own picks). Keep is the default treatment. #}
+  <div class="cv-modal" id="cv-theme-modal">
+    <div class="cv-modal-box">
+      <header>
+        <span>Apply theme</span>
+        <button id="cv-theme-modal-close" type="button" aria-label="Close">&#10005;</button>
+      </header>
+      <div class="cv-theme-modal-body">
+        <p id="cv-theme-modal-msg"></p>
+        <div class="cv-theme-modal-actions">
+          <button type="button" id="cv-theme-keep" class="cv-theme-primary">Keep custom colors</button>
+          <button type="button" id="cv-theme-restyle">Restyle everything</button>
+          <button type="button" id="cv-theme-cancel">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cv-modal" id="cv-icon-modal">
+    <div class="cv-modal-box">
+      <header>
+        <span>Insert an icon</span>
+        <button id="cv-icon-close" type="button" aria-label="Close">&#10005;</button>
+      </header>
+      <div class="cv-icon-grid" id="cv-icon-grid"></div>
+    </div>
+  </div>
+
+  <!-- dashboard-filters editor modal — same structure as the
+       Dashboard Builder's #dashboard-filters-modal (index.html) minus the
+        date-basis section (canvas pages don't support
+       time_field_choices yet). Managed by dashboard_filters.js. -->
+  <div class="db-modal-overlay" id="dashboard-filters-modal" style="display:none;">
+    <div class="db-modal" style="width:520px;">
+      <div class="db-modal-header">
+        <h3>Page Filters</h3>
+        <button class="db-modal-close" onclick="closeDashboardFiltersModal()">&#10005;</button>
+      </div>
+      <div class="db-modal-body">
+        <p style="font-size:12px;color:#666;margin-bottom:12px;">
+          Filters appear above the page and apply to every live data field
+          whose data view matches. Pick values from the strip buttons.
+        </p>
+        <div id="dashboard-filters-list"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+          <button class="db-btn db-btn-primary" onclick="closeDashboardFiltersModal()">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# floating rich-text toolbar, shown while a text box is being
+     edited (dblclick). Buttons keep the contenteditable selection via
+     pointerdown-preventDefault; the selects save/restore it. Color swatches
+     and font/size options are populated from cvTextTokens(). #}
+  <div class="cv-rich-toolbar" id="cv-rich-toolbar">
+    <button type="button" data-rt="bold" title="Bold (Ctrl+B)"><b>B</b></button>
+    <button type="button" data-rt="italic" title="Italic (Ctrl+I)"><i>I</i></button>
+    <button type="button" data-rt="underline" title="Underline (Ctrl+U)"><u>U</u></button>
+    <span class="cv-rt-sep"></span>
+    <select id="cv-rt-font" title="Font (theme fonts)">
+      <option value="">Font</option>
+    </select>
+    <select id="cv-rt-size" title="Font size">
+      <option value="">Size</option>
+    </select>
+    <span class="cv-rt-sep"></span>
+    <span class="cv-rt-swatches" id="cv-rt-swatches" title="Text color (theme colors)"></span>
+    <span class="cv-rt-sep"></span>
+    <button type="button" data-rt="justifyLeft" title="Align left">&#8676;</button>
+    <button type="button" data-rt="justifyCenter" title="Align center">&#8596;</button>
+    <button type="button" data-rt="justifyRight" title="Align right">&#8677;</button>
+    <span class="cv-rt-sep"></span>
+    <button type="button" data-rt="insertUnorderedList" title="Bulleted list">&#8226; List</button>
+    <button type="button" data-rt="insertOrderedList" title="Numbered list">1. List</button>
+  </div>
+
+  {# shape picker under the "+ Shape" topbar button (reuses the
+     context-menu look; canvas_editor.js positions and toggles it). #}
+  <div class="cv-ctx-menu" id="cv-shape-menu">
+    <button type="button" data-shape="rect">Rectangle</button>
+    <button type="button" data-shape="ellipse">Ellipse / circle</button>
+    <button type="button" data-shape="line">Line</button>
+    <button type="button" data-shape="arrow">Arrow</button>
+    <button type="button" data-shape="callout">Callout</button>
+  </div>
+
+  <div class="cv-ctx-menu" id="cv-ctx-menu">
+    <button type="button" id="cv-ctx-copy">Copy <span class="cv-ctx-kbd">Ctrl+C</span></button>
+    <button type="button" id="cv-ctx-paste">Paste <span class="cv-ctx-kbd">Ctrl+V</span></button>
+    <button type="button" id="cv-ctx-duplicate">Duplicate <span class="cv-ctx-kbd">Ctrl+D</span></button>
+    <button type="button" id="cv-ctx-select-section">Select section</button>
+  </div>
+
+  <div class="cv-toast" id="cv-toast"></div>
+
+  {# the canvas editor embeds the legacy table builder: charts.js
+     (renderTable / queryAndRender) + builder.js (populateTablePanel + the
+     column editor). charts.js reads DASHBOARD_BASE at load time, so it must
+     exist first ('' → page-relative api/…, same value canvas_editor.js
+     re-sets later). builder.js' page init self-guards on #db-panel-left. #}
+  <script nonce="{{ csp_nonce }}">window.DASHBOARD_BASE = window.DASHBOARD_BASE || '';</script>
+  <script src="{{ url_for('static', filename='dashboard_builder/charts.js') }}?v=20261007a"></script>
+  <script src="{{ url_for('static', filename='dashboard_builder/builder.js') }}?v=20261007a"></script>
+  {# dashboard_filters.js must load BEFORE canvas_editor.js — the
+     editor calls renderDashboardFilterStrip during boot/load/seed. #}
+  <script src="{{ url_for('static', filename='dashboard_builder/dashboard_filters.js') }}?v=20260713a"></script>
+  {# theme tokens (single source: canvas_theme.py) + the shared
+     resolver, loaded before every canvas renderer. #}
+  <script nonce="{{ csp_nonce }}">window.CANVAS_THEME_TOKENS = {{ canvas_theme_tokens|safe }};</script>
+  <script src="{{ url_for('static', filename='dashboard_builder/canvas_theme.js') }}?v=20260717a"></script>
+  {# shared live geo/trend chart renderer (loaded before the
+     editor, which calls window.cvRenderChartInto). #}
+  <script src="{{ url_for('static', filename='dashboard_builder/canvas_charts.js') }}?v=20260912a"></script>
+  <script src="{{ url_for('static', filename='dashboard_builder/canvas_editor.js') }}?v=20261010a"></script>
+</body>
+</html>

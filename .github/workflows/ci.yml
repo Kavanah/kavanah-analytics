@@ -1,0 +1,73 @@
+# CI for the PUBLIC snapshot repo (kavanah-analytics).
+#
+# This file is not a workflow of the private repo: it lives under
+# deployment/public-overlay/ and is copied onto each export by
+# bin/python/tools/publish_release.py, replacing the private workflows
+# (which run on self-hosted runners and must never ship — a fork PR would
+# otherwise execute on our staging runner).
+#
+# Hosted runners only. No secrets, no submodule, no self-hosted labels.
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.13"  # matches the Dockerfile base image the lockfile is compiled for
+          cache: "pip"
+          cache-dependency-path: |
+            bin/python/requirements.txt
+            requirements-test.txt
+
+      - name: Install dependencies
+        run: |
+          # bin/python/requirements.txt is a hashed lockfile compiled from requirements.in
+          pip install --require-hashes -r bin/python/requirements.txt
+          pip install -r requirements-test.txt
+
+      - name: Run tests
+        env:
+          PYTHONPATH: bin/python
+        run: pytest --tb=short -q -m "not integration and not e2e"
+
+  gitleaks:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Install Gitleaks
+        env:
+          GITLEAKS_VERSION: "8.30.1"
+        run: |
+          INSTALL_DIR="${{ runner.temp }}/gitleaks"
+          mkdir -p "$INSTALL_DIR"
+          curl -sSfL -o gitleaks.tar.gz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          tar -xzf gitleaks.tar.gz -C "$INSTALL_DIR"
+          echo "$INSTALL_DIR" >> "$GITHUB_PATH"
+
+      - name: Run Gitleaks
+        run: gitleaks detect --source . --redact -v

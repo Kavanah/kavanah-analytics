@@ -1,0 +1,3 @@
+# Exclude local developer working copies (not production code)
+*-John_Alienware*.py
+*-John_Alienware*.html

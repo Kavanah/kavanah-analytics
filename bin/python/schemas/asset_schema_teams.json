@@ -1,0 +1,153 @@
+{
+  "dynamic_templates": [
+    {
+      "strings_as_keyword": {
+        "match_mapping_type": "string",
+        "mapping": {
+          "type": "keyword",
+          "ignore_above": 8191
+        }
+      }
+    }
+  ],
+  "properties": {
+    "team_title": {
+      "type": "keyword"
+    },
+    "team_name": {
+      "type": "text"
+    },
+    "workspace_title": {
+      "type": "keyword"
+    },
+    "workspace_esid": {
+      "type": "keyword"
+    },
+    "organization_title": {
+      "type": "keyword"
+    },
+    "organization_esid": {
+      "type": "keyword"
+    },
+    "team_city": {
+      "type": "keyword"
+    },
+    "team_country_text": {
+      "type": "keyword"
+    },
+    "team_country_esids": {
+      "type": "keyword"
+    },
+    "team_region": {
+      "type": "keyword"
+    },
+    "team_region_esid": {
+      "type": "keyword"
+    },
+    "team_language": {
+      "type": "keyword"
+    },
+    "team_urls": {
+      "type": "keyword"
+    },
+    "team_time_presets": {
+      "type": "keyword"
+    },
+    "team_disciple_tools_instance": {
+      "type": "keyword"
+    },
+    "chatwoot_account_title": {
+      "type": "keyword"
+    },
+    "chatwoot_account_esid": {
+      "type": "keyword"
+    },
+    "chatwoot_inbox_ids": {
+      "type": "keyword"
+    },
+    "team_google_ads_campaign_labels": {
+      "type": "keyword"
+    },
+    "team_google_ads_campaign_prefixes": {
+      "type": "keyword"
+    },
+    "echo_tenant_title": {
+      "type": "keyword"
+    },
+    "echo_tenant_esid": {
+      "type": "keyword"
+    },
+    "team_facebook_page_id": {
+      "type": "keyword"
+    },
+    "team_facebook_page_esids": {
+      "type": "keyword"
+    },
+    "team_ga4_properties": {
+      "type": "keyword"
+    },
+    "team_ga4_property_esids": {
+      "type": "keyword"
+    },
+    "team_google_ads_integration_status": {
+      "type": "keyword"
+    },
+    "team_google_ads_customers": {
+      "type": "keyword"
+    },
+    "team_google_ads_customer_esids": {
+      "type": "keyword"
+    },
+    "google_ads_customer_esid": {
+      "type": "keyword"
+    },
+    "ig_account_id": {
+      "type": "keyword"
+    },
+    "team_instagram_profile_esids": {
+      "type": "keyword"
+    },
+    "team_youtube_channel_handle": {
+      "type": "keyword"
+    },
+    "team_youtube_channel_handle_esids": {
+      "type": "keyword"
+    },
+    "connection_esid": {
+      "type": "keyword"
+    },
+    "fb_ad_account_links": {
+      "type": "nested",
+      "properties": {
+        "ad_account_esid": {
+          "type": "keyword"
+        },
+        "fb_ad_account_id": {
+          "type": "keyword"
+        },
+        "connection_esid": {
+          "type": "keyword"
+        },
+        "start_date": {
+          "type": "date"
+        },
+        "end_date": {
+          "type": "date"
+        },
+        "source": {
+          "type": "keyword"
+        },
+        "note": {
+          "type": "keyword",
+          "ignore_above": 8191
+        },
+        "updated_by": {
+          "type": "keyword"
+        },
+        "updated_at": {
+          "type": "date"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,402 @@
+{
+  "connector_id": "google_analytics_4",
+  "created_at": "2026-06-27T23:22:45.865314+00:00",
+  "description": "Shows active users, new users, average engagement time, event counts, top pages/screens, active users by first user source, sessions by session source, new vs returning users, key events by platform and active users by city",
+  "echarts_config": {
+    "charts": [
+      {
+        "aggregation": "max",
+        "chart_id": "active-users-1",
+        "chart_type": "metric",
+        "data_view": "*_ga_metrics_window",
+        "decimals": 0,
+        "filters": [],
+        "height": "143.615px",
+        "position": {
+          "col": 0,
+          "h": 2,
+          "row": 0,
+          "w": 3
+        },
+        "title": "Active users",
+        "width": "200.99px",
+        "y_field": "activeUsers",
+        "y_field_labels": {
+          "activeUsers": "Active users"
+        },
+        "y_fields": [
+          "activeUsers"
+        ]
+      },
+      {
+        "aggregation": "sum",
+        "chart_id": "new-users-2",
+        "chart_type": "metric",
+        "data_view": "*_ga_metrics",
+        "decimals": 0,
+        "filters": [
+          {
+            "field": "report_type",
+            "op": "eq",
+            "value": "acquisition"
+          }
+        ],
+        "height": "190.138px",
+        "position": {
+          "col": 3,
+          "h": 2,
+          "row": 0,
+          "w": 3
+        },
+        "title": "New users",
+        "width": "174px",
+        "y_field": "newUsers",
+        "y_field_labels": {
+          "newUsers": "New users"
+        },
+        "y_fields": [
+          "newUsers"
+        ]
+      },
+      {
+        "aggregation": "max",
+        "chart_id": "avg-engagement-3",
+        "chart_type": "metric",
+        "data_view": "*_ga_metrics_window",
+        "filters": [],
+        "height": "200.138px",
+        "position": {
+          "col": 6,
+          "h": 2,
+          "row": 0,
+          "w": 3
+        },
+        "title": "Avg. engagement time",
+        "value_format": "duration",
+        "width": "235px",
+        "y_field": "averageSessionDuration",
+        "y_field_labels": {
+          "averageSessionDuration": "Avg. engagement time"
+        },
+        "y_fields": [
+          "averageSessionDuration"
+        ]
+      },
+      {
+        "aggregation": "sum",
+        "chart_id": "event-count-4",
+        "chart_type": "metric",
+        "data_view": "*_ga_metrics",
+        "decimals": 0,
+        "filters": [
+          {
+            "field": "report_type",
+            "op": "eq",
+            "value": "pages"
+          }
+        ],
+        "height": "197.138px",
+        "position": {
+          "col": 9,
+          "h": 2,
+          "row": 0,
+          "w": 3
+        },
+        "title": "Event count",
+        "width": "203px",
+        "y_field": "eventCount",
+        "y_field_labels": {
+          "eventCount": "Event count"
+        },
+        "y_fields": [
+          "eventCount"
+        ]
+      },
+      {
+        "aggregation": "sum",
+        "chart_id": "top-screens-5",
+        "chart_type": "table",
+        "data_view": "*_ga_metrics",
+        "filters": [
+          {
+            "field": "report_type",
+            "op": "eq",
+            "value": "pages"
+          }
+        ],
+        "height": "360.146px",
+        "hide_title": false,
+        "max_columns": 4,
+        "max_rows": 10,
+        "position": {
+          "col": 0,
+          "h": 4,
+          "row": 2,
+          "w": 6
+        },
+        "sort_col_field": "screenPageViews",
+        "sort_direction": "desc",
+        "table_columns": [
+          {
+            "aggregation": "sum",
+            "decimals": 0,
+            "field": "screenPageViews",
+            "format": "000,",
+            "label": "Views"
+          },
+          {
+            "aggregation": "sum",
+            "decimals": 0,
+            "field": "activeUsers",
+            "format": "000,",
+            "label": "Active users"
+          },
+          {
+            "aggregation": "sum",
+            "decimals": 0,
+            "field": "eventCount",
+            "format": "000,",
+            "label": "Event count"
+          },
+          {
+            "aggregation": "avg",
+            "decimals": 3,
+            "field": "bounceRate",
+            "format": "0.0%",
+            "label": "Bounce rate"
+          }
+        ],
+        "title": "Top pages/screens",
+        "width": "761.354px",
+        "x_field": "unifiedScreenClass",
+        "x_label": "Screen class",
+        "y_fields": [
+          "screenPageViews",
+          "activeUsers",
+          "eventCount",
+          "bounceRate"
+        ]
+      },
+      {
+        "aggregation": "sum",
+        "chart_id": "first-user-src-6",
+        "chart_type": "table",
+        "data_view": "*_ga_metrics",
+        "filters": [
+          {
+            "field": "report_type",
+            "op": "eq",
+            "value": "acquisition"
+          }
+        ],
+        "hide_title": false,
+        "max_columns": 2,
+        "max_rows": 10,
+        "position": {
+          "col": 6,
+          "h": 4,
+          "row": 2,
+          "w": 6
+        },
+        "table_columns": [
+          {
+            "aggregation": "sum",
+            "decimals": 0,
+            "field": "activeUsers",
+            "format": "000,",
+            "label": "Active users"
+          },
+          {
+            "aggregation": "sum",
+            "decimals": 0,
+            "field": "newUsers",
+            "format": "000,",
+            "label": "New users"
+          }
+        ],
+        "title": "Active users by first user source / medium",
+        "x_field": "firstUserSource",
+        "x_label": "First user source",
+        "y_fields": [
+          "activeUsers",
+          "newUsers"
+        ]
+      },
+      {
+        "aggregation": "sum",
+        "chart_id": "session-src-7",
+        "chart_type": "table",
+        "data_view": "*_ga_metrics",
+        "filters": [
+          {
+            "field": "report_type",
+            "op": "eq",
+            "value": "acquisition"
+          }
+        ],
+        "hide_title": false,
+        "max_columns": 2,
+        "max_rows": 10,
+        "position": {
+          "col": 0,
+          "h": 4,
+          "row": 6,
+          "w": 6
+        },
+        "sort_col_field": "sessions",
+        "sort_direction": "desc",
+        "table_columns": [
+          {
+            "aggregation": "sum",
+            "decimals": 0,
+            "field": "sessions",
+            "format": "000,",
+            "label": "Sessions"
+          },
+          {
+            "aggregation": "sum",
+            "decimals": 0,
+            "field": "activeUsers",
+            "format": "000,",
+            "label": "Active users"
+          }
+        ],
+        "title": "Sessions by session source / medium",
+        "x_field": "sessionSource",
+        "x_label": "Session source",
+        "y_fields": [
+          "sessions",
+          "activeUsers"
+        ]
+      },
+      {
+        "aggregation": "sum",
+        "breakdown": "newVsReturning",
+        "calendar_interval": "week",
+        "chart_id": "new-vs-returning-8",
+        "chart_type": "line",
+        "data_view": "*_ga_metrics",
+        "display_toggles": {
+          "new": true,
+          "returning": true
+        },
+        "filters": [
+          {
+            "field": "report_type",
+            "op": "eq",
+            "value": "retention"
+          },
+          {
+            "field": "newVsReturning",
+            "op": "match_phrase_any",
+            "value": "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+          },
+          {
+            "field": "newVsReturning",
+            "op": "match_phrase_any",
+            "value": "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+          }
+        ],
+        "height": "345.948px",
+        "hide_title": false,
+        "position": {
+          "col": 6,
+          "h": 4,
+          "row": 6,
+          "w": 3
+        },
+        "title": "New vs returning users",
+        "width": "506.076px",
+        "x_field": "date",
+        "x_field_type": "date",
+        "x_label": "User type",
+        "y_fields": [
+          "activeUsers"
+        ]
+      },
+      {
+        "aggregation": "sum",
+        "chart_id": "key-events-platform-9",
+        "chart_type": "donut",
+        "data_view": "*_ga_metrics",
+        "filters": [
+          {
+            "field": "report_type",
+            "op": "eq",
+            "value": "retention"
+          }
+        ],
+        "height": "339.826px",
+        "hide_title": false,
+        "position": {
+          "col": 9,
+          "h": 4,
+          "row": 6,
+          "w": 3
+        },
+        "title": "Key events by platform",
+        "width": "496.922px",
+        "x_field": "platform",
+        "y_field": "keyEvents",
+        "y_fields": [
+          "keyEvents"
+        ]
+      },
+      {
+        "aggregation": "sum",
+        "chart_id": "active-by-city-10",
+        "chart_type": "table",
+        "data_view": "*_ga_metrics",
+        "filters": [
+          {
+            "field": "report_type",
+            "op": "eq",
+            "value": "geo_device"
+          }
+        ],
+        "height": "337.143px",
+        "hide_title": false,
+        "max_columns": 1,
+        "max_rows": 10,
+        "position": {
+          "col": 0,
+          "h": 4,
+          "row": 10,
+          "w": 6
+        },
+        "sort_col_field": "activeUsers",
+        "sort_direction": "desc",
+        "table_columns": [
+          {
+            "aggregation": "sum",
+            "decimals": 0,
+            "field": "activeUsers",
+            "format": "000,",
+            "label": "Active users"
+          }
+        ],
+        "title": "Active users by city",
+        "width": "512.086px",
+        "x_field": "city",
+        "x_label": "City",
+        "y_fields": [
+          "activeUsers"
+        ]
+      }
+    ],
+    "filters": [],
+    "global_date_range": null,
+    "time_field_choices": []
+  },
+  "frozen_from_dashboard_id": "team-ga4-report",
+  "menu_position": 0,
+  "menu_title": "Google Analytics",
+  "name": "App Metrics",
+  "pack_id": "ga4",
+  "placeholder_field": "newVsReturning",
+  "required_sources": [
+    "google_analytics_4"
+  ],
+  "template_id": "ga4_app_metrics",
+  "updated_at": "2026-06-27T23:22:45.865314+00:00"
+}

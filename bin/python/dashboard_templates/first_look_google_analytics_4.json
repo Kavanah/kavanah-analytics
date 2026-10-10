@@ -1,0 +1,180 @@
+{
+  "connector_id": "google_analytics_4",
+  "created_at": "2026-06-12T14:52:19.648278+00:00",
+  "description": "First-look Google Analytics dashboard.",
+  "echarts_config": {
+    "charts": [
+      {
+        "aggregation": "sum",
+        "chart_id": "fl_ga4_sessions_total",
+        "chart_type": "metric",
+        "data_view": "*_ga_metrics",
+        "filters": [
+          {
+            "field": "property_id",
+            "op": "match_phrase_any",
+            "value": [
+              "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+            ]
+          }
+        ],
+        "hide_title": false,
+        "position": {
+          "col": 0,
+          "h": 2,
+          "row": 0,
+          "w": 3
+        },
+        "title": "Sessions (last 30d)",
+        "y_fields": [
+          "sessions"
+        ]
+      },
+      {
+        "aggregation": "sum",
+        "chart_id": "fl_ga4_users_total",
+        "chart_type": "metric",
+        "data_view": "*_ga_metrics_window",
+        "filters": [
+          {
+            "field": "property_id",
+            "op": "match_phrase_any",
+            "value": [
+              "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+            ]
+          }
+        ],
+        "hide_title": false,
+        "position": {
+          "col": 3,
+          "h": 2,
+          "row": 0,
+          "w": 3
+        },
+        "title": "Active users (deduplicated, window)",
+        "y_fields": [
+          "activeUsers"
+        ]
+      },
+      {
+        "aggregation": "sum",
+        "chart_id": "fl_ga4_pageviews_total",
+        "chart_type": "metric",
+        "data_view": "*_ga_metrics",
+        "filters": [
+          {
+            "field": "property_id",
+            "op": "match_phrase_any",
+            "value": [
+              "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+            ]
+          }
+        ],
+        "hide_title": false,
+        "position": {
+          "col": 6,
+          "h": 2,
+          "row": 0,
+          "w": 3
+        },
+        "title": "Page views (last 30d)",
+        "y_fields": [
+          "screenPageViews"
+        ]
+      },
+      {
+        "aggregation": "sum",
+        "chart_id": "fl_ga4_engagement_total",
+        "chart_type": "metric",
+        "data_view": "*_ga_metrics",
+        "filters": [
+          {
+            "field": "property_id",
+            "op": "match_phrase_any",
+            "value": [
+              "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+            ]
+          }
+        ],
+        "hide_title": false,
+        "position": {
+          "col": 9,
+          "h": 2,
+          "row": 0,
+          "w": 3
+        },
+        "title": "Engagement duration (s)",
+        "y_fields": [
+          "userEngagementDuration"
+        ]
+      },
+      {
+        "aggregation": "sum",
+        "chart_id": "fl_ga4_sessions_daily",
+        "chart_type": "bar",
+        "data_view": "*_ga_metrics",
+        "filters": [
+          {
+            "field": "property_id",
+            "op": "match_phrase_any",
+            "value": [
+              "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+            ]
+          }
+        ],
+        "hide_title": false,
+        "position": {
+          "col": 0,
+          "h": 4,
+          "row": 2,
+          "w": 6
+        },
+        "title": "Daily sessions",
+        "x_field": "kibana_date",
+        "y_fields": [
+          "sessions"
+        ]
+      },
+      {
+        "aggregation": "sum",
+        "chart_id": "fl_ga4_users_daily",
+        "chart_type": "bar",
+        "data_view": "*_ga_metrics",
+        "filters": [
+          {
+            "field": "property_id",
+            "op": "match_phrase_any",
+            "value": [
+              "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+            ]
+          }
+        ],
+        "hide_title": false,
+        "position": {
+          "col": 6,
+          "h": 4,
+          "row": 2,
+          "w": 6
+        },
+        "title": "Daily active users",
+        "x_field": "kibana_date",
+        "y_fields": [
+          "activeUsers"
+        ]
+      }
+    ],
+    "filters": [],
+    "global_date_range": null
+  },
+  "frozen_from_dashboard_id": null,
+  "menu_position": 0,
+  "menu_title": "Google Analytics",
+  "name": "Google Analytics 4 — Sessions & engagement, last 30d",
+  "pack_id": "google_analytics_4",
+  "placeholder_field": "property_id",
+  "required_sources": [
+    "google_analytics_4"
+  ],
+  "template_id": "first_look_google_analytics_4",
+  "updated_at": "2026-06-12T14:52:19.648278+00:00"
+}

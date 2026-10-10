@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Step 3 — Set up two-factor · Kavanah Analytics</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/cloudscape.css') }}">
+    {# password-toggle.css is kept (NOT the JS) for the global
+       ::-ms-reveal suppression rule — without it Edge renders its
+       native eye on type=password inputs, which would be confusing
+       on the YubiKey OTP field after we removed the custom toggle.
+       The JS only attached handlers to .pw-toggle-btn nodes, which
+       no longer exist on this template. #}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/password-toggle.css') }}?v=20260504b">
+    <style>
+        body {
+            background: var(--cs-bg-page);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 84px 20px 40px;
+        }
+        .login-topbar {
+            position: fixed; top: 0; left: 0; right: 0;
+            height: 56px;
+            background: var(--cs-nav-bg);
+            display: flex; align-items: center;
+            padding: 0 24px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+            z-index: 10;
+        }
+        .login-topbar-logo { height: 24px; width: auto; margin-right: 12px; }
+        .login-topbar-title { font-size: 17px; font-weight: 700; color: #FFFFFF; }
+
+        .wizard-shell { width: 100%; max-width: 600px; }
+
+        .card {
+            background: var(--cs-bg-primary);
+            border: 1px solid var(--cs-border-default);
+            border-radius: var(--cs-radius-l);
+            box-shadow: var(--cs-shadow-m);
+            padding: 36px 36px 28px;
+        }
+
+        .eyebrow {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 11px; font-weight: 600;
+            letter-spacing: 0.08em; text-transform: uppercase;
+            color: var(--cs-text-secondary);
+            margin-bottom: 8px;
+        }
+        .wizard-title {
+            font-size: 24px; font-weight: 700;
+            color: var(--cs-text-heading);
+            margin: 0 0 6px;
+        }
+        .wizard-sub {
+            font-size: var(--cs-font-size-m);
+            color: var(--cs-text-secondary);
+            line-height: 1.5;
+            margin: 0 0 22px;
+        }
+
+        .method-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 24px;
+            /* align-items: stretch is the grid default but pinned here
+               so the equal-height tiles invariant is explicit and
+               survives a future "tweak the grid" refactor. The grid
+               cells already stretch, but the <form> wrapper around
+               each tile and the <button> inside the form also need to
+               fill the cell — see .method-grid > form and .method-tile
+               below. */
+            align-items: stretch;
+        }
+        @media (max-width: 560px) { .method-grid { grid-template-columns: 1fr; } }
+
+        /* The forms ARE the grid items (each tile is wrapped in its
+           own POST form). Make them fill the stretched cell height so
+           the <button> inside has a stretched parent to size against. */
+        .method-grid > form {
+            display: flex;
+            height: 100%;
+        }
+
+        .method-tile {
+            border: 1.5px solid var(--cs-border-input);
+            border-radius: var(--cs-radius-s);
+            padding: 22px 18px;
+            background: var(--cs-bg-primary);
+            text-align: left;
+            font-family: inherit;
+            cursor: pointer;
+            transition: border-color 120ms ease-out, box-shadow 120ms ease-out, transform 120ms ease-out;
+            color: var(--cs-text-body);
+            width: 100%;
+            /* Stretch to the form's height (which fills the grid cell)
+               so two tiles with different description lengths render
+               at the same height. Without this, the YubiKey tile is
+               shorter than the Authenticator-app tile and the grid
+               looks ragged. */
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        .method-tile:hover {
+            border-color: var(--cs-btn-primary-bg);
+            box-shadow: 0 4px 12px rgba(9, 114, 211, 0.08);
+            transform: translateY(-1px);
+        }
+        .method-tile-icon {
+            width: 40px; height: 40px;
+            border-radius: 9px;
+            background: #f3f7fc;
+            color: var(--cs-btn-primary-bg);
+            display: flex; align-items: center; justify-content: center;
+            margin-bottom: 12px;
+        }
+        .method-tile-icon svg { width: 22px; height: 22px; }
+        .method-tile-name {
+            font-weight: 600;
+            font-size: 15px;
+            margin-bottom: 4px;
+            color: var(--cs-text-heading);
+        }
+        .method-tile-name .recommended {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 9px; font-weight: 600;
+            letter-spacing: 0.06em; text-transform: uppercase;
+            background: var(--cs-btn-primary-bg);
+            color: #FFFFFF;
+            padding: 2px 6px;
+            border-radius: 3px;
+            margin-left: 8px;
+            vertical-align: middle;
+        }
+        .method-tile-desc {
+            font-size: 13px;
+            color: var(--cs-text-secondary);
+            line-height: 1.5;
+        }
+
+        .qr-wrapper {
+            text-align: center;
+            margin: 18px 0;
+            padding: 18px;
+            background: var(--cs-bg-page);
+            border-radius: var(--cs-radius-m);
+        }
+        .qr-wrapper img { max-width: 200px; height: auto; }
+        .totp-secret {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 13px;
+            padding: 8px 12px;
+            background: var(--cs-bg-primary);
+            border: 1px dashed var(--cs-border-default);
+            border-radius: var(--cs-radius-s);
+            margin-top: 12px;
+            display: inline-block;
+            color: var(--cs-text-primary);
+            user-select: all;
+        }
+
+        .form-group { margin-bottom: 18px; }
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 600;
+            font-size: 13px;
+            color: var(--cs-text-label);
+        }
+        .form-group input[type="text"],
+        .form-group input[type="password"] {
+            width: 100%;
+            height: 40px;
+            padding: 0 12px;
+            border: 1px solid var(--cs-border-input);
+            border-radius: var(--cs-radius-s);
+            font-size: 16px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            letter-spacing: 0.1em;
+        }
+        .form-group input[type="text"]:focus,
+        .form-group input[type="password"]:focus {
+            outline: none;
+            border-color: var(--cs-border-input-focus);
+            box-shadow: 0 0 0 2px rgba(9, 114, 211, 0.25);
+        }
+
+        .alert {
+            padding: 12px 14px;
+            margin-bottom: 18px;
+            border-radius: var(--cs-radius-s);
+            font-size: 13px;
+        }
+        .alert-warn { background: #FFF1E0; border: 1px solid #F2C794; color: #8A4B00; }
+        .alert-error { background: #FDECEC; border: 1px solid #F5B5B5; color: #8A1A1A; }
+        .alert-info { background: #f3f7fc; border: 1px solid #c9dcef; color: #0F3D6E; }
+
+        .btn-row {
+            display: flex; align-items: center; justify-content: space-between;
+            padding-top: 16px;
+            border-top: 1px solid var(--cs-border-divider);
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .btn {
+            height: 40px; padding: 0 18px;
+            border-radius: var(--cs-radius-s);
+            font-size: var(--cs-font-size-m);
+            font-weight: 600;
+            font-family: var(--cs-font);
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition: background 90ms ease-out, border-color 90ms ease-out;
+            display: inline-flex; align-items: center;
+        }
+        .btn-primary {
+            background: var(--cs-btn-primary-bg);
+            color: #FFFFFF;
+            font-weight: 700;
+        }
+        .btn-primary:hover { background: var(--cs-btn-primary-bg-hover); }
+        /* visible disabled state (matches step-5 +
+           #ws-delete-btn:disabled). */
+        .btn-primary:disabled,
+        .btn-primary:disabled:hover {
+            background: var(--cs-btn-primary-bg);
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .btn-ghost {
+            background: transparent;
+            color: var(--cs-text-link);
+            border-color: transparent;
+        }
+        .btn-ghost:hover { background: var(--cs-bg-page); }
+    </style>
+</head>
+<body>
+    <a href="#wizard-main" class="cs-skip-link" data-testid="wizard-skip-link">Skip to main content</a>
+    <div class="login-topbar">
+        <img src="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5" alt="" class="login-topbar-logo">
+        <span class="login-topbar-title">Kavanah Analytics</span>
+    </div>
+
+    <main class="wizard-shell" id="wizard-main">
+        {% include "_onboarding_progress.html" %}
+
+        <div class="card" data-testid="mfa-setup-step-card">
+            {% if method == "totp" %}
+            {# ─── TOTP path: QR code + 6-digit confirm input ─── #}
+            <div class="eyebrow">Step 3 of 8 · Authenticator app</div>
+            <h1 class="wizard-title">Scan this with your authenticator</h1>
+            <p class="wizard-sub">
+                Open Google Authenticator, Authy, 1Password, or any TOTP app
+                and scan the code. Then enter the 6-digit code it shows below.
+            </p>
+
+            {% if error == 'invalid_code' %}
+            <div class="alert alert-error" role="alert">
+                That code didn't match. Try the next one your app shows.
+            </div>
+            {% endif %}
+
+            <div class="qr-wrapper">
+                {% if totp_payload and totp_payload.qr_code_b64 %}
+                <img src="data:image/png;base64,{{ totp_payload.qr_code_b64 }}" alt="TOTP QR code">
+                {% endif %}
+                {% if totp_payload and totp_payload.totp_secret %}
+                <div>
+                    <div style="font-size: 12px; color: var(--cs-text-secondary); margin-top: 12px;">
+                        Or enter this manually:
+                    </div>
+                    <div class="totp-secret" data-testid="mfa-setup-step-totp-secret">{{ totp_payload.totp_secret }}</div>
+                </div>
+                {% endif %}
+            </div>
+
+            <form method="POST" action="{{ url_for('analytics.onboarding_mfa_setup_step_post') }}" id="onboarding-totp-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="action" value="confirm_totp">
+                <div class="form-group">
+                    <label for="totp-code">6-digit code from your app</label>
+                    <input type="text" id="totp-code" name="code"
+                           inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code"
+                           required autofocus data-testid="mfa-setup-step-totp-code-input">
+                </div>
+                <div class="btn-row">
+                    <a class="btn btn-ghost"
+                       href="{{ url_for('analytics.onboarding_mfa_setup_step_page') }}"
+                       data-testid="mfa-setup-step-back-to-picker">← Back</a>
+                    <button type="submit"
+                            class="btn btn-primary"
+                            id="onboarding-totp-confirm-btn"
+                            disabled
+                            data-testid="mfa-setup-step-confirm-totp-btn">Confirm & Continue →</button>
+                </div>
+            </form>
+            <script nonce="{{ csp_nonce }}">
+            (function () {
+                // follow-up: mirror the profile/gate TOTP gating so all
+                // three surfaces behave the same. Enable Confirm only when the
+                // input is exactly 6 digits; swallow duplicate submits so a
+                // double-click doesn't POST the same code twice (TOTP server-
+                // side rejects the second as "code already used").
+                var input = document.getElementById('totp-code');
+                var btn = document.getElementById('onboarding-totp-confirm-btn');
+                var form = document.getElementById('onboarding-totp-form');
+                if (!input || !btn || !form) return;
+                function update() {
+                    btn.disabled = !/^\d{6}$/.test(input.value);
+                }
+                input.addEventListener('input', update);
+                update();
+                var submitted = false;
+                form.addEventListener('submit', function (e) {
+                    if (submitted) { e.preventDefault(); return; }
+                    submitted = true;
+                    form.querySelectorAll('button[type="submit"]').forEach(function (b) {
+                        b.disabled = true;
+                    });
+                });
+            })();
+            </script>
+
+            {% elif method == "yubikey" %}
+            {# ─── YubiKey path: OTP register input ─── #}
+            <div class="eyebrow">Step 3 of 8 · Hardware key</div>
+            <h1 class="wizard-title">Register your YubiKey</h1>
+            <p class="wizard-sub">
+                Insert your YubiKey into a USB port. Click the field below,
+                then touch the key — your YubiKey will type a long one-time
+                code for you.
+            </p>
+
+            {% if error == 'yubikey_register_failed' %}
+            <div class="alert alert-error" role="alert">
+                We couldn't register that key. Make sure your YubiKey is
+                inserted and try touching it again.
+            </div>
+            {% endif %}
+
+            <form method="POST" action="{{ url_for('analytics.onboarding_mfa_setup_step_post') }}" id="onboarding-yubikey-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="action" value="register_yubikey">
+                <div class="form-group">
+                    <label for="yubikey-otp">YubiKey one-time code</label>
+                    {# Masked so the 44-character OTP never appears on
+                       screen. The login-style show/hide toggle was
+                       removed at the team's request — the OTP is
+                       single-use and ~instantaneous (touch the key,
+                       form submits), so the affordance had no real
+                       use. The global password-toggle.css rule above
+                       still suppresses Edge's native ::-ms-reveal eye
+                       on every type=password input, so no other eye
+                       icon sneaks back in. #}
+                    <input type="password" id="yubikey-otp" name="otp"
+                           autocomplete="off" required autofocus
+                           maxlength="44"
+                           data-testid="mfa-setup-step-yubikey-input">
+                </div>
+                <div class="btn-row">
+                    <a class="btn btn-ghost"
+                       href="{{ url_for('analytics.onboarding_mfa_setup_step_page') }}"
+                       data-testid="mfa-setup-step-back-to-picker">← Back</a>
+                    <button type="submit"
+                            class="btn btn-primary"
+                            id="onboarding-yubikey-register-btn"
+                            disabled
+                            data-testid="mfa-setup-step-register-yubikey-btn">Register & Continue →</button>
+                </div>
+            </form>
+            <script nonce="{{ csp_nonce }}">
+            (function () {
+                // Enable Register only when the input is a 44-character modhex
+                // YubiKey OTP. Mirrors the Profile + pre-dashboard-gate flows
+                // so the affordance behaves the same on every surface.
+                //
+                // follow-up: also matches the gate's submit-once guard.
+                // YubiKeys press Enter when touched, and a slow user could
+                // also click Register before the Enter event fires — without
+                // the guard, two POSTs land back-to-back and Yubico rejects
+                // the second as REPLAYED_OTP.
+                var YUBI_RE = /^[cbdefghijklnrtuv]{44}$/i;
+                var form = document.getElementById('onboarding-yubikey-form');
+                var input = document.getElementById('yubikey-otp');
+                var btn = document.getElementById('onboarding-yubikey-register-btn');
+                if (!form || !input || !btn) return;
+                var submitted = false;
+                function update() {
+                    if (submitted) return;
+                    btn.disabled = !YUBI_RE.test(input.value.trim());
+                }
+                input.addEventListener('input', update);
+                update();
+                form.addEventListener('submit', function (e) {
+                    if (submitted) { e.preventDefault(); return; }
+                    submitted = true;
+                    form.querySelectorAll('button[type="submit"]').forEach(function (b) {
+                        b.disabled = true;
+                    });
+                });
+            })();
+            </script>
+
+            {% else %}
+            {# ─── Method picker (default render) ─── #}
+            <div class="eyebrow">Step 3 of 8 · Two-factor authentication</div>
+            <h1 class="wizard-title">Pick a second factor</h1>
+            <p class="wizard-sub">
+                Two-factor protects your account if your password ever leaks.
+                Choose either an authenticator app or a hardware key — both
+                work the same once they're set up.
+            </p>
+
+            {% if not_yet_configured %}
+            <div class="alert alert-warn" role="alert" data-testid="mfa-setup-step-not-yet">
+                You haven't finished setting up a second factor yet. Pick one of the options below.
+            </div>
+            {% endif %}
+
+            {# follow-up (2026-05-21): the ``already_configured``
+               branch (info banner + auto-advance Continue button) was
+               removed. The wizard MFA-setup step is for NEW users
+               only — a brand-new signup should always see the picker.
+               If has_any_factor returns True at this point it's almost
+               certainly a stale MFA record left over from a
+               previously-deleted account with the same username (see
+               the cascade-purge follow-up that adds de_asset_user_mfa
+               to AUTHZ_USERNAME_KEYED_INDICES); waving the user
+               through on that signal would let a new user inherit
+               somebody else's factor. Just show the picker. #}
+
+            <div class="method-grid">
+                <form method="POST" action="{{ url_for('analytics.onboarding_mfa_setup_step_post') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="hidden" name="action" value="choose_totp">
+                    <button type="submit" class="method-tile" data-testid="mfa-setup-step-choose-totp">
+                        <div class="method-tile-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="5" y="2" width="14" height="20" rx="2"/>
+                                <line x1="12" y1="18" x2="12" y2="18"/>
+                            </svg>
+                        </div>
+                        <div class="method-tile-name">
+                            Authenticator app
+                        </div>
+                        <div class="method-tile-desc">
+                            Google Authenticator, Authy, 1Password, etc. Works on your phone.
+                        </div>
+                    </button>
+                </form>
+                <form method="POST" action="{{ url_for('analytics.onboarding_mfa_setup_step_post') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="hidden" name="action" value="choose_yubikey">
+                    <button type="submit" class="method-tile" data-testid="mfa-setup-step-choose-yubikey">
+                        <div class="method-tile-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="3" y="9" width="18" height="6" rx="1"/>
+                                <line x1="8" y1="12" x2="8" y2="12"/>
+                                <line x1="12" y1="12" x2="12" y2="12"/>
+                            </svg>
+                        </div>
+                        <div class="method-tile-name">Hardware key</div>
+                        <div class="method-tile-desc">
+                            YubiKey or compatible. Touch the key to log in.
+                        </div>
+                    </button>
+                </form>
+            </div>
+
+            {# follow-up (2026-05-21): the
+               ``{% if already_configured %}`` auto-advance Continue
+               form was removed alongside the info banner above. New
+               users always pick a method; there is no fast-path. #}
+            {% endif %}
+        </div>
+    </main>
+</body>
+</html>

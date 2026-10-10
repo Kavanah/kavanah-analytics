@@ -1,0 +1,92 @@
+/config
+elk-01
+gitleaks-report.json
+nginx-reverse-proxy
+/import-data
+kibana.yml
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+.pytest_cache/
+*.swp
+*.swo
+.coverage
+htmlcov/
+
+# IDE directories
+.vscode/
+
+# Password Reset runtime files (contain credentials)
+bin/python/password_reset/config/settings.json
+bin/python/password_reset/config/tokens.json
+bin/python/password_reset/config/rate_limits.json
+bin/python/password_reset/config/audit.log
+
+# Claude Code local settings and docs
+.claude/settings.local.json
+.claude/mcp.json
+.claude/docs/
+skills/*/scripts/node_modules/
+.mcp.json
+tmpclaude-*
+*_ul*
+.DS_Store
+
+# Machine-specific backup files created by Claude Code
+*-John_Alienware*
+*-John_Alienware
+
+# Sphinx build output
+docs/documentation/_build/
+
+# Playwright
+.auth/
+playwright-report/
+test-results/
+node_modules/
+
+# Release-plan run artifacts (operational, not source; commit only to
+# internal if you want an audit trail).
+pr-*-prod-results.xml
+pr-*-prod-results.json
+
+# Attack-surface regression suite credentials (staging persona logins).
+# .example template is committed; the populated file must not be.
+.env.attack-surface
+tests/security/.env.attack-surface
+
+# Host-only secret env files (written on the servers, never committed):
+#   .env     — step3 compose substitution source; config secrets from SSM are
+#              written into its secret block by start-secrets-container.sh
+#
+#.env.aws — S3 backup creds from SSM
+deployment/.env
+deployment/.env.aws
+
+# Private files now tracked in digital-engagement-internal submodule
+.claude/
+skills/
+DECISIONS.md
+docs/deployment-notes.md
+docs/echo-api-*.csv
+docs/echo-api-*.md
+
+# ProofShot visual-verification artifacts (screenshots, video, session bundles) — local only
+.proofshot/
+proofshot-artifacts/
+step-*.png
+
+# docs-screenshot pipeline: capture staging area, local denylist of
+# real tenant names (NEVER commit — it IS customer data), and the local
+# credentials file for the prod demo account (.example template is committed)
+.docs-capture/
+.docs-capture-denylist.txt
+.env.docs-capture
+.security-scan/*.corrupt.bak
+
+# Weekly Feature Updates Cowork script credentials (Atlassian + Anthropic keys).
+# .env.example template is committed; the populated file must not be.
+bin/scripts/feature-updates/.env
+bin/scripts/feature-updates/.venv/
+bin/scripts/feature-updates/bullets.txt

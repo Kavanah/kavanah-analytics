@@ -1,0 +1,1173 @@
+{% extends "base_v2.html" %}
+
+{% block title %}Restore from Backup - Kavanah Analytics Management Console{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Cloudscape overrides */
+    .card { background:var(--cs-bg-primary); border:1px solid var(--cs-border-default); border-radius:var(--cs-radius-m); box-shadow:var(--cs-shadow-xs); padding:var(--cs-space-xl); margin-bottom:var(--cs-space-m); }
+    .card h2 { font-size:var(--cs-font-size-xl); font-weight:var(--cs-font-weight-bold); color:var(--cs-text-heading); margin:0 0 var(--cs-space-xs); }
+    .card h3 { font-size:var(--cs-font-size-l); font-weight:var(--cs-font-weight-bold); color:var(--cs-text-heading); margin:0 0 var(--cs-space-xs); }
+    .btn { display:inline-flex; align-items:center; height:32px; padding:0 14px; font-family:var(--cs-font); font-size:var(--cs-font-size-m); font-weight:var(--cs-font-weight-medium); border-radius:var(--cs-radius-s); border:1px solid var(--cs-btn-normal-border); background:var(--cs-btn-normal-bg); color:var(--cs-btn-normal-text); cursor:pointer; text-decoration:none; transition:all var(--cs-transition-fast); }
+    .btn:hover { background:var(--cs-btn-normal-hover-bg); border-color:var(--cs-text-secondary); text-decoration:none; }
+    .btn-sm { height:28px; padding:0 10px; font-size:var(--cs-font-size-xs); }
+    .btn-secondary { background:var(--cs-btn-normal-bg); color:var(--cs-btn-normal-text); border-color:var(--cs-btn-normal-border); }
+    .btn-secondary:hover { background:var(--cs-btn-normal-hover-bg); }
+
+    .restore-container {
+        max-width: none;
+    }
+
+    .backup-table-wrap {
+        max-height: 420px;
+        overflow-y: auto;
+        border: 1px solid #ecf0f1;
+        border-radius: 6px;
+    }
+
+    .backup-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .backup-table th,
+    .backup-table td {
+        padding: 10px 14px;
+        text-align: left;
+        border-bottom: 1px solid #ecf0f1;
+    }
+
+    .backup-table th {
+        background: #f8f9fa;
+        color: var(--cs-text-heading, #000716);
+        font-weight: 600;
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        position: sticky;
+        top: 0;
+        z-index: 1;
+    }
+
+    .backup-table tbody tr:hover {
+        background: #f8f9fa;
+    }
+
+    .backup-table td:last-child {
+        text-align: right;
+    }
+
+    .btn-sm {
+        padding: 6px 14px;
+        font-size: 12px;
+    }
+
+    .btn-restore {
+        background: #e67e22;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background 0.3s;
+    }
+
+    .btn-restore:hover {
+        background: #d35400;
+    }
+
+    .btn-restore:disabled {
+        background: #bdc3c7;
+        cursor: not-allowed;
+    }
+
+    .btn-restore-s3 {
+        background: #c0392b;
+    }
+
+    .btn-restore-s3:hover {
+        background: #a93226;
+    }
+
+    .btn-download {
+        background: #8e44ad;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background 0.3s;
+    }
+
+    .btn-download:hover {
+        background: #7d3c98;
+    }
+
+    .btn-download:disabled {
+        background: #bdc3c7;
+        cursor: not-allowed;
+    }
+
+    .alert {
+        padding: 14px 18px;
+        border-radius: 6px;
+        margin-bottom: 16px;
+        font-size: 14px;
+        line-height: 1.5;
+    }
+
+    .alert-warning {
+        background: #fff3e0;
+        border: 1px solid #ffcc80;
+        color: #e65100;
+    }
+
+    .alert-success {
+        background: #e8f5e9;
+        border: 1px solid #a5d6a7;
+        color: #2e7d32;
+    }
+
+    .alert-error {
+        background: #ffebee;
+        border: 1px solid #ef9a9a;
+        color: #c62828;
+    }
+
+    .alert-info {
+        background: #e3f2fd;
+        border: 1px solid #90caf9;
+        color: #1565c0;
+    }
+
+    .status-area {
+        margin-bottom: 20px;
+    }
+
+    .loading-spinner {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border: 2px solid #bdc3c7;
+        border-top-color: var(--cs-btn-primary-bg, #0972D3);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin-right: 8px;
+        vertical-align: middle;
+    }
+
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 30px;
+        color: #95a5a6;
+    }
+
+    .section-description {
+        color: var(--cs-text-secondary, #5F6B7A);
+        margin-bottom: 16px;
+        font-size: 14px;
+    }
+
+    /* Confirmation modal */
+    .modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 1000;
+        justify-content: center;
+        align-items: center;
+    }
+
+    .modal-overlay.active {
+        display: flex;
+    }
+
+    .modal-box {
+        background: white;
+        border-radius: 8px;
+        padding: 28px;
+        max-width: 520px;
+        width: 90%;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    }
+
+    .modal-box h3 {
+        margin: 0 0 12px;
+        color: var(--cs-text-heading, #000716);
+    }
+
+    .modal-box p {
+        color: #555;
+        margin: 0 0 20px;
+        line-height: 1.5;
+    }
+
+    .modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+    }
+</style>
+{% endblock %}
+
+{% block page_content %}
+<div style="padding: 20px;">
+<div class="restore-container">
+
+    <!-- Status / result area -->
+    <div class="status-area" id="status-area" style="display: none;"></div>
+
+    <!-- ══ Section 1: ES Snapshots (selective restore) — primary path ══ -->
+    <div class="card">
+        <h2><i class="fas fa-camera" style="margin-right: 8px; color: #2980b9;"></i>ES Snapshots</h2>
+        <p class="section-description">
+            Native Elasticsearch snapshots from registered <code>_snapshot</code> repositories
+            (e.g. <code>daily_repo</code>, <code>migration_repo</code>). Lets you inspect what
+            indices a snapshot contains and restore only the ones you select &mdash; no docker
+            stop, no full data-dir swap. Use this for cherry-picking indices, cross-environment
+            data syncs, or restoring accidentally-deleted indices.
+        </p>
+
+        <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 12px;">
+            <label for="snap-repo-select" style="font-weight: 600; font-size: 13px;">Repository:</label>
+            <select id="snap-repo-select" style="height: 32px; padding: 0 10px; border: 1px solid var(--cs-border-default, #b6bec9); border-radius: 4px; font-size: 14px;">
+                <option value="">— loading… —</option>
+            </select>
+            <button class="btn btn-sm btn-secondary" onclick="window._rb.refreshSnapshots()">
+                <i class="fas fa-sync"></i> Refresh
+            </button>
+        </div>
+
+        <div id="snap-list-container">
+            <div class="empty-state">Select a repository to list its snapshots.</div>
+        </div>
+
+        <!-- Inspect / select-indices panel -->
+        <div id="snap-inspect-panel" style="display: none; margin-top: 18px; border-top: 1px solid #ecf0f1; padding-top: 16px;">
+            <h3>
+                <i class="fas fa-list-ul" style="margin-right: 6px; color: #2980b9;"></i>
+                Indices in <code id="snap-inspect-name"></code>
+            </h3>
+            <p class="section-description" id="snap-inspect-summary"></p>
+            <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap;">
+                <label for="snap-filter" style="font-weight: 600; font-size: 13px;">Show:</label>
+                <select id="snap-filter" style="height: 28px; padding: 0 8px; border: 1px solid var(--cs-border-default, #b6bec9); border-radius: 4px; font-size: 13px;">
+                    <option value="all">All</option>
+                    <option value="existing">Only existing</option>
+                    <option value="new">Only new</option>
+                </select>
+                <span style="color: var(--cs-text-secondary, #5F6B7A); font-size: 12px;" id="snap-filter-count"></span>
+                <span style="flex: 1;"></span>
+                <button class="btn btn-sm btn-secondary" onclick="window._rb.snapSelectVisible(true)">Select visible</button>
+                <button class="btn btn-sm btn-secondary" onclick="window._rb.snapSelectVisible(false)">Deselect visible</button>
+            </div>
+            <div class="backup-table-wrap" style="max-height: 360px;">
+                <table class="backup-table" id="snap-indices-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 40px;"><input type="checkbox" id="snap-check-all" onclick="window._rb.snapSelectAll(this.checked)"></th>
+                            <th>Index</th>
+                            <th>Status in cluster</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+            <div style="margin-top: 14px;">
+                <button class="btn btn-restore btn-sm" id="snap-restore-btn" onclick="window._rb.confirmSnapRestore()">
+                    <i class="fas fa-undo-alt"></i> Restore selected indices
+                </button>
+                <span style="color: var(--cs-text-secondary, #5F6B7A); font-size: 12px; margin-left: 10px;">
+                    Existing indices will be deleted and recreated. New indices will be created from the snapshot.
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══ Section 2: Local Asset Backups — quick fail-safe before edits ══ -->
+    <div class="card">
+        <h2><i class="fas fa-database" style="margin-right: 8px; color: #27ae60;"></i>Local Asset Backups</h2>
+        <p class="section-description">
+            On-demand JSON snapshot of <code>de_asset*</code> indices (teams, accounts, integrations,
+            dashboards). Use as a quick fail-safe before bulk edits in Asset Explorer &mdash; ES snapshots
+            only run once a day.
+            <strong>The 5 most recent are kept; older are auto-pruned on each new backup.</strong>
+        </p>
+        <div style="margin-bottom: 12px;">
+            <button class="btn btn-sm" id="local-create-btn" onclick="window._rb.createLocalBackup()">
+                <i class="fas fa-plus"></i> Create backup now
+            </button>
+        </div>
+        <div id="local-backups-container">
+            <div class="empty-state"><span class="loading-spinner"></span> Loading backups...</div>
+        </div>
+    </div>
+
+    <!-- ══ Section 3: S3 Full Data Backups — disaster-recovery only ══ -->
+    <div class="card">
+        <h2><i class="fab fa-aws" style="margin-right: 8px; color: #ff9900;"></i>S3 Full Data Backups</h2>
+        <p class="section-description">
+            Complete Elasticsearch data directory snapshots stored cross-account in AWS S3.
+            <strong>Disaster-recovery only</strong> &mdash; for when this VPS is gone and the local SLM
+            snapshots are gone with it. For routine restores prefer the ES Snapshots section above.
+        </p>
+        <div class="alert alert-warning" style="margin-bottom: 16px;">
+            <i class="fas fa-exclamation-triangle"></i>
+            <strong>Full restore &mdash; replaces all data.</strong>
+            Restoring an S3 backup will stop Elasticsearch, replace the entire data directory with the backup,
+            and restart. All current data will be moved to a backup location. This takes several minutes
+            and causes temporary downtime.
+        </div>
+        <div id="s3-data-container">
+            <div class="empty-state"><span class="loading-spinner"></span> Loading S3 backups...</div>
+        </div>
+    </div>
+
+    <!-- ══ Section 4: S3 Config Backups ══ -->
+    <div class="card">
+        <h2><i class="fas fa-cogs" style="margin-right: 8px; color: #8e44ad;"></i>S3 Config Backups</h2>
+        <p class="section-description">
+            ELK stack configuration snapshots for disaster recovery. Contains docker-compose config,
+            Elasticsearch and Kibana settings, Python scripts, crontabs, and system info.
+            <strong>Download &amp; extract</strong> a backup to inspect its contents, then optionally
+            <strong>apply</strong> selected files back to <code>/app/reporting_configs</code> on disk.
+        </p>
+        <div id="s3-config-container">
+            <div class="empty-state"><span class="loading-spinner"></span> Loading config backups...</div>
+        </div>
+        <!-- File tree shown after download -->
+        <div id="config-file-tree" style="display: none; margin-top: 16px;">
+            <h3 style="color: var(--cs-text-heading, #000716); font-size: 16px; margin-bottom: 10px;">
+                <i class="fas fa-folder-open" style="margin-right: 6px; color: #8e44ad;"></i>
+                Extracted: <span id="config-extract-name"></span>
+            </h3>
+            <p style="color: var(--cs-text-secondary, #5F6B7A); font-size: 13px; margin-bottom: 10px;">
+                Extracted to: <code id="config-extract-path"></code>
+            </p>
+            <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                <button class="btn btn-sm btn-secondary" onclick="window._rb.cfgSelectAll(true)">Select all</button>
+                <button class="btn btn-sm btn-secondary" onclick="window._rb.cfgSelectAll(false)">Deselect all</button>
+                <button class="btn btn-sm btn-secondary" onclick="window._rb.cfgSelectDiffering()">Only differing</button>
+            </div>
+            <div class="backup-table-wrap" style="max-height: 350px;">
+                <table class="backup-table" id="config-file-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 40px;"><input type="checkbox" id="cfg-check-all" onclick="window._rb.cfgSelectAll(this.checked)"></th>
+                            <th>File</th>
+                            <th>Size</th>
+                            <th>Live status</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+            <div style="margin-top: 14px;">
+                <button class="btn btn-restore btn-sm" id="cfg-apply-btn" onclick="window._rb.confirmCfgApply()">
+                    <i class="fas fa-file-import"></i> Apply selected files to disk
+                </button>
+                <span style="color: var(--cs-text-secondary, #5F6B7A); font-size: 12px; margin-left: 10px;">
+                    Previous versions are saved to a rollback folder before overwrite.
+                </span>
+            </div>
+        </div>
+    </div>
+
+</div>
+</div>
+
+<!-- Confirmation modal -->
+<div class="modal-overlay" id="confirm-modal">
+    <div class="modal-box">
+        <h3 id="confirm-title">Confirm Restore</h3>
+        <p id="confirm-message"></p>
+        <div class="modal-actions">
+            <button class="btn btn-secondary btn-sm" onclick="closeModal()">Cancel</button>
+            <button class="btn btn-sm" id="confirm-btn">Restore</button>
+        </div>
+    </div>
+</div>
+
+<!-- step-up second-factor prompt. Opened when a restore/apply call
+     answers step_up_required; on success the original action is retried once. -->
+<div class="modal-overlay" id="stepup-modal">
+    <div class="modal-box">
+        <h3>Confirm your second factor</h3>
+        <p>Restores and config applies change production data. Enter the code from your authenticator app or touch your YubiKey. This confirmation lasts 10 minutes.</p>
+        <form id="stepup-form" autocomplete="off">
+            <input type="text" id="stepup-code" class="form-control" inputmode="numeric" autocomplete="one-time-code"
+                   placeholder="6-digit code or YubiKey OTP" aria-label="Second-factor code" style="width:100%; margin-bottom:8px;">
+            <p id="stepup-error" class="alert alert-error" style="display:none; padding:6px 10px;"></p>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary btn-sm" id="stepup-cancel">Cancel</button>
+                <button type="submit" class="btn btn-restore btn-sm" id="stepup-submit">Confirm</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script nonce="{{ csp_nonce }}">
+(function() {
+    'use strict';
+
+    let pendingRestore = null; // { filename, type: 'local' | 's3' }
+
+    // ── Load backups on page load ────────────────────────────────────────
+
+    loadBackups();
+
+    function loadBackups() {
+        fetch('{{ url_for("restore_backup.api_list") }}')
+            .then(r => r.json())
+            .then(data => {
+                renderLocalBackups(data.local_backups || []);
+                renderS3DataBackups(data.s3_data_backups || [], data.s3_error);
+                renderS3ConfigBackups(data.s3_config_backups || [], data.s3_error);
+            })
+            .catch(err => {
+                showStatus('error', 'Failed to load backup list: ' + err.message);
+            });
+    }
+
+    // ── Render functions ─────────────────────────────────────────────────
+
+    function renderTable(backups, columns, options) {
+        if (!backups.length) {
+            return '<div class="empty-state">No backups found.</div>';
+        }
+        let html = '<div class="backup-table-wrap"><table class="backup-table"><thead><tr>';
+        for (const col of columns) {
+            html += `<th>${esc(col.label)}</th>`;
+        }
+        html += '</tr></thead><tbody>';
+        for (const b of backups) {
+            html += '<tr>';
+            for (const col of columns) {
+                html += `<td>${col.render(b)}</td>`;
+            }
+            html += '</tr>';
+        }
+        html += '</tbody></table></div>';
+        return html;
+    }
+
+    function renderLocalBackups(backups) {
+        const container = document.getElementById('local-backups-container');
+        container.innerHTML = renderTable(backups, [
+            { label: 'Filename', render: b => esc(b.filename) },
+            { label: 'Date', render: b => esc(b.date) },
+            { label: 'Size', render: b => esc(b.size_human) },
+            { label: '', render: b =>
+                `<button class="btn btn-restore btn-sm" data-filename="${esc(b.filename)}" onclick="window._rb.confirmLocal(this.dataset.filename)">` +
+                `<i class="fas fa-undo-alt"></i> Restore</button>` },
+        ]);
+    }
+
+    function renderS3DataBackups(backups, error) {
+        const container = document.getElementById('s3-data-container');
+        if (error) {
+            container.innerHTML = `<div class="alert alert-warning">
+                <i class="fas fa-exclamation-triangle"></i> Could not list S3 backups: ${esc(error)}
+            </div>`;
+            return;
+        }
+        container.innerHTML = renderTable(backups, [
+            { label: 'Filename', render: b => esc(b.filename) },
+            { label: 'Date', render: b => esc(b.date) },
+            { label: 'Size', render: b => esc(b.size_human) },
+            { label: '', render: b =>
+                `<button class="btn btn-restore-s3 btn-restore btn-sm" data-filename="${esc(b.filename)}" data-size="${esc(b.size_human)}" onclick="window._rb.confirmS3(this.dataset.filename, this.dataset.size)">` +
+                `<i class="fas fa-cloud-download-alt"></i> Restore</button>` },
+        ]);
+    }
+
+    function renderS3ConfigBackups(backups, error) {
+        const container = document.getElementById('s3-config-container');
+        if (error) {
+            container.innerHTML = `<div class="alert alert-warning">
+                <i class="fas fa-exclamation-triangle"></i> Could not list S3 config backups: ${esc(error)}
+            </div>`;
+            return;
+        }
+        container.innerHTML = renderTable(backups, [
+            { label: 'Filename', render: b => esc(b.filename) },
+            { label: 'Date', render: b => esc(b.date) },
+            { label: 'Size', render: b => esc(b.size_human) },
+            { label: '', render: b =>
+                `<button class="btn btn-download btn-sm" data-filename="${esc(b.filename)}" onclick="window._rb.downloadConfig(this.dataset.filename)">` +
+                `<i class="fas fa-download"></i> Download &amp; Extract</button>` },
+        ]);
+    }
+
+    // ── Restore flow ─────────────────────────────────────────────────────
+
+    function confirmLocal(filename) {
+        pendingRestore = { filename: filename, type: 'local' };
+        document.getElementById('confirm-title').textContent = 'Restore Local Backup';
+        document.getElementById('confirm-message').textContent =
+            'This will delete and recreate all de_asset* indices from backup "' + filename + '". This cannot be undone. Continue?';
+        const btn = document.getElementById('confirm-btn');
+        btn.className = 'btn btn-restore btn-sm';
+        btn.textContent = 'Restore';
+        btn.onclick = executeRestore;
+        document.getElementById('confirm-modal').classList.add('active');
+    }
+
+    function confirmS3(filename, sizeHuman) {
+        pendingRestore = { filename: filename, type: 's3' };
+        document.getElementById('confirm-title').textContent = 'Full Data Restore from S3';
+        document.getElementById('confirm-message').innerHTML =
+            '<strong>This will replace ALL Elasticsearch data.</strong><br><br>' +
+            'The backup "' + esc(filename) + '" (' + esc(sizeHuman) + ') will be downloaded from S3, ' +
+            'Elasticsearch will be stopped, the current data directory will be backed up, ' +
+            'and the backup data will be restored.<br><br>' +
+            '<strong>Downtime:</strong> Elasticsearch will be unavailable for several minutes during this process.<br>' +
+            '<strong>Current data:</strong> Will be preserved at a backup location and can be swapped back if needed.';
+        const btn = document.getElementById('confirm-btn');
+        btn.className = 'btn btn-restore-s3 btn-restore btn-sm';
+        btn.textContent = 'Restore from S3';
+        btn.onclick = executeRestore;
+        document.getElementById('confirm-modal').classList.add('active');
+    }
+
+    window.closeModal = function() {
+        document.getElementById('confirm-modal').classList.remove('active');
+        pendingRestore = null;
+    };
+
+    function executeRestore() {
+        if (!pendingRestore) return;
+        const { filename, type } = pendingRestore;
+        const retry = () => { pendingRestore = { filename, type }; executeRestore(); };
+        closeModal();
+
+        // Disable all restore buttons
+        document.querySelectorAll('.btn-restore').forEach(btn => btn.disabled = true);
+
+        if (type === 'local') {
+            showStatus('info', '<span class="loading-spinner"></span> Restoring asset indices from "' + esc(filename) + '"...');
+            fetch('{{ url_for("restore_backup.api_restore_local") }}', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filename: filename }),
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (handleStepUp(data, retry)) return;
+                if (data.ok) {
+                    const indices = (data.restored || []).join(', ');
+                    showStatus('success',
+                        '<i class="fas fa-check-circle"></i> Restore complete. Restored indices: ' + esc(indices));
+                } else {
+                    showStatus('error',
+                        '<i class="fas fa-times-circle"></i> Restore failed: ' + esc(data.error || 'Unknown error'));
+                }
+            })
+            .catch(err => {
+                showStatus('error', '<i class="fas fa-times-circle"></i> Request failed: ' + esc(err.message));
+            })
+            .finally(() => {
+                document.querySelectorAll('.btn-restore').forEach(btn => btn.disabled = false);
+            });
+
+        } else if (type === 's3') {
+            showStatus('info',
+                '<span class="loading-spinner"></span> <strong>Full S3 restore in progress.</strong> ' +
+                'Downloading backup, stopping ES, swapping data, restarting... This may take several minutes. ' +
+                'Do not close this page.');
+            fetch('{{ url_for("restore_backup.api_restore_s3") }}', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filename: filename }),
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (handleStepUp(data, retry)) return;
+                if (data.ok) {
+                    let msg = '<i class="fas fa-check-circle"></i> <strong>Full restore complete.</strong>';
+                    msg += '<br>Backup file: ' + esc(data.backup_file || '');
+                    msg += '<br>Previous data saved at: ' + esc(data.backup_kept_at || '');
+                    if (data.es_healthy) {
+                        msg += '<br>Elasticsearch status: <strong>healthy</strong>';
+                    } else {
+                        msg += '<br>Elasticsearch status: <strong>started but health check timed out</strong> — verify manually';
+                    }
+                    showStatus('success', msg);
+                } else {
+                    showStatus('error',
+                        '<i class="fas fa-times-circle"></i> <strong>Restore failed:</strong> ' + esc(data.error || 'Unknown error'));
+                }
+            })
+            .catch(err => {
+                showStatus('error',
+                    '<i class="fas fa-times-circle"></i> <strong>Request failed:</strong> ' + esc(err.message) +
+                    '<br>Elasticsearch may need to be restarted manually.');
+            })
+            .finally(() => {
+                document.querySelectorAll('.btn-restore').forEach(btn => btn.disabled = false);
+            });
+        }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────
+
+    function showStatus(type, html) {
+        const area = document.getElementById('status-area');
+        area.style.display = 'block';
+        area.className = 'status-area alert alert-' + type;
+        area.innerHTML = html;
+        area.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function esc(str) {
+        const div = document.createElement('div');
+        div.textContent = str || '';
+        // innerHTML does not escape quotes; quote-escape so the
+        // result is also safe inside a double-quoted attribute (data-*).
+        return div.innerHTML.replace(/"/g, '&quot;');
+    }
+
+    // ── step-up second factor ─────────────────────────────────
+    // Every destructive POST answers {ok:false, step_up_required:true} until
+    // the session has re-proved its second factor within the last 10 minutes.
+    // handleStepUp() opens the prompt, posts the code to /api/step-up and, on
+    // success, re-runs the original action ONCE. Returns true when it took
+    // over the response (the caller stops), false when the response was not
+    // a step-up demand.
+    let stepUpRetry = null;
+
+    function handleStepUp(data, retry) {
+        if (!data || !data.step_up_required) return false;
+        stepUpRetry = retry;
+        const err = document.getElementById('stepup-error');
+        err.style.display = 'none';
+        err.textContent = '';
+        document.getElementById('stepup-code').value = '';
+        document.getElementById('stepup-modal').classList.add('active');
+        setTimeout(() => document.getElementById('stepup-code').focus(), 50);
+        showStatus('info', '<i class="fas fa-shield-alt"></i> Confirm your second factor to continue.');
+        return true;
+    }
+
+    function closeStepUp() {
+        document.getElementById('stepup-modal').classList.remove('active');
+        stepUpRetry = null;
+    }
+
+    document.getElementById('stepup-cancel').addEventListener('click', function () {
+        closeStepUp();
+        showStatus('error', '<i class="fas fa-times-circle"></i> Cancelled — no changes were made.');
+    });
+
+    document.getElementById('stepup-form').addEventListener('submit', function (ev) {
+        ev.preventDefault();
+        const code = document.getElementById('stepup-code').value.trim();
+        const err = document.getElementById('stepup-error');
+        if (!code) { err.textContent = 'Enter your code.'; err.style.display = 'block'; return; }
+        const submit = document.getElementById('stepup-submit');
+        submit.disabled = true;
+        fetch('{{ url_for("restore_backup.api_step_up") }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code: code }),
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.ok) {
+                const retry = stepUpRetry;
+                closeStepUp();
+                if (typeof retry === 'function') retry();
+            } else {
+                err.textContent = data.error || 'Invalid code.';
+                err.style.display = 'block';
+                document.getElementById('stepup-code').value = '';
+                document.getElementById('stepup-code').focus();
+                if (data.mfa_not_configured) {
+                    // Nothing to retry until MFA exists on the profile.
+                    setTimeout(closeStepUp, 2500);
+                }
+            }
+        })
+        .catch(e => { err.textContent = 'Request failed: ' + e.message; err.style.display = 'block'; })
+        .finally(() => { submit.disabled = false; });
+    });
+
+    // ── Config download ────────────────────────────────────────────────
+
+    function downloadConfig(filename) {
+        document.querySelectorAll('.btn-download').forEach(btn => btn.disabled = true);
+        showStatus('info', '<span class="loading-spinner"></span> Downloading and extracting "' + esc(filename) + '" from S3...');
+
+        fetch('{{ url_for("restore_backup.api_download_config") }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: filename }),
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.ok) {
+                showStatus('success', '<i class="fas fa-check-circle"></i> Config backup extracted successfully.');
+                renderFileTree(data.backup_file, data.extract_dir, data.file_tree || []);
+            } else {
+                showStatus('error', '<i class="fas fa-times-circle"></i> Download failed: ' + esc(data.error || 'Unknown error'));
+            }
+        })
+        .catch(err => {
+            showStatus('error', '<i class="fas fa-times-circle"></i> Request failed: ' + esc(err.message));
+        })
+        .finally(() => {
+            document.querySelectorAll('.btn-download').forEach(btn => btn.disabled = false);
+        });
+    }
+
+    function renderFileTree(backupName, extractPath, files) {
+        const treeDiv = document.getElementById('config-file-tree');
+        document.getElementById('config-extract-name').textContent = backupName;
+        document.getElementById('config-extract-path').textContent = extractPath;
+
+        // The download endpoint returns just {path, size_human}. Re-fetch via the
+        // new endpoint to enrich with live_exists / differs flags for the apply flow.
+        // The extraction folder name is the tarball name minus ".tar.gz".
+        const extractName = backupName.replace(/\.tar\.gz$/, '');
+        cfgState.currentExtraction = extractName;
+
+        fetch('{{ url_for("restore_backup.api_config_extraction_files") }}?name=' + encodeURIComponent(extractName))
+            .then(r => r.json())
+            .then(data => {
+                const enriched = data.ok ? data.files : files.map(f => ({ ...f, live_exists: false, differs: false }));
+                cfgState.files = enriched;
+                renderCfgFileRows(enriched);
+            })
+            .catch(() => {
+                cfgState.files = files;
+                renderCfgFileRows(files);
+            });
+
+        treeDiv.style.display = 'block';
+        treeDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function renderCfgFileRows(files) {
+        const tbody = document.querySelector('#config-file-table tbody');
+        tbody.innerHTML = '';
+        for (const f of files) {
+            const liveExists = !!f.live_exists;
+            const differs = !!f.differs;
+            let statusHtml;
+            if (!liveExists) {
+                statusHtml = '<span style="color:#27ae60;">new on disk</span>';
+            } else if (differs) {
+                statusHtml = '<span style="color:#c0392b;">differs from live</span>';
+            } else {
+                statusHtml = '<span style="color:#7f8c8d;">identical</span>';
+            }
+            const tr = document.createElement('tr');
+            tr.innerHTML =
+                `<td><input type="checkbox" class="cfg-file-cb" ` +
+                    `data-path="${esc(f.path)}" ` +
+                    `data-live-exists="${liveExists}" ` +
+                    `data-differs="${differs}"></td>` +
+                `<td><i class="fas fa-file" style="color: #95a5a6; margin-right: 6px;"></i>${esc(f.path)}</td>` +
+                `<td>${esc(f.size_human)}</td>` +
+                `<td>${statusHtml}</td>`;
+            tbody.appendChild(tr);
+        }
+    }
+
+    // ── ES Snapshot flow ─────────────────────────────────────────────────
+
+    let snapState = {
+        repos: [],
+        snapshots: [],
+        currentSnapshotIndices: [],   // [{name, exists_in_cluster}]
+        selectedRepo: null,
+        inspectedSnapshot: null,
+    };
+
+    loadSnapshotRepos();
+
+    document.getElementById('snap-filter').addEventListener('change', function() {
+        snapApplyFilter();
+    });
+
+    document.getElementById('snap-repo-select').addEventListener('change', function(e) {
+        snapState.selectedRepo = e.target.value || null;
+        if (snapState.selectedRepo) {
+            loadSnapshotsForRepo(snapState.selectedRepo);
+        } else {
+            document.getElementById('snap-list-container').innerHTML =
+                '<div class="empty-state">Select a repository to list its snapshots.</div>';
+            hideSnapInspect();
+        }
+    });
+
+    function loadSnapshotRepos() {
+        fetch('{{ url_for("restore_backup.api_snapshot_repos") }}')
+            .then(r => r.json())
+            .then(data => {
+                const sel = document.getElementById('snap-repo-select');
+                if (!data.ok) {
+                    sel.innerHTML = '<option value="">— ' + esc(data.error || 'failed to load') + ' —</option>';
+                    return;
+                }
+                snapState.repos = data.repos || [];
+                if (!snapState.repos.length) {
+                    sel.innerHTML = '<option value="">— no repositories registered —</option>';
+                    return;
+                }
+                sel.innerHTML = '<option value="">— select repository —</option>' +
+                    snapState.repos.map(r => `<option value="${esc(r.name)}">${esc(r.name)} (${esc(r.type)})</option>`).join('');
+            })
+            .catch(err => {
+                document.getElementById('snap-repo-select').innerHTML =
+                    '<option value="">— ' + esc(err.message) + ' —</option>';
+            });
+    }
+
+    function loadSnapshotsForRepo(repo) {
+        const container = document.getElementById('snap-list-container');
+        container.innerHTML = '<div class="empty-state"><span class="loading-spinner"></span> Loading snapshots...</div>';
+        hideSnapInspect();
+
+        fetch('{{ url_for("restore_backup.api_snapshot_list") }}?repo=' + encodeURIComponent(repo))
+            .then(r => r.json())
+            .then(data => {
+                if (!data.ok) {
+                    container.innerHTML = `<div class="alert alert-error">${esc(data.error || 'Failed to list snapshots')}</div>`;
+                    return;
+                }
+                snapState.snapshots = data.snapshots || [];
+                const warnings = data.warnings || [];
+                const warningHtml = warnings.length ? buildBrokenSnapshotWarning(warnings, repo) : '';
+                if (!snapState.snapshots.length) {
+                    container.innerHTML = warningHtml + '<div class="empty-state">No readable snapshots in this repository.</div>';
+                    return;
+                }
+                container.innerHTML = warningHtml + renderTable(snapState.snapshots, [
+                    { label: 'Snapshot', render: s => esc(s.snapshot) },
+                    { label: 'State', render: s => esc(s.state) },
+                    { label: 'Started', render: s => esc(s.start_time) },
+                    { label: 'Indices', render: s => String(s.indices_count) },
+                    { label: '', render: s =>
+                        `<button class="btn btn-sm btn-secondary" data-snapshot="${esc(s.snapshot)}" onclick="window._rb.inspectSnapshot(this.dataset.snapshot)">` +
+                        `<i class="fas fa-search"></i> Inspect</button>` },
+                ]);
+            })
+            .catch(err => {
+                container.innerHTML = `<div class="alert alert-error">${esc(err.message)}</div>`;
+            });
+    }
+
+    function buildBrokenSnapshotWarning(warnings, repo) {
+        const count = warnings.length;
+        const plural = count === 1 ? '' : 's';
+        const list = warnings.map(esc).join(', ');
+        return '<div class="alert alert-warning" style="margin-bottom:10px;">' +
+            '<i class="fas fa-exclamation-triangle"></i> ' +
+            '<strong>' + count + ' broken snapshot' + plural + ' skipped.</strong> ' +
+            'Repository index references snapshots whose data files are missing or corrupted: ' +
+            '<code style="font-size:12px;">' + list + '</code>. ' +
+            'Use <code>POST /_snapshot/' + esc(repo) + '/_cleanup</code> on the server to clear them.' +
+        '</div>';
+    }
+
+    function refreshSnapshots() {
+        if (snapState.selectedRepo) {
+            loadSnapshotsForRepo(snapState.selectedRepo);
+        } else {
+            loadSnapshotRepos();
+        }
+    }
+
+    function inspectSnapshot(name) {
+        if (!snapState.selectedRepo) return;
+        const panel = document.getElementById('snap-inspect-panel');
+        panel.style.display = 'block';
+        document.getElementById('snap-inspect-name').textContent = name;
+        document.getElementById('snap-inspect-summary').textContent = 'Loading...';
+        document.querySelector('#snap-indices-table tbody').innerHTML = '';
+        snapState.inspectedSnapshot = name;
+
+        const url = '{{ url_for("restore_backup.api_snapshot_inspect") }}' +
+                    '?repo=' + encodeURIComponent(snapState.selectedRepo) +
+                    '&snapshot=' + encodeURIComponent(name);
+        fetch(url)
+            .then(r => r.json())
+            .then(data => {
+                if (!data.ok) {
+                    document.getElementById('snap-inspect-summary').innerHTML =
+                        '<span class="alert alert-error" style="display:inline-block; padding:4px 10px;">' +
+                        esc(data.error || 'Failed to inspect') + '</span>';
+                    return;
+                }
+                snapState.currentSnapshotIndices = data.indices || [];
+                const total = snapState.currentSnapshotIndices.length;
+                const existing = snapState.currentSnapshotIndices.filter(i => i.exists_in_cluster).length;
+                document.getElementById('snap-inspect-summary').textContent =
+                    `${total} indices in snapshot — ${existing} already exist in cluster, ${total - existing} would be created fresh. State: ${data.state}.`;
+
+                const tbody = document.querySelector('#snap-indices-table tbody');
+                tbody.innerHTML = snapState.currentSnapshotIndices.map((idx, i) =>
+                    `<tr>
+                        <td><input type="checkbox" class="snap-idx-cb" data-name="${esc(idx.name)}" data-exists="${!!idx.exists_in_cluster}"></td>
+                        <td><code>${esc(idx.name)}</code></td>
+                        <td>${idx.exists_in_cluster
+                            ? '<span style="color:#c0392b;">exists — will be replaced</span>'
+                            : '<span style="color:#27ae60;">new — will be created</span>'}</td>
+                    </tr>`
+                ).join('');
+                // Reset filter to "All" each time a snapshot is inspected.
+                document.getElementById('snap-filter').value = 'all';
+                snapApplyFilter();
+            })
+            .catch(err => {
+                document.getElementById('snap-inspect-summary').textContent = 'Error: ' + err.message;
+            });
+    }
+
+    function snapApplyFilter() {
+        const mode = document.getElementById('snap-filter').value;
+        let visible = 0;
+        document.querySelectorAll('#snap-indices-table tbody tr').forEach(tr => {
+            const cb = tr.querySelector('.snap-idx-cb');
+            if (!cb) return;
+            const exists = cb.dataset.exists === 'true';
+            const show = (mode === 'all') || (mode === 'existing' && exists) || (mode === 'new' && !exists);
+            tr.style.display = show ? '' : 'none';
+            if (show) visible++;
+        });
+        const total = snapState.currentSnapshotIndices.length;
+        document.getElementById('snap-filter-count').textContent =
+            visible === total ? '' : `Showing ${visible} of ${total}.`;
+        // Header checkbox reflects state of visible rows only.
+        const visibleCbs = Array.from(document.querySelectorAll('.snap-idx-cb'))
+            .filter(cb => cb.closest('tr').style.display !== 'none');
+        const allChecked = visibleCbs.length > 0 && visibleCbs.every(cb => cb.checked);
+        document.getElementById('snap-check-all').checked = allChecked;
+    }
+
+    function snapSelectAll(checked) {
+        // Header checkbox toggles only currently-visible rows.
+        snapSelectVisible(checked);
+    }
+
+    function snapSelectVisible(checked) {
+        document.querySelectorAll('.snap-idx-cb').forEach(cb => {
+            if (cb.closest('tr').style.display !== 'none') {
+                cb.checked = checked;
+            }
+        });
+        document.getElementById('snap-check-all').checked = checked;
+    }
+
+    function hideSnapInspect() {
+        document.getElementById('snap-inspect-panel').style.display = 'none';
+        snapState.inspectedSnapshot = null;
+        snapState.currentSnapshotIndices = [];
+    }
+
+    function confirmSnapRestore() {
+        const selected = Array.from(document.querySelectorAll('.snap-idx-cb:checked')).map(cb => cb.dataset.name);
+        if (!selected.length) {
+            showStatus('error', '<i class="fas fa-times-circle"></i> Select at least one index to restore.');
+            return;
+        }
+        const conflicts = selected.filter(name => {
+            const info = snapState.currentSnapshotIndices.find(i => i.name === name);
+            return info && info.exists_in_cluster;
+        });
+
+        let msg = `<strong>Restore ${selected.length} indices from snapshot "${esc(snapState.inspectedSnapshot)}".</strong><br><br>`;
+        if (conflicts.length) {
+            msg += `<span style="color:#c0392b;"><strong>${conflicts.length}</strong> selected indices already exist and will be deleted and recreated:</span><br>` +
+                   '<code style="font-size:12px;">' + conflicts.slice(0, 10).map(esc).join(', ') +
+                   (conflicts.length > 10 ? `, …and ${conflicts.length - 10} more` : '') + '</code><br><br>';
+        }
+        const fresh = selected.length - conflicts.length;
+        if (fresh) {
+            msg += `<span style="color:#27ae60;"><strong>${fresh}</strong> indices will be created from the snapshot.</span><br><br>`;
+        }
+        msg += 'No Elasticsearch downtime &mdash; restore happens in place. Continue?';
+
+        document.getElementById('confirm-title').textContent = 'Restore from Snapshot';
+        document.getElementById('confirm-message').innerHTML = msg;
+        const btn = document.getElementById('confirm-btn');
+        btn.className = 'btn btn-restore btn-sm';
+        btn.textContent = 'Restore selected';
+        btn.onclick = function() { executeSnapRestore(selected, conflicts.length > 0); };
+        document.getElementById('confirm-modal').classList.add('active');
+    }
+
+    function executeSnapRestore(indices, replaceExisting) {
+        closeModal();
+        document.getElementById('snap-restore-btn').disabled = true;
+        showStatus('info',
+            '<span class="loading-spinner"></span> Restoring ' + indices.length +
+            ' indices from snapshot "' + esc(snapState.inspectedSnapshot) + '"...');
+
+        fetch('{{ url_for("restore_backup.api_snapshot_restore") }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                repo: snapState.selectedRepo,
+                snapshot: snapState.inspectedSnapshot,
+                indices: indices,
+                replace_existing: replaceExisting,
+            }),
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (handleStepUp(data, () => executeSnapRestore(indices, replaceExisting))) return;
+            if (data.ok) {
+                let msg = '<i class="fas fa-check-circle"></i> <strong>Snapshot restore complete.</strong>';
+                msg += '<br>Restored: ' + esc((data.restored || []).join(', '));
+                if (data.deleted_before_restore && data.deleted_before_restore.length) {
+                    msg += '<br>Replaced: ' + esc(data.deleted_before_restore.join(', '));
+                }
+                showStatus('success', msg);
+                inspectSnapshot(snapState.inspectedSnapshot);  // refresh exists-in-cluster flags
+            } else {
+                showStatus('error',
+                    '<i class="fas fa-times-circle"></i> Snapshot restore failed: ' + esc(data.error || 'Unknown error'));
+            }
+        })
+        .catch(err => {
+            showStatus('error', '<i class="fas fa-times-circle"></i> Request failed: ' + esc(err.message));
+        })
+        .finally(() => {
+            document.getElementById('snap-restore-btn').disabled = false;
+        });
+    }
+
+    // ── Config-apply-to-disk flow ────────────────────────────────────────
+
+    let cfgState = {
+        currentExtraction: null,
+        files: [],
+    };
+
+    function cfgSelectAll(checked) {
+        document.querySelectorAll('.cfg-file-cb').forEach(cb => { cb.checked = checked; });
+        document.getElementById('cfg-check-all').checked = checked;
+    }
+
+    function cfgSelectDiffering() {
+        document.querySelectorAll('.cfg-file-cb').forEach(cb => {
+            cb.checked = cb.dataset.differs === 'true' || cb.dataset.liveExists === 'false';
+        });
+    }
+
+    function confirmCfgApply() {
+        const selected = Array.from(document.querySelectorAll('.cfg-file-cb:checked')).map(cb => cb.dataset.path);
+        if (!selected.length) {
+            showStatus('error', '<i class="fas fa-times-circle"></i> Select at least one file to apply.');
+            return;
+        }
+        const overwrites = Array.from(document.querySelectorAll('.cfg-file-cb:checked'))
+            .filter(cb => cb.dataset.liveExists === 'true').length;
+
+        let msg = `<strong>Apply ${selected.length} file(s) to /app/reporting_configs.</strong><br><br>`;
+        if (overwrites) {
+            msg += `<span style="color:#c0392b;"><strong>${overwrites}</strong> files will overwrite an existing version on disk.</span> The previous versions will be saved to a rollback folder.<br><br>`;
+        }
+        msg += '<details style="margin-bottom:8px;"><summary style="cursor:pointer;">Show files</summary>' +
+               '<code style="font-size:12px; display:block; margin-top:6px;">' + selected.map(esc).join('<br>') + '</code></details>';
+        msg += 'Continue?';
+
+        document.getElementById('confirm-title').textContent = 'Apply Config Files';
+        document.getElementById('confirm-message').innerHTML = msg;
+        const btn = document.getElementById('confirm-btn');
+        btn.className = 'btn btn-restore btn-sm';
+        btn.textContent = 'Apply files';
+        btn.onclick = function() { executeCfgApply(selected); };
+        document.getElementById('confirm-modal').classList.add('active');
+    }
+
+    function executeCfgApply(files) {
+        closeModal();
+        document.getElementById('cfg-apply-btn').disabled = true;
+        showStatus('info', '<span class="loading-spinner"></span> Applying ' + files.length + ' file(s) to disk...');
+
+        fetch('{{ url_for("restore_backup.api_config_apply") }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: cfgState.currentExtraction, files: files }),
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (handleStepUp(data, () => executeCfgApply(files))) return;
+            if (data.ok) {
+                let msg = '<i class="fas fa-check-circle"></i> <strong>Config apply complete.</strong>';
+                msg += '<br>Applied ' + (data.applied || []).length + ' file(s).';
+                if (data.skipped_missing && data.skipped_missing.length) {
+                    msg += '<br>Skipped (missing in extraction): ' + esc(data.skipped_missing.join(', '));
+                }
+                msg += '<br>Rollback dir: <code>' + esc(data.rollback_dir || '') + '</code>';
+                showStatus('success', msg);
+            } else {
+                showStatus('error',
+                    '<i class="fas fa-times-circle"></i> Apply failed: ' + esc(data.error || 'Unknown error'));
+            }
+        })
+        .catch(err => {
+            showStatus('error', '<i class="fas fa-times-circle"></i> Request failed: ' + esc(err.message));
+        })
+        .finally(() => {
+            document.getElementById('cfg-apply-btn').disabled = false;
+        });
+    }
+
+    // ── Create local backup ──────────────────────────────────────────────
+
+    function createLocalBackup() {
+        const btn = document.getElementById('local-create-btn');
+        btn.disabled = true;
+        showStatus('info', '<span class="loading-spinner"></span> Creating asset backup...');
+
+        fetch('{{ url_for("api_backup_create") }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}',
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.ok) {
+                let msg = '<i class="fas fa-check-circle"></i> Created <code>' + esc(data.filename || '') + '</code>.';
+                const pruned = data.pruned || [];
+                if (pruned.length) {
+                    msg += ' Pruned ' + pruned.length + ' older backup(s): <code style="font-size:12px;">' +
+                           pruned.map(esc).join(', ') + '</code>.';
+                }
+                showStatus('success', msg);
+                loadBackups();  // refresh the local list
+            } else {
+                showStatus('error', '<i class="fas fa-times-circle"></i> Backup failed: ' + esc(data.error || 'Unknown error'));
+            }
+        })
+        .catch(err => {
+            showStatus('error', '<i class="fas fa-times-circle"></i> Request failed: ' + esc(err.message));
+        })
+        .finally(() => {
+            btn.disabled = false;
+        });
+    }
+
+    // Expose to onclick handlers
+    window._rb = {
+        confirmLocal, confirmS3, downloadConfig, createLocalBackup,
+        refreshSnapshots, inspectSnapshot, snapSelectAll, snapSelectVisible, confirmSnapRestore,
+        cfgSelectAll, cfgSelectDiffering, confirmCfgApply,
+    };
+
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,1620 @@
+{% extends "base_v2.html" %}
+
+{% block title %}{{ 'Edit' if mode == 'edit' else 'Add' }} {{ config.title }} - Kavanah Analytics Management Console{% endblock %}
+
+{% block extra_css %}
+<style>
+    .breadcrumb {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: var(--cs-font-size-s);
+        margin-bottom: var(--cs-space-m);
+        color: var(--cs-text-tertiary);
+    }
+    .breadcrumb a { color: var(--cs-text-link); text-decoration: none; }
+    .breadcrumb a:hover { text-decoration: underline; }
+
+    .card {
+        background: var(--cs-bg-primary);
+        border: 1px solid var(--cs-border-default);
+        border-radius: var(--cs-radius-m);
+        box-shadow: var(--cs-shadow-xs);
+        padding: var(--cs-space-xl);
+    }
+
+    .card h2 {
+        font-size: var(--cs-font-size-xl);
+        font-weight: var(--cs-font-weight-bold);
+        color: var(--cs-text-heading);
+        margin: 0 0 var(--cs-space-l);
+    }
+
+    .form-group { margin-bottom: var(--cs-space-l); }
+    .form-group.hidden { display: none; }
+
+    .form-group label {
+        display: block;
+        font-size: var(--cs-font-size-m);
+        font-weight: var(--cs-font-weight-bold);
+        color: var(--cs-text-label);
+        margin-bottom: 6px;
+    }
+
+    .form-group label .required { color: var(--cs-error); }
+
+    .form-group input[type="text"],
+    .form-group input[type="url"],
+    .form-group input[type="email"],
+    .form-group input[type="password"],
+    .form-group input[type="number"],
+    .form-group input[type="date"],
+    .form-group select,
+    .form-group textarea {
+        width: 100%;
+        padding: 8px 12px;
+        border: 1px solid var(--cs-border-input);
+        border-radius: var(--cs-radius-s);
+        font-family: var(--cs-font);
+        font-size: var(--cs-font-size-m);
+        color: var(--cs-text-primary);
+        background: var(--cs-bg-primary);
+        transition: border-color var(--cs-transition-fast), box-shadow var(--cs-transition-fast);
+        box-sizing: border-box;
+    }
+
+    .form-group input:hover,
+    .form-group select:hover,
+    .form-group textarea:hover { border-color: var(--cs-text-secondary); }
+
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+        outline: none;
+        border-color: var(--cs-border-input-focus);
+        box-shadow: 0 0 0 2px rgba(9, 114, 211, 0.25);
+    }
+
+    .form-group textarea { min-height: 80px; resize: vertical; }
+
+    .btn {
+        display: inline-flex;
+        align-items: center;
+        height: 36px;
+        padding: 0 16px;
+        font-family: var(--cs-font);
+        font-size: var(--cs-font-size-m);
+        font-weight: var(--cs-font-weight-medium);
+        border-radius: var(--cs-radius-s);
+        border: 1px solid var(--cs-btn-normal-border);
+        background: var(--cs-btn-normal-bg);
+        color: var(--cs-btn-normal-text);
+        cursor: pointer;
+        text-decoration: none;
+        transition: all var(--cs-transition-fast);
+    }
+    .btn:hover {
+        background: var(--cs-btn-normal-hover-bg);
+        border-color: var(--cs-text-secondary);
+        text-decoration: none;
+    }
+
+    .btn-sm { height: 28px; padding: 0 10px; font-size: var(--cs-font-size-xs); }
+
+    .btn-success, .btn-primary {
+        background: var(--cs-btn-primary-bg);
+        color: var(--cs-btn-primary-text);
+        border-color: var(--cs-btn-primary-bg);
+        font-weight: var(--cs-font-weight-bold);
+    }
+    .btn-success:hover, .btn-primary:hover {
+        background: var(--cs-btn-primary-bg-hover);
+        border-color: var(--cs-btn-primary-bg-hover);
+        color: var(--cs-btn-primary-text);
+    }
+
+    .btn-secondary {
+        background: var(--cs-btn-normal-bg);
+        color: var(--cs-btn-normal-text);
+        border-color: var(--cs-btn-normal-border);
+    }
+    .btn-secondary:hover {
+        background: var(--cs-btn-normal-hover-bg);
+    }
+
+    .btn-danger {
+        border-color: var(--cs-error);
+        color: var(--cs-error);
+        background: var(--cs-bg-primary);
+    }
+    .btn-danger:hover {
+        background: var(--cs-error-bg);
+    }
+
+    .field-help { font-size: var(--cs-font-size-xs); color: var(--cs-text-tertiary); margin-top: 4px; }
+
+    /* Constrain form width */
+    .card { max-width: 720px; margin: 0 auto; }
+    .breadcrumb { max-width: 720px; margin-left: auto; margin-right: auto; margin-bottom: var(--cs-space-m); }
+
+    /* List/multi-select item rows */
+    .list-item {
+        background: var(--cs-bg-page) !important;
+        border: 1px solid var(--cs-border-divider) !important;
+        border-radius: var(--cs-radius-s) !important;
+        padding: 8px 12px !important;
+        margin-bottom: 6px !important;
+    }
+
+    .multi-select-dropdown {
+        padding: 8px 12px;
+        border: 1px solid var(--cs-border-input);
+        border-radius: var(--cs-radius-s);
+        font-family: var(--cs-font);
+        font-size: var(--cs-font-size-m);
+    }
+    .multi-select-dropdown:focus {
+        outline: none;
+        border-color: var(--cs-border-input-focus);
+        box-shadow: 0 0 0 2px rgba(9, 114, 211, 0.25);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+    <a href="{{ url_for('index') }}">Asset Explorer</a> / <a href="{{ url_for('list_assets', asset_type=asset_type) }}">{{ config.title }}</a> /
+    {{ 'Edit' if mode == 'edit' else 'Add New' }}
+</div>
+
+<div class="card">
+    <h2>{{ 'Edit' if mode == 'edit' else 'Add New' }} {{ config.title }}</h2>
+
+    {% if error_message %}
+    <div style="background-color: #fee; border: 1px solid #fcc; padding: 10px; margin-bottom: 15px; border-radius: 4px; color: #c00;">
+        <strong>Error:</strong> {{ error_message }}
+    </div>
+    {% endif %}
+
+    {# Save (without close) redirects back here with ?saved=1. #}
+    {% if mode == 'edit' and request.args.get('saved') == '1' %}
+    <div style="background-color: #efe; border: 1px solid #cfc; padding: 10px; margin-bottom: 15px; border-radius: 4px; color: #070;">
+        <strong>Saved.</strong> Your changes have been stored.
+    </div>
+    {% endif %}
+
+    {# Auto-join activity panel for orgs that have opted into
+       domain-match auto-join. Only rendered when the route passed a
+       non-None auto_join_stats dict; ES outages return None upstream
+       so the panel is silently omitted rather than rendering a broken
+       state. window_days = 30 by default. #}
+    {% if mode == 'edit' and auto_join_stats %}
+    <div style="background: var(--cs-bg-secondary); border: 1px solid var(--cs-border-default); border-radius: var(--cs-radius-s); padding: 14px 16px; margin-bottom: 18px;">
+        <div style="font-size: var(--cs-font-size-xs); font-weight: var(--cs-font-weight-bold); color: var(--cs-text-secondary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 10px;">
+            Domain-match auto-join &middot; last {{ auto_join_stats.window_days }} days
+        </div>
+        {% if auto_join_stats.total == 0 %}
+        <div style="font-size: var(--cs-font-size-s); color: var(--cs-text-tertiary);">
+            No domain-match prompts produced a decision in this window. Either no one in your listed domains signed up, or they closed the prompt without choosing.
+        </div>
+        {% else %}
+        <div style="display: flex; gap: 24px; align-items: baseline; margin-bottom: 12px;">
+            <div>
+                <div style="font-size: 20px; font-weight: 700; color: var(--cs-text-heading);">{{ auto_join_stats.accepted }}</div>
+                <div style="font-size: var(--cs-font-size-xs); color: var(--cs-text-secondary); text-transform: uppercase; letter-spacing: 0.04em;">Accepted</div>
+            </div>
+            <div>
+                <div style="font-size: 20px; font-weight: 700; color: var(--cs-text-heading);">{{ auto_join_stats.declined }}</div>
+                <div style="font-size: var(--cs-font-size-xs); color: var(--cs-text-secondary); text-transform: uppercase; letter-spacing: 0.04em;">Declined</div>
+            </div>
+            <div>
+                <div style="font-size: 20px; font-weight: 700; color: var(--cs-text-heading);">{{ auto_join_stats.acceptance_rate }}%</div>
+                <div style="font-size: var(--cs-font-size-xs); color: var(--cs-text-secondary); text-transform: uppercase; letter-spacing: 0.04em;">Acceptance rate</div>
+            </div>
+        </div>
+        {% if auto_join_stats.recent %}
+        <div style="font-size: var(--cs-font-size-xs); color: var(--cs-text-secondary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px;">
+            Recent activity
+        </div>
+        <ul style="list-style: none; padding: 0; margin: 0; font-size: var(--cs-font-size-s); color: var(--cs-text-tertiary);">
+            {% for event in auto_join_stats.recent %}
+            <li style="padding: 2px 0;">{{ event.timestamp[:10] }} &middot; {{ event.action }}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {# Computed display fields (e.g. OAuth URL for FB App Users / YouTube Accounts).
+       Only shown in edit mode — they need a saved item to compute. #}
+    {% if mode == 'edit' and computed_fields %}
+    <div class="computed-fields-banner" style="background: var(--cs-bg-secondary); border: 1px solid var(--cs-border-default); border-radius: var(--cs-radius-s); padding: 12px 14px; margin-bottom: 18px;">
+        {% for field_name, field_data in computed_fields.items() %}
+        {% set is_redirect = 'redirect' in field_name|lower or 'redirect' in field_data.label|lower %}
+        {% set is_oauth = ('oauth' in field_name|lower or 'oauth' in field_data.label|lower) and not is_redirect %}
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;{% if not loop.last %} margin-bottom: 8px;{% endif %}">
+            <div style="min-width: 0;">
+                <div style="font-size: var(--cs-font-size-xs); font-weight: var(--cs-font-weight-bold); color: var(--cs-text-secondary); text-transform: uppercase; letter-spacing: 0.04em;">{{ field_data.label }}</div>
+                <div style="font-size: var(--cs-font-size-s); color: var(--cs-text-tertiary); word-break: break-all;">{{ field_data.value }}</div>
+                {% if field_data.help_text %}
+                <div style="font-size: var(--cs-font-size-xs); color: var(--cs-text-secondary); margin-top: 4px;">{{ field_data.help_text }}</div>
+                {% endif %}
+            </div>
+            {% if is_redirect %}
+            <button type="button" class="btn btn-secondary btn-sm copy-computed-field" data-copy-value="{{ field_data.value }}" style="white-space: nowrap;">Copy</button>
+            {% elif is_oauth %}
+            <a href="{{ field_data.value }}" target="_blank" class="btn btn-primary btn-sm" style="white-space: nowrap;">Authorize via OAuth</a>
+            {% else %}
+            <a href="{{ field_data.value }}" target="_blank" class="btn btn-secondary btn-sm" style="white-space: nowrap;">Open</a>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    <script nonce="{{ csp_nonce }}">
+        (function () {
+            document.querySelectorAll(".copy-computed-field").forEach(function (btn) {
+                btn.addEventListener("click", function () {
+                    var value = btn.getAttribute("data-copy-value") || "";
+                    var done = function () {
+                        var original = btn.textContent;
+                        btn.textContent = "Copied";
+                        setTimeout(function () { btn.textContent = original; }, 1500);
+                    };
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(value).then(done, function () { done(); });
+                    } else {
+                        var ta = document.createElement("textarea");
+                        ta.value = value;
+                        ta.setAttribute("readonly", "");
+                        ta.style.position = "absolute"; ta.style.left = "-9999px";
+                        document.body.appendChild(ta);
+                        ta.select();
+                        try { document.execCommand("copy"); } catch (e) { /* ignore */ }
+                        document.body.removeChild(ta);
+                        done();
+                    }
+                });
+            });
+        })();
+    </script>
+    {% endif %}
+
+    <form method="POST" id="asset-form"{% if config.fields|selectattr('type', 'equalto', 'logo')|list %} enctype="multipart/form-data"{% endif %}>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        {% for field in config.fields %}
+        {# skip superuser_only fields for non-superusers. Defense
+           in depth — the server also strips these from the form data
+           on submit, so a crafted POST can't bypass the gate. #}
+        {% if field.get('superuser_only') and not is_superuser %}
+            {# skip #}
+        {% else %}
+        {# Skip edit-only fields in add mode #}
+        {% if not (field.get('edit_only') and mode == 'add') %}
+
+        {# read-only Data Connectors section divider on the team
+           form. Hidden entirely in add mode (a new team has no connectors
+           yet); in edit mode it shows the header + a link to the dedicated
+           Data Connectors page, which is the only place connectors are
+           edited. The connector fields themselves render as read-only
+           chips below (only when populated). #}
+        {% if field.type == 'section_divider' and field.get('readonly_data_connectors') %}
+            {% if mode == 'edit' %}
+            <div class="section-divider" style="margin: 28px 0 18px 0;">
+                <hr style="border: none; border-top: 1px solid #ddd; margin-bottom: 14px;">
+                <div style="display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;">
+                    <h3 style="margin: 0; font-size: 1rem; font-weight: 600; color: #444; letter-spacing: 0.03em;">{{ field.label }}</h3>
+                    {# pre-select the team being edited on the Data
+                       Connectors page. Its ?team=<esid> handler (_restoreTeamEsid)
+                       auto-selects the matching dropdown option on load. item_id
+                       is the team's ES doc _id, which is the dropdown option value. #}
+                    <a href="{{ url_for('data_connectors.index') }}{% if item_id %}?team={{ item_id|urlencode }}{% endif %}" style="font-size: 0.85rem; color: #4a90d9; text-decoration: none;">Edit on Data Connectors &rarr;</a>
+                </div>
+                <span class="help-text" style="display:block; margin-top:6px;">Connectors are managed on the Data Connectors page. They are shown here read-only.</span>
+            </div>
+            {% endif %}
+
+        {# Section divider #}
+        {% elif field.type == 'section_divider' %}
+        <div class="section-divider" style="margin: 28px 0 18px 0;">
+            <hr style="border: none; border-top: 1px solid #ddd; margin-bottom: 14px;">
+            <h3 style="margin: 0; font-size: 1rem; font-weight: 600; color: #444; letter-spacing: 0.03em;">{{ field.label }}</h3>
+        </div>
+
+        {# read-only connector checkbox — never rendered (the
+           toggle is meaningless when connectors are read-only). The
+           connector value still round-trips via preserve_on_empty in
+           FormService, so omitting the input here is safe. #}
+        {% elif field.type == 'data_source_checkbox' and field.get('readonly') %}
+            {# skip #}
+
+        {# read-only connector field — render the team's configured
+           value as chips, edit mode only, and ONLY when a value exists (no
+           blank Echo row on a team with no Echo tenant). multi_select uses
+           the pre-computed _displays/_titles pipe-strings; select/store_esid
+           and plain select/url/text use the stored title/value directly. #}
+        {% elif field.get('readonly') and field.type in ('select', 'multi_select', 'url', 'text') %}
+            {% if mode == 'edit' %}
+                {% if field.type == 'multi_select' %}
+                    {% set _ro_raw = item.get(field.name ~ '_displays') or item.get(field.name ~ '_titles') or '' %}
+                    {% set _ro_chips = _ro_raw.split('|||') if _ro_raw else [] %}
+                {% else %}
+                    {% set _ro_single = item.get(field.name) %}
+                    {% set _ro_chips = [_ro_single] if _ro_single else [] %}
+                {% endif %}
+                {% set _ro_chips = _ro_chips | select | list %}
+                {% if _ro_chips %}
+                <div class="form-group" id="field-group-{{ field.name }}">
+                    <label>{{ field.label }}</label>
+                    <div class="readonly-chip-tray" style="display:flex; flex-wrap:wrap; gap:6px; padding:8px 10px; border:1px solid #ddd; border-radius:4px; background:#f7f7f7; min-height:36px; align-items:center;">
+                        {% for _chip in _ro_chips %}
+                        <span class="chip" style="display:inline-block; padding:3px 10px; background:#e8eef5; border:1px solid #b8c5d6; border-radius:12px; font-size:0.9em; color:#2c3e50;">{{ _chip }}</span>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+            {% endif %}
+
+        {# Data source checkbox #}
+        {% elif field.type == 'data_source_checkbox' %}
+        <div class="form-group"
+             id="field-group-{{ field.name }}"
+             {% if field.get('condition_affects') %}data-condition-affects="true"{% endif %}
+             style="display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: none;">
+            <input type="hidden" name="{{ field.name }}" id="hidden-{{ field.name }}"
+                   value="{{ item.get(field.name, 'false') }}">
+            <input type="checkbox"
+                   id="checkbox-{{ field.name }}"
+                   {% if item.get(field.name) == 'true' %}checked{% endif %}
+                   onchange="document.getElementById('hidden-{{ field.name }}').value = this.checked ? 'true' : 'false'; updateConditionalFields();"
+                   style="width: 16px; height: 16px; cursor: pointer; accent-color: #4a90d9;">
+            <label for="checkbox-{{ field.name }}" style="margin: 0; cursor: pointer; font-weight: 500;">{{ field.label }}</label>
+        </div>
+
+        {# Regular field #}
+        {% else %}
+        <div class="form-group"
+             id="field-group-{{ field.name }}"
+             {% if field.get('condition') %}
+             data-condition-field="{{ field.condition.field }}"
+             data-condition-value="{{ field.condition.value }}"
+             {% endif %}
+             {% if field.get('condition_affects') %}
+             data-condition-affects="true"
+             {% endif %}>
+            <label {% if field.required %}class="required"{% endif %}>
+                {{ field.label }}
+            </label>
+
+            {% if field.type == 'date' %}
+                <input type="date"
+                       name="{{ field.name }}"
+                       value="{{ item.get(field.name, '') }}"
+                       {% if field.required %}required{% endif %}>
+                {% if field.get('help_text') %}
+                    <span class="help-text">{{ field.help_text }}</span>
+                {% endif %}
+
+            {% elif field.type == 'text' or field.type == 'url' %}
+                {# every editable text/url field gets a length cap.
+                   The field may override max_length; otherwise fall back to the
+                   per-type default (FIELD_MAXLEN_DEFAULTS, mirrored server-side
+                   in FormService). #}
+                <input type="{{ field.type }}"
+                       name="{{ field.name }}"
+                       value="{{ item.get(field.name, '') }}"
+                       {% if field.required %}required{% endif %}
+                       maxlength="{{ field.get('max_length', 2048 if field.type == 'url' else 255) }}"
+                       {% if field.get('pattern') %}pattern="{{ field.pattern }}"{% endif %}
+                       {% if field.get('inputmode') %}inputmode="{{ field.inputmode }}"{% endif %}
+                       {% if field.get('readonly') %}readonly style="background:#f0f0f0; color:#666; cursor:default;"{% endif %}>
+                {% if field.get('help_text') %}
+                    <span class="help-text">{{ field.help_text }}</span>
+                {% endif %}
+
+            {% elif field.type == 'password' %}
+                {# cap secret/token length (default 512 — API
+                   tokens can be long). pattern optional. #}
+                <input type="text"
+                       name="{{ field.name }}"
+                       value="{{ item.get(field.name, '') }}"
+                       {% if field.required and mode == 'add' %}required{% endif %}
+                       maxlength="{{ field.get('max_length', 512) }}"
+                       {% if field.get('pattern') %}pattern="{{ field.pattern }}"{% endif %}
+                       placeholder="{% if mode == 'edit' and item.get(field.name) %}Encrypted value shown below{% else %}Enter {{ field.label|lower }}{% endif %}">
+
+                {% if mode == 'edit' and field.get('encrypted') and item.get(field.name) %}
+                    <!-- Hidden field to track original encrypted value for change detection -->
+                    <input type="hidden"
+                           name="{{ field.name }}_original"
+                           value="{{ item.get(field.name, '') }}">
+                {% endif %}
+
+                {% if field.get('help_text_edit') and mode == 'edit' %}
+                    <span class="help-text">{{ field.help_text_edit }}</span>
+                {% elif field.get('help_text') and mode == 'add' %}
+                    <span class="help-text">{{ field.help_text }}</span>
+                {% endif %}
+
+            {% elif field.type == 'select' %}
+                {% if field.get('options') %}
+                    <select name="{{ field.name }}" {% if field.required %}required{% endif %}>
+                        {% if not field.get('no_empty_option') %}
+                        <option value="">{% if field.required %}-- Select --{% else %}None{% endif %}</option>
+                        {% endif %}
+                        {% for option in field.options %}
+                        <option value="{{ option }}"
+                                {% if item.get(field.name) == option %}selected{% endif %}>
+                            {{ option }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                {% elif field.get('source') %}
+                    <select name="{{ field.name }}" {% if field.required %}required{% endif %}>
+                        {% if not field.get('no_empty_option') %}
+                        <option value="">{% if field.required %}-- Select --{% else %}None{% endif %}</option>
+                        {% endif %}
+                        {% for option in select_options.get(field.name, []) %}
+                        {# For fields with store_esid, check the esid field; otherwise check the field itself #}
+                        {% if field.get('store_esid') %}
+                            {% set current_value = item.get(field.get('esid_field', field.name|replace('_title', '_esid')), '') %}
+                        {% else %}
+                            {% set current_value = item.get(field.name, '') %}
+                        {% endif %}
+                        {# prefer ``display`` when the options builder
+                           set one, matching the multi_select branch above. The
+                           submitted value is ``option.id`` (the esid), so a
+                           friendlier label cannot affect what is stored. Needed
+                           because same-login YouTube accounts share an
+                           identical ``title`` and were indistinguishable here. #}
+                        <option value="{{ option.id }}"
+                                {% if current_value == option.id %}selected{% endif %}>
+                            {{ option.display if option.display else option.title }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                {% endif %}
+
+            {# checkbox_group — a fixed set of static options rendered
+               as checkboxes. Each ticked box submits its value under the same
+               field name; FormService.process_form_data collects them into a
+               keyword list (empty selection → field cleared). The stored value
+               (``item[field.name]``) is the list of currently-checked values. #}
+            {% elif field.type == 'checkbox_group' %}
+                {# render each static option as a real checkbox tile.
+                   The checkbox itself inherits the global styled appearance
+                   (components.css input[type="checkbox"] — 16x16 box + check);
+                   do NOT set an inline width here, or width:auto collapses that
+                   appearance:none box to a thin line. The .form-group label
+                   base rule is display:block/bold, so each option label sets
+                   its own layout + weight to sit inline with its box. #}
+                {% set _checked = item.get(field.name) or [] %}
+                {% if _checked is string %}{% set _checked = [_checked] %}{% endif %}
+                <div class="checkbox-group" id="checkbox-group-{{ field.name }}"
+                     style="display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:10px 16px; padding:4px 0;">
+                    {% for option in field.options %}
+                    <label style="display:flex; align-items:center; gap:8px; margin:0; font-weight:var(--cs-font-weight-normal); color:var(--cs-text-primary); cursor:pointer;">
+                        <input type="checkbox"
+                               name="{{ field.name }}"
+                               value="{{ option.value }}"
+                               {% if option.value in _checked %}checked{% endif %}>
+                        <span>{{ option.label }}</span>
+                    </label>
+                    {% endfor %}
+                </div>
+                {% if field.get('help_text') %}
+                    <span class="help-text">{{ field.help_text }}</span>
+                {% endif %}
+
+            {% elif field.type == 'multi_select' and field.get('readonly_unless_superuser_or_agency') and not is_superuser and not is_agency_workspace %}
+                {# read-only chip view for non-superuser non-agency
+                   users. The team form's Organization field uses this so
+                   workspace-admin users see the org(s) they belong to as
+                   non-editable chips — they can create teams under those
+                   orgs but cannot reassign teams across orgs they don't
+                   belong to. The hidden inputs feed the same POST keys
+                   the legacy multi_select widget uses (``_esids`` /
+                   ``_titles`` pipe-delimited) so process_form_data and
+                   validate_required_fields work unchanged. #}
+                <div class="readonly-chip-tray" style="display:flex; flex-wrap:wrap; gap:6px; padding:8px 10px; border:1px solid #ddd; border-radius:4px; background:#f7f7f7; min-height:36px; align-items:center;">
+                    {# on the initial GET ``item`` is the stored doc
+                       (titles under ``field.name``); on a validation-error
+                       re-render ``item`` is the raw submitted form, where the
+                       read-only widget's data lives under the hidden POST keys
+                       ``{field.name}_titles`` / ``_esids`` instead. Fall back to
+                       those so an org owner's org pill survives the error
+                       re-render instead of collapsing to "No organization
+                       assigned" (which also showed the wrong escalation target). #}
+                    {% set _chip_titles = item.get(field.name, []) %}
+                    {% if not _chip_titles %}
+                        {% set _chip_titles = item.get(field.name ~ '_titles', []) %}
+                    {% endif %}
+                    {% if _chip_titles is string %}
+                        {% set _chip_titles = _chip_titles.split('|||') if _chip_titles else [] %}
+                    {% endif %}
+                    {% for _title in _chip_titles %}
+                        {% if _title %}
+                        <span class="chip" style="display:inline-block; padding:3px 10px; background:#e8eef5; border:1px solid #b8c5d6; border-radius:12px; font-size:0.9em; color:#2c3e50;">{{ _title }}</span>
+                        {% endif %}
+                    {% endfor %}
+                    {% if not _chip_titles or _chip_titles == [''] %}
+                        <span class="chip chip-empty" style="display:inline-block; padding:3px 10px; background:#fff3cd; border:1px solid #ffc107; border-radius:12px; font-size:0.9em; color:#856404;">No organization assigned — ask a workspace admin to add you to one.</span>
+                    {% endif %}
+                </div>
+                {% set _chip_esids = item.get(field.esid_field, []) %}
+                {% if not _chip_esids %}
+                    {% set _chip_esids = item.get(field.name ~ '_esids', []) %}
+                {% endif %}
+                {% if _chip_esids is string %}
+                    {% set _chip_esids = _chip_esids.split('|||') if _chip_esids else [] %}
+                {% endif %}
+                <input type="hidden"
+                       name="{{ field.name }}_esids"
+                       value="{{ _chip_esids|join('|||') if _chip_esids is iterable and _chip_esids is not string else _chip_esids }}">
+                <input type="hidden"
+                       name="{{ field.name }}_titles"
+                       value="{{ _chip_titles|join('|||') if _chip_titles is iterable and _chip_titles is not string else _chip_titles }}">
+
+            {% elif field.type == 'multi_select' %}
+                <div class="list-field-container" data-field-name="{{ field.name }}" data-multi-select="true" {% if field.get('value_field') %}data-value-field="{{ field.value_field }}"{% endif %}{% if field.get('display_format') %} data-has-display-format="true"{% endif %}>
+                    <div class="list-items-display" id="list-{{ field.name }}">
+                        <!-- Selected items will be dynamically added here -->
+                    </div>
+                    <div style="display: flex; gap: 10px; margin-top: 10px;">
+                        <select class="multi-select-dropdown" id="select-{{ field.name }}" style="flex: 1;">
+                            <option value="" data-title="">-- Select to add --</option>
+                            {% for option in select_options.get(field.name, []) %}
+                            <option value="{{ option.id }}"
+                                    data-title="{{ option.title }}"
+                                    {% if option.display %}data-display="{{ option.display }}"{% endif %}
+                                    {% if option.tooltip %}data-tooltip="{{ option.tooltip }}"{% endif %}
+                                    {% if field.get('value_field') %}data-value="{{ option.value }}"{% endif %}>
+                                {{ option.display if option.display else option.title }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <button type="button"
+                                class="btn btn-sm"
+                                onclick="addMultiSelectItem('{{ field.name }}')">Add</button>
+                    </div>
+                    <input type="hidden"
+                           name="{{ field.name }}_esids"
+                           id="hidden-esids-{{ field.name }}"
+                           value="{{ item[field.name ~ '_esids']|default('', true) }}">
+                    <input type="hidden"
+                           name="{{ field.name }}_titles"
+                           id="hidden-titles-{{ field.name }}"
+                           value="{{ item[field.name ~ '_titles']|default('', true) }}">
+                    {% if field.get('value_field') %}
+                    <input type="hidden"
+                           name="{{ field.name }}_values"
+                           id="hidden-values-{{ field.name }}"
+                           value="{{ item[field.name ~ '_values']|default('', true) }}">
+                    {% endif %}
+                    {% if field.get('display_format') %}
+                    <input type="hidden"
+                           id="hidden-displays-{{ field.name }}"
+                           value="{{ item[field.name ~ '_displays']|default('', true) }}">
+                    <input type="hidden"
+                           id="hidden-tooltips-{{ field.name }}"
+                           value="{{ item[field.name ~ '_tooltips']|default('', true) }}">
+                    {% endif %}
+                </div>
+
+            {% elif field.type == 'list' %}
+                <div class="list-field-container" data-field-name="{{ field.name }}" {% if field.get('numeric_only') %}data-numeric-only="true"{% endif %}>
+                    <div class="list-items-display" id="list-{{ field.name }}">
+                        <!-- Items will be dynamically added here -->
+                    </div>
+                    <div style="display: flex; gap: 10px; margin-top: 10px;">
+                        {# cap each list item's length (default 255);
+                           pattern optional (validated per item server-side). #}
+                        <input type="{% if field.get('numeric_only') %}number{% else %}text{% endif %}"
+                               class="list-input"
+                               id="input-{{ field.name }}"
+                               placeholder="Enter new item"
+                               maxlength="{{ field.get('max_length', 255) }}"
+                               {% if field.get('pattern') %}pattern="{{ field.pattern }}"{% endif %}
+                               {% if field.get('numeric_only') %}step="1" min="0"{% endif %}
+                               oninput="checkListDuplicate('{{ field.name }}')">
+                        <button type="button"
+                                class="btn btn-sm"
+                                id="btn-{{ field.name }}"
+                                onclick="addListItem('{{ field.name }}')">Add</button>
+                    </div>
+                    <textarea name="{{ field.name }}"
+                              id="textarea-{{ field.name }}"
+                              style="display: none;"
+                              {% if field.required %}required{% endif %}>{{ item.get(field.name, '') }}</textarea>
+                </div>
+                {% if field.get('help_text') %}
+                <span class="help-text">{{ field.help_text }}</span>
+                {% endif %}
+
+            {% elif field.type == 'textarea' %}
+                {# cap free-text length (default 2000). #}
+                <textarea name="{{ field.name }}"
+                          rows="4"
+                          maxlength="{{ field.get('max_length', 2000) }}"
+                          {% if field.required %}required{% endif %}>{{ item.get(field.name, '') }}</textarea>
+
+            {% elif field.type == 'logo' %}
+                {% set current_logo = item.get(field.name, '') %}
+                {% if mode == 'edit' and current_logo %}
+                <div id="current-logo-container-{{ field.name }}" style="margin-bottom: 10px;">
+                    <img src="/static/{{ current_logo }}"
+                         alt="Current logo"
+                         style="max-height: 80px; max-width: 220px; border: 1px solid #ddd; border-radius: 4px; padding: 4px; background: #fff;">
+                    <div style="margin-top: 6px;">
+                        <label style="font-weight: normal; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;">
+                            <input type="checkbox"
+                                   name="{{ field.name }}_remove"
+                                   value="1"
+                                   onchange="toggleLogoRemove('{{ field.name }}', this.checked)"
+                                   style="width: 14px; height: 14px;">
+                            Remove current logo
+                        </label>
+                    </div>
+                </div>
+                {% endif %}
+                <input type="file"
+                       name="{{ field.name }}_file"
+                       id="file-{{ field.name }}"
+                       accept=".jpg,.jpeg,.png"
+                       onchange="previewLogo('{{ field.name }}', this)"
+                       {% if mode == 'edit' and current_logo %}style="margin-top: 4px;"{% endif %}>
+                <div id="new-logo-preview-{{ field.name }}" style="display: none; margin-top: 8px;">
+                    <img id="new-logo-img-{{ field.name }}"
+                         alt="New logo preview"
+                         style="max-height: 80px; max-width: 220px; border: 1px solid #ddd; border-radius: 4px; padding: 4px; background: #fff;">
+                </div>
+                <span class="help-text">JPG or PNG, max 2 MB</span>
+            {% endif %}
+        </div>
+        {% endif %}{# end section_divider/checkbox/regular #}
+        {% endif %}{# end edit_only check #}
+        {% endif %}{# end  superuser_only gate #}
+        {% endfor %}
+
+    {# "Meta Ad Accounts" panel, on the Edit Facebook
+       Page form ONLY. Ads attach to Pages (a teammate's rule 9), so this is where
+       operators look for "which ad accounts do this page's ads run from".
+        moved it off the team form entirely at the team's request.
+
+       The LINKS themselves remain team-scoped (an ad account is owned by a
+       Meta Business Portfolio, not a page — rule 6), so what renders here is
+       the page's OWNING TEAM's effective-dated fb_ad_account_links, resolved
+       by team_ad_account_link_service.build_panel_for_page and labeled with
+       the team name. Operators with the Data Connectors permission
+       (ad_account_links.can_manage) get the manage controls; everyone else
+       sees the history read-only. #}
+    {% if mode == 'edit' and asset_type == 'facebook_pages' and ad_account_links %}
+    <div id="links-panel" style="background: var(--cs-bg-secondary); border: 1px solid var(--cs-border-default); border-radius: var(--cs-radius-s); padding: 14px 16px; margin-bottom: 18px;">
+        <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px;">
+            <div style="font-size: var(--cs-font-size-xs); font-weight: var(--cs-font-weight-bold); color: var(--cs-text-secondary); text-transform: uppercase; letter-spacing: 0.04em;">
+                Meta Ad Accounts
+                {# These are the OWNING TEAM's links, so name the team to keep
+                   it honest about what is being edited. #}
+                {% if ad_account_links.team_title %}
+                <span style="font-weight: var(--cs-font-weight-medium); text-transform: none; letter-spacing: 0; color: var(--cs-text-tertiary);">
+                    &middot; team {{ ad_account_links.team_title }}
+                </span>
+                {% endif %}
+            </div>
+            {% if ad_account_links.can_manage %}
+            <button type="button" class="btn btn-secondary btn-sm" id="add-toggle">Add link</button>
+            {% endif %}
+        </div>
+        {% if not ad_account_links.has_links %}
+        <div style="font-size: var(--cs-font-size-s); color: var(--cs-text-tertiary);">
+            No ad-account links recorded for this page's team.
+        </div>
+        {% else %}
+        {# the table scrolls horizontally inside this container rather
+           than stretching the panel.
+
+           Column widths are PIXEL minimums via `min-width` on each cell, not
+           percentages: percentages of a narrow table gave "CONNECTION" ~70px and
+           the 3-button actions column ~100px, so headers collided and the
+           buttons wrapped. Pixels sized to the actual content, with the table
+           free to grow past 100% and scroll, is what keeps columns from
+           overlapping. `table-layout: auto` is correct here now — the runaway
+           note is bounded by its own max-width + word-break instead.
+
+           Vertical rules (border-left) give the column delineation the flat
+           layout lacked. #}
+        <div style="overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 -2px;">
+        <table style="width: 100%; border-collapse: collapse; font-size: var(--cs-font-size-s);">
+            <thead>
+                <tr style="text-align: left; color: var(--cs-text-secondary); font-size: var(--cs-font-size-xs); text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid var(--cs-border-default);">
+                    <th style="padding: 4px 10px 6px 0; min-width: 150px; white-space: nowrap;">Ad account</th>
+                    <th style="padding: 4px 10px 6px; min-width: 140px; white-space: nowrap; border-left: 1px solid var(--cs-border-default);">Active window</th>
+                    <th style="padding: 4px 10px 6px; min-width: 90px; white-space: nowrap; border-left: 1px solid var(--cs-border-default);">Connection</th>
+                    <th style="padding: 4px 10px 6px; min-width: 70px; white-space: nowrap; border-left: 1px solid var(--cs-border-default);">Source</th>
+                    <th style="padding: 4px 10px 6px; min-width: 140px; white-space: nowrap; border-left: 1px solid var(--cs-border-default);">Note</th>
+                    {% if ad_account_links.can_manage %}<th style="padding: 4px 0 6px 10px; min-width: 175px; border-left: 1px solid var(--cs-border-default);"></th>{% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in ad_account_links.rows %}
+                <tr data-link-index="{{ row.link_index }}" data-ad-account-esid="{{ row.ad_account_esid }}"
+                    style="border-top: 1px solid var(--cs-border-default);{% if not row.is_open %} color: var(--cs-text-tertiary);{% endif %}">
+                    {# Account titles are user-supplied and the fb id is a 16-digit
+                       unbroken token, so both wrap; the id drops to its own line
+                       rather than fighting the title for width. #}
+                    <td style="padding: 6px 10px 6px 0; min-width: 150px; overflow-wrap: break-word; word-break: break-word;">
+                        <span style="{% if row.is_open %}font-weight: 600; color: var(--cs-text-heading);{% endif %}">{{ row.title or row.fb_ad_account_id or row.ad_account_esid }}</span>
+                        {% if row.fb_ad_account_id %}<span style="display: block; color: var(--cs-text-tertiary); font-size: var(--cs-font-size-xs);">{{ row.fb_ad_account_id }}</span>{% endif %}
+                    </td>
+                    <td style="padding: 6px 10px; min-width: 140px; white-space: nowrap; border-left: 1px solid var(--cs-border-default);">
+                        {{ row.start_date or '…' }} &rarr; {% if row.is_open %}<strong>current</strong>{% else %}{{ row.end_date }}{% endif %}
+                    </td>
+                    <td style="padding: 6px 10px; min-width: 90px; white-space: nowrap; border-left: 1px solid var(--cs-border-default);">{{ row.connection_status or ('&mdash;'|safe) }}</td>
+                    <td style="padding: 6px 10px; min-width: 70px; white-space: nowrap; border-left: 1px solid var(--cs-border-default);">{{ row.source or ('&mdash;'|safe) }}</td>
+                    {# `overflow-wrap: break-word` alone does NOT break a
+                       single long unbroken token; `word-break: break-word` does.
+                       The note carries reconciliation provenance
+                       ("update_v27-multi-account", "reconciliation"), so it
+                       stays — but max-width bounds it so one long note cannot widen
+                       the table. `title` surfaces the full text on hover. #}
+                    <td style="padding: 6px 10px; min-width: 140px; max-width: 260px; overflow-wrap: break-word; word-break: break-word; border-left: 1px solid var(--cs-border-default);"
+                        title="{{ row.note }}">{{ row.note }}</td>
+                    {% if ad_account_links.can_manage %}
+                    {# the actions column reserves 148px, enough for
+                       Edit + Close + trash on ONE line (open rows) with the trash's
+                       1px border clear of the panel edge. Sized in pixels, not a
+                       percentage: a percentage of a narrow table starved this
+                       column and the buttons wrapped to a second line.
+                       `nowrap` is safe now that the width is reserved, and the
+                       table scrolls rather than squeezing. #}
+                    <td style="padding: 6px 0 6px 10px; min-width: 175px; white-space: nowrap; text-align: right; border-left: 1px solid var(--cs-border-default);">
+                        <span style="display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px;">
+                            <button type="button" class="btn btn-secondary btn-sm edit-btn">Edit</button>
+                            {% if row.is_open %}
+                            <button type="button" class="btn btn-secondary btn-sm close-btn">Close</button>
+                            {% endif %}
+                            {# Same red trash affordance as the Asset Explorer list view
+                               (list.html .list-action-icon-danger — page-local CSS there,
+                               so the shared look is carried via inline styles here). #}
+                            <button type="button" class="delete-btn"
+                                    title="Delete this row (for erroneous entries — use Close to end an account's use)" aria-label="Delete link"
+                                    style="display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border-radius: var(--cs-radius-s); cursor: pointer; border: 1px solid var(--cs-error); color: var(--cs-error); background: var(--cs-bg-primary); flex: 0 0 auto;">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </span>
+                    </td>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>{# /overflow-x scroll container #}
+        {% endif %}
+        {% if ad_account_links.can_manage %}
+        <div id="add-form" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--cs-border-default);">
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: end;">
+                <label style="display: block; font-size: var(--cs-font-size-xs); color: var(--cs-text-secondary);">Ad account
+                    <select id="add-account" class="form-control" style="display: block; height: 36px; box-sizing: border-box; min-width: 220px;"><option value="">Loading…</option></select>
+                </label>
+                <label style="display: block; font-size: var(--cs-font-size-xs); color: var(--cs-text-secondary);">Start date (optional)
+                    <input type="date" id="add-start" class="form-control" style="display: block; height: 36px; box-sizing: border-box;">
+                </label>
+                <label style="display: block; font-size: var(--cs-font-size-xs); color: var(--cs-text-secondary);">Note (optional)
+                    <input type="text" id="add-note" class="form-control" style="display: block; height: 36px; box-sizing: border-box; min-width: 220px;" maxlength="500">
+                </label>
+                <button type="button" class="btn btn-primary btn-sm" id="add-save">Save link</button>
+            </div>
+        </div>
+        {# Close used to raise a browser-chrome dialog that forced the
+           user to hand-type YYYY-MM-DD. Inline form instead, mirroring the edit
+           form below, with a real date picker pre-filled to today (the previous
+           "blank = today" default, now visible and adjustable rather than
+           implied). The test for this pins the absence of that browser API by
+           name, so do not reintroduce it here even in a comment. #}
+        <div id="close-form" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--cs-border-default);">
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: end;">
+                <span style="font-size: var(--cs-font-size-s); color: var(--cs-text-heading); align-self: center;">
+                    Close <strong id="close-label"></strong>
+                </span>
+                <label style="display: block; font-size: var(--cs-font-size-xs); color: var(--cs-text-secondary);">End date
+                    <input type="date" id="close-end" class="form-control" style="display: block; height: 36px; box-sizing: border-box;">
+                </label>
+                <button type="button" class="btn btn-primary btn-sm" id="close-save">Close link</button>
+                <button type="button" class="btn btn-secondary btn-sm" id="close-cancel">Cancel</button>
+            </div>
+            <div style="margin-top: 8px; font-size: var(--cs-font-size-xs); color: var(--cs-text-tertiary);">
+                The team stops being credited with this account's ads after this date. The row stays in history — use the trash icon only for rows entered in error.
+            </div>
+        </div>
+        <div id="edit-form" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--cs-border-default);">
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: end;">
+                <span id="edit-label" style="font-size: var(--cs-font-size-s); color: var(--cs-text-heading); align-self: center;"></span>
+                <label style="display: block; font-size: var(--cs-font-size-xs); color: var(--cs-text-secondary);">Start date
+                    <input type="date" id="edit-start" class="form-control" style="display: block; height: 36px; box-sizing: border-box;">
+                </label>
+                <label style="display: block; font-size: var(--cs-font-size-xs); color: var(--cs-text-secondary);">End date (blank = current)
+                    <input type="date" id="edit-end" class="form-control" style="display: block; height: 36px; box-sizing: border-box;">
+                </label>
+                <label style="display: block; font-size: var(--cs-font-size-xs); color: var(--cs-text-secondary);">Note
+                    <input type="text" id="edit-note" class="form-control" style="display: block; height: 36px; box-sizing: border-box; min-width: 220px;" maxlength="500">
+                </label>
+                <button type="button" class="btn btn-primary btn-sm" id="edit-save">Save changes</button>
+                <button type="button" class="btn btn-secondary btn-sm" id="edit-cancel">Cancel</button>
+            </div>
+        </div>
+        <div id="links-error" style="display: none; margin-top: 10px; font-size: var(--cs-font-size-s); color: var(--cs-danger, #b91c1c);"></div>
+        <script nonce="{{ csp_nonce }}">
+        (function () {
+            var csrf = "{{ csrf_token if csrf_token is defined else '' }}";
+            // url_for-built so the nginx path prefix (/assets/...) is honored —
+            // a root-absolute '/data-connectors/...' 404s behind the proxy.
+            {# the edit endpoints are TEAM-keyed. On a team form that
+               is item_id; on a Facebook Page form item_id is the PAGE's esid,
+               so use the owning team's esid the panel resolved. Getting this
+               wrong would POST a page id as a team id. #}
+            var editUrlTemplate = {{ url_for('data_connectors.api_edit_team_ad_account_links', team_esid=(ad_account_links.team_esid or item_id), action='__ACTION__')|tojson }};
+            var optionsUrl = {{ url_for('data_connectors.api_wizard_options', asset_type='facebook_ad_accounts')|tojson }};
+            var errBox = document.getElementById('links-error');
+            function showError(msg) { errBox.textContent = msg; errBox.style.display = 'block'; }
+            function post(action, payload) {
+                errBox.style.display = 'none';
+                return fetch(editUrlTemplate.replace('__ACTION__', action), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+                    body: JSON.stringify(payload)
+                }).then(function (r) {
+                    return r.json().catch(function () { throw new Error('HTTP ' + r.status); });
+                }).then(function (body) {
+                    if (!body.success) { showError(body.error || 'The change could not be saved.'); return; }
+                    if (body.warnings && body.warnings.length) { alert(body.warnings.join('\n')); }
+                    location.reload();
+                }).catch(function (e) { showError('The change could not be saved (' + e.message + ').'); });
+            }
+
+            {# inline close form, replacing the old browser-chrome
+               dialog. Date defaults to today via a real picker, so the common
+               case is two clicks and no typing. #}
+            var closeForm = document.getElementById('close-form');
+            var closeEsid = null;
+            function hidePanelForms() {
+                closeForm.style.display = 'none';
+                document.getElementById('edit-form').style.display = 'none';
+                document.getElementById('add-form').style.display = 'none';
+            }
+            function todayIso() {
+                // Local date, not toISOString() — that is UTC and rolls the day
+                // early/late for users west/east of Greenwich.
+                var d = new Date();
+                return d.getFullYear() + '-' +
+                    String(d.getMonth() + 1).padStart(2, '0') + '-' +
+                    String(d.getDate()).padStart(2, '0');
+            }
+            document.querySelectorAll('.close-btn').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    var tr = btn.closest('tr');
+                    closeEsid = tr.getAttribute('data-ad-account-esid');
+                    document.getElementById('close-label').textContent =
+                        tr.querySelectorAll('td')[0].textContent.trim();
+                    document.getElementById('close-end').value = todayIso();
+                    hidePanelForms();
+                    closeForm.style.display = 'block';
+                });
+            });
+            document.getElementById('close-cancel') && document.getElementById('close-cancel').addEventListener('click', function () {
+                closeForm.style.display = 'none'; closeEsid = null;
+            });
+            document.getElementById('close-save') && document.getElementById('close-save').addEventListener('click', function () {
+                if (!closeEsid) { return; }
+                var endDate = document.getElementById('close-end').value;
+                if (!endDate) { showError('Pick an end date to close this link.'); return; }
+                post('close', { ad_account_esid: closeEsid, end_date: endDate });
+            });
+
+            document.querySelectorAll('.delete-btn').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    var tr = btn.closest('tr');
+                    var label = tr.querySelectorAll('td')[0].textContent.trim();
+                    if (!window.confirm('Delete the link row for "' + label + '"?\n\nDelete is for erroneous entries only — it removes this row from the team\'s history. To record that the team stopped using this account, use Close instead.')) { return; }
+                    post('delete', { link_index: parseInt(tr.getAttribute('data-link-index'), 10) });
+                });
+            });
+
+            var editForm = document.getElementById('edit-form');
+            var editIndex = null;
+            document.querySelectorAll('.edit-btn').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    var tr = btn.closest('tr');
+                    editIndex = parseInt(tr.getAttribute('data-link-index'), 10);
+                    var cells = tr.querySelectorAll('td');
+                    document.getElementById('edit-label').textContent = cells[0].textContent.trim();
+                    var window_ = cells[1].textContent.trim().split('→');
+                    var start = (window_[0] || '').trim();
+                    var end = (window_[1] || '').trim();
+                    document.getElementById('edit-start').value = /^\d{4}-\d{2}-\d{2}$/.test(start) ? start : '';
+                    document.getElementById('edit-end').value = /^\d{4}-\d{2}-\d{2}$/.test(end) ? end : '';
+                    document.getElementById('edit-note').value = cells[4].textContent.trim();
+                    hidePanelForms();
+                    editForm.style.display = 'block';
+                });
+            });
+            document.getElementById('edit-cancel') && document.getElementById('edit-cancel').addEventListener('click', function () {
+                editForm.style.display = 'none'; editIndex = null;
+            });
+            document.getElementById('edit-save') && document.getElementById('edit-save').addEventListener('click', function () {
+                if (editIndex === null) { return; }
+                post('update', {
+                    link_index: editIndex,
+                    start_date: document.getElementById('edit-start').value,
+                    end_date: document.getElementById('edit-end').value,
+                    note: document.getElementById('edit-note').value
+                });
+            });
+
+            var addForm = document.getElementById('add-form');
+            var accountsLoaded = false;
+            document.getElementById('add-toggle') && document.getElementById('add-toggle').addEventListener('click', function () {
+                var wasOpen = addForm.style.display === 'block';
+                hidePanelForms();
+                addForm.style.display = wasOpen ? 'none' : 'block';
+                if (addForm.style.display === 'block' && !accountsLoaded) {
+                    fetch(optionsUrl)
+                        .then(function (r) {
+                            return r.json().catch(function () { throw new Error('HTTP ' + r.status); });
+                        })
+                        .then(function (body) {
+                            if (!body.success) { throw new Error(body.error || 'request failed'); }
+                            var sel = document.getElementById('add-account');
+                            sel.innerHTML = '<option value="">— pick an ad account —</option>';
+                            (body.options || []).forEach(function (o) {
+                                var opt = document.createElement('option');
+                                opt.value = o.esid; opt.textContent = o.title;
+                                sel.appendChild(opt);
+                            });
+                            accountsLoaded = true;
+                        })
+                        .catch(function () { showError('Could not load the ad-account list.'); });
+                }
+            });
+            document.getElementById('add-save') && document.getElementById('add-save').addEventListener('click', function () {
+                var esid = document.getElementById('add-account').value;
+                if (!esid) { showError('Pick an ad account first.'); return; }
+                post('add', {
+                    ad_account_esid: esid,
+                    start_date: document.getElementById('add-start').value,
+                    note: document.getElementById('add-note').value
+                });
+            });
+        })();
+        </script>
+        {% endif %}
+    </div>
+    {% endif %}
+
+
+        <input type="hidden" name="oauth_redirect" id="oauth_redirect" value="">
+
+        {# three-action footer: Save (persist, stay on the form),
+           Save & Close (persist, return to the list — the legacy behavior),
+           Cancel. The hidden submit above the visible pair keeps
+           Enter-in-a-field meaning Save & Close (implicit submission uses
+           the FIRST submit button in DOM order). #}
+        <div style="display: flex; gap: 10px; margin-top: 30px;">
+            <button type="submit" name="save_action" value="save_close" style="display: none;" aria-hidden="true" tabindex="-1"></button>
+            <button type="submit" name="save_action" value="save" class="btn btn-secondary">
+                Save
+            </button>
+            <button type="submit" name="save_action" value="save_close" class="btn btn-success">
+                Save &amp; Close
+            </button>
+            {% if asset_type == 'facebook_app_users' %}
+            <button type="button" class="btn btn-primary" onclick="submitWithOAuth()">
+                Authorize via OAuth
+            </button>
+            {% endif %}
+            {% if request.args.get('from_tree') == 'true' %}
+            <a href="{{ url_for('index') }}?refresh=true" class="btn btn-secondary">Cancel</a>
+            {% else %}
+            <a href="{{ url_for('list_assets', asset_type=asset_type) }}" class="btn btn-secondary">Cancel</a>
+            {% endif %}
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script nonce="{{ csp_nonce }}">
+// Initialize conditional fields, list fields, and multi-select fields
+document.addEventListener('DOMContentLoaded', function() {
+    updateConditionalFields();
+    initializeListFields();
+    initializeMultiSelectFields();
+
+    // Add event listeners to fields that affect conditions
+    document.querySelectorAll('[data-condition-affects="true"]').forEach(function(group) {
+        var select = group.querySelector('select');
+        if (select) {
+            select.addEventListener('change', function() {
+                updateConditionalFields();
+            });
+        }
+        // Checkboxes use inline onchange, but also wire up here for robustness
+        var checkbox = group.querySelector('input[type="checkbox"]');
+        if (checkbox) {
+            checkbox.addEventListener('change', function() {
+                var hidden = document.getElementById('hidden-' + group.id.replace('field-group-', ''));
+                if (hidden) {
+                    hidden.value = this.checked ? 'true' : 'false';
+                }
+                updateConditionalFields();
+            });
+        }
+    });
+
+    // Prevent Enter key from submitting the form
+    var form = document.getElementById('asset-form');
+    if (form) {
+        // Track which element triggered the submission
+        var submitTrigger = null;
+
+        // Add click listeners to all submit buttons
+        var submitButtons = form.querySelectorAll('button[type="submit"], button:not([type])');
+        submitButtons.forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                submitTrigger = 'button';
+            });
+        });
+
+        // Prevent Enter key from triggering form submission
+        form.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.keyCode === 13) {
+                // Allow Enter in textareas only
+                if (e.target.tagName === 'TEXTAREA') {
+                    return true;
+                }
+                // For all other elements, prevent default and stop propagation
+                console.log('Enter key pressed, blocking default behavior');
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                return false;
+            }
+        });
+
+        // Prevent Enter keypress event as well (belt and suspenders)
+        form.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' || e.keyCode === 13) {
+                if (e.target.tagName !== 'TEXTAREA') {
+                    console.log('Enter keypress detected, blocking');
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    return false;
+                }
+            }
+        });
+
+        // Intercept ALL form submissions
+        form.addEventListener('submit', function(e) {
+            console.log('Form submit event, trigger:', submitTrigger);
+
+            // Only allow submission if triggered by button click
+            if (submitTrigger !== 'button') {
+                console.log('Blocking submit - not triggered by button click');
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                return false;
+            }
+
+            console.log('Allowing submit - button was clicked');
+
+            // a value left selected in a multi-select dropdown
+            // without clicking Add LOOKS committed but never reaches the
+            // hidden fields the POST is built from — so "select then Save"
+            // failed required-field validation with the choice visibly on
+            // screen. Commit any pending selection before the POST builds.
+            document.querySelectorAll('[data-multi-select="true"]').forEach(function(msContainer) {
+                const pendingSelect = document.getElementById('select-' + msContainer.dataset.fieldName);
+                if (pendingSelect && pendingSelect.value) {
+                    addMultiSelectItem(msContainer.dataset.fieldName);
+                }
+            });
+
+            // Reset trigger for next time
+            submitTrigger = null;
+        }, true); // Use capture phase to catch early
+
+        // Reset trigger on any non-submit action
+        form.addEventListener('click', function(e) {
+            if (!e.target.matches('button[type="submit"], button:not([type])')) {
+                submitTrigger = null;
+            }
+        });
+    }
+});
+
+function updateConditionalFields() {
+    document.querySelectorAll('[data-condition-field]').forEach(function(group) {
+        var conditionField = group.dataset.conditionField;
+        var conditionValue = group.dataset.conditionValue;
+        var fieldElement = document.querySelector('[name="' + conditionField + '"]');
+
+        if (fieldElement) {
+            // Check if the condition field's own group is visible (handles cascaded conditions)
+            var conditionFieldGroup = document.getElementById('field-group-' + conditionField);
+            var conditionGroupVisible = !conditionFieldGroup || !conditionFieldGroup.classList.contains('hidden');
+
+            var meetsCondition = conditionGroupVisible && (fieldElement.value === conditionValue);
+
+            if (meetsCondition) {
+                group.classList.remove('hidden');
+                // Re-enable required validation
+                var inputs = group.querySelectorAll('input, select, textarea');
+                inputs.forEach(function(input) {
+                    if (input.dataset.wasRequired === 'true') {
+                        input.required = true;
+                    }
+                });
+            } else {
+                group.classList.add('hidden');
+                // Disable required validation and clear values
+                var inputs = group.querySelectorAll('input, select, textarea');
+                inputs.forEach(function(input) {
+                    if (input.required) {
+                        input.dataset.wasRequired = 'true';
+                        input.required = false;
+                    }
+                    // Don't clear the value - let the server handle it
+                });
+            }
+        }
+    });
+}
+
+// List field management functions
+function initializeListFields() {
+    document.querySelectorAll('.list-field-container').forEach(function(container) {
+        // Skip multi-select containers - they're handled by initializeMultiSelectFields
+        if (container.dataset.multiSelect === 'true') {
+            return;
+        }
+
+        const fieldName = container.dataset.fieldName;
+        const textarea = document.getElementById('textarea-' + fieldName);
+        if (!textarea) {
+            return;  // Safety check
+        }
+        const value = textarea.value.trim();
+
+        if (value) {
+            // Split by newline first, then by comma for legacy data
+            let items = value.split('\n').filter(item => item.trim());
+            // If only one item and it contains commas, split by comma
+            if (items.length === 1 && items[0].includes(',')) {
+                items = items[0].split(',').map(s => s.trim()).filter(s => s);
+            }
+            items.forEach(item => renderListItem(fieldName, item.trim()));
+        }
+
+        // Note: Enter key handler removed - users must click the Add button
+    });
+}
+
+function checkListDuplicate(fieldName) {
+    const input = document.getElementById('input-' + fieldName);
+    const button = document.getElementById('btn-' + fieldName);
+    const value = input.value.trim();
+
+    if (!value) {
+        button.disabled = false;
+        button.style.opacity = '1';
+        return;
+    }
+
+    // Check if value already exists in the list
+    const container = document.getElementById('list-' + fieldName);
+    const existingItems = Array.from(container.querySelectorAll('.list-item span')).map(span => span.textContent.toLowerCase());
+    const isDuplicate = existingItems.includes(value.toLowerCase());
+
+    if (isDuplicate) {
+        button.disabled = true;
+        button.style.opacity = '0.5';
+        button.style.cursor = 'not-allowed';
+    } else {
+        button.disabled = false;
+        button.style.opacity = '1';
+        button.style.cursor = 'pointer';
+    }
+}
+
+function addListItem(fieldName) {
+    const input = document.getElementById('input-' + fieldName);
+    const value = input.value.trim();
+
+    if (!value) return;
+
+    // Double-check for duplicates (case-insensitive)
+    const container = document.getElementById('list-' + fieldName);
+    const existingItems = Array.from(container.querySelectorAll('.list-item span')).map(span => span.textContent.toLowerCase());
+    if (existingItems.includes(value.toLowerCase())) {
+        return;
+    }
+
+    renderListItem(fieldName, value);
+    updateTextarea(fieldName);
+    input.value = '';
+    input.focus();
+
+    // Re-enable button after clearing input
+    const button = document.getElementById('btn-' + fieldName);
+    button.disabled = false;
+    button.style.opacity = '1';
+    button.style.cursor = 'pointer';
+}
+
+function renderListItem(fieldName, value) {
+    const container = document.getElementById('list-' + fieldName);
+    const itemDiv = document.createElement('div');
+    itemDiv.className = 'list-item';
+    itemDiv.style.cssText = 'display: flex; align-items: center; gap: 10px; padding: 8px; background: #f8f9fa; border-radius: 4px; margin-bottom: 5px;';
+
+    const textSpan = document.createElement('span');
+    textSpan.style.cssText = 'flex: 1;';
+    textSpan.textContent = value;
+
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.className = 'btn btn-sm';
+    editBtn.textContent = 'Edit';
+    editBtn.style.cssText = 'padding: 4px 8px; font-size: 12px;';
+    editBtn.onclick = function() {
+        editListItem(itemDiv, textSpan, fieldName);
+    };
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'btn btn-sm btn-danger';
+    deleteBtn.textContent = 'Remove';
+    deleteBtn.style.cssText = 'padding: 4px 8px; font-size: 12px;';
+    deleteBtn.onclick = function() {
+        itemDiv.remove();
+        // Use setTimeout to ensure DOM is updated before reading
+        setTimeout(function() {
+            updateTextarea(fieldName);
+            // Re-check duplicate status after removing item
+            checkListDuplicate(fieldName);
+        }, 0);
+    };
+
+    itemDiv.appendChild(textSpan);
+    itemDiv.appendChild(editBtn);
+    itemDiv.appendChild(deleteBtn);
+    container.appendChild(itemDiv);
+}
+
+function editListItem(itemDiv, textSpan, fieldName) {
+    const currentValue = textSpan.textContent;
+    const container = document.querySelector('.list-field-container[data-field-name="' + fieldName + '"]');
+    const isNumericOnly = container && container.dataset.numericOnly === 'true';
+
+    const input = document.createElement('input');
+    input.type = isNumericOnly ? 'number' : 'text';
+    input.value = currentValue;
+    input.style.cssText = 'flex: 1; padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px;';
+
+    if (isNumericOnly) {
+        input.step = '1';
+        input.min = '0';
+    }
+
+    // Replace text span with input
+    textSpan.style.display = 'none';
+
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.className = 'btn btn-sm btn-success';
+    saveBtn.textContent = 'Save';
+    saveBtn.style.cssText = 'padding: 4px 8px; font-size: 12px;';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'btn btn-sm btn-secondary';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.style.cssText = 'padding: 4px 8px; font-size: 12px;';
+
+    // Save function
+    const saveEdit = function() {
+        const newValue = input.value.trim();
+        if (newValue) {
+            textSpan.textContent = newValue;
+            finishEdit();
+            updateTextarea(fieldName);
+            // Re-check duplicate status after editing item
+            checkListDuplicate(fieldName);
+        }
+    };
+
+    // Cancel function
+    const cancelEdit = function() {
+        finishEdit();
+    };
+
+    // Cleanup function
+    const finishEdit = function() {
+        input.remove();
+        saveBtn.remove();
+        cancelBtn.remove();
+        textSpan.style.display = '';
+        // Show original buttons again
+        itemDiv.querySelectorAll('button').forEach(btn => btn.style.display = '');
+    };
+
+    // Handle Escape key to cancel
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            cancelEdit();
+        }
+    });
+
+    saveBtn.onclick = saveEdit;
+    cancelBtn.onclick = cancelEdit;
+
+    // Hide original buttons (Edit and Remove)
+    itemDiv.querySelectorAll('button').forEach(btn => btn.style.display = 'none');
+
+    // Add input and new buttons
+    itemDiv.insertBefore(input, textSpan);
+    itemDiv.appendChild(saveBtn);
+    itemDiv.appendChild(cancelBtn);
+    input.focus();
+    input.select();
+}
+
+function updateTextarea(fieldName) {
+    const container = document.getElementById('list-' + fieldName);
+    const items = Array.from(container.querySelectorAll('.list-item span')).map(span => span.textContent);
+    const textarea = document.getElementById('textarea-' + fieldName);
+
+    // If no items, set to empty string explicitly
+    if (items.length === 0) {
+        textarea.value = '';
+    } else {
+        textarea.value = items.join('\n');
+    }
+}
+
+// Multi-select field management functions
+function initializeMultiSelectFields() {
+    console.log('[initializeMultiSelectFields] Starting initialization');
+    document.querySelectorAll('[data-multi-select="true"]').forEach(function(container) {
+        const fieldName = container.dataset.fieldName;
+        const hasValueField = container.dataset.valueField ? true : false;
+        console.log('[initializeMultiSelectFields] Processing field:', fieldName, 'hasValueField:', hasValueField);
+
+        const esidsInput = document.getElementById('hidden-esids-' + fieldName);
+        const titlesInput = document.getElementById('hidden-titles-' + fieldName);
+        const valuesInput = hasValueField ? document.getElementById('hidden-values-' + fieldName) : null;
+        const displaysInput = document.getElementById('hidden-displays-' + fieldName);
+        const tooltipsInput = document.getElementById('hidden-tooltips-' + fieldName);
+
+        if (!esidsInput || !titlesInput) {
+            console.error('[initializeMultiSelectFields] Missing hidden inputs for:', fieldName);
+            return;
+        }
+
+        // Load existing selections from item data
+        const esidsValue = esidsInput.value;
+        const titlesValue = titlesInput.value;
+        const valuesValue = valuesInput ? valuesInput.value : '';
+        const displaysValue = displaysInput ? displaysInput.value : '';
+        const tooltipsValue = tooltipsInput ? tooltipsInput.value : '';
+
+        console.log('[initializeMultiSelectFields] Field:', fieldName);
+        console.log('  - esidsValue:', esidsValue);
+        console.log('  - titlesValue:', titlesValue);
+        console.log('  - valuesValue:', valuesValue);
+
+        if (titlesValue) {
+            // Don't filter esids - empty strings are valid (for legacy data without ESIDs)
+            let esids = esidsValue ? esidsValue.split('|||') : [];
+            let titles = titlesValue.split('|||').filter(t => t.trim());
+            // Legacy data: if single title contains commas, split by comma
+            if (titles.length === 1 && titles[0].includes(',')) {
+                titles = titles[0].split(',').map(s => s.trim()).filter(s => s);
+                // Reset esids since they don't match the split titles
+                if (esids.length === 1) esids = titles.map(() => '');
+            }
+            const values = valuesValue ? valuesValue.split('|||') : [];
+            // displays/tooltips arrays are 1:1 with esids, NOT filtered (so
+            // an empty entry stays empty rather than shifting indices).
+            const displays = displaysValue ? displaysValue.split('|||') : [];
+            const tooltips = tooltipsValue ? tooltipsValue.split('|||') : [];
+
+            console.log('  - Split esids:', esids);
+            console.log('  - Split titles:', titles);
+            console.log('  - Split values:', values);
+
+            // Iterate based on titles length (titles are required, esids may be empty)
+            for (let i = 0; i < titles.length; i++) {
+                if (titles[i]) {
+                    const esid = esids[i] || '';  // Handle undefined/empty ESIDs
+                    const value = values[i] || '';
+                    const display = displays[i] || '';
+                    const tooltip = tooltips[i] || '';
+                    console.log('  - Rendering item:', esid, titles[i], value);
+                    renderMultiSelectItem(fieldName, esid, titles[i], value, display, tooltip);
+
+                    // Hide the already-selected option from dropdown
+                    const select = document.getElementById('select-' + fieldName);
+                    if (select) {
+                        for (let j = 0; j < select.options.length; j++) {
+                            // Match by ESID if available, otherwise match by title
+                            const matchByEsid = esid && select.options[j].value === esid;
+                            const matchByTitle = !esid && select.options[j].dataset.title === titles[i];
+                            if (matchByEsid || matchByTitle) {
+                                select.options[j].style.display = 'none';
+                                select.options[j].disabled = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            console.log('  - No existing values to load');
+        }
+    });
+    console.log('[initializeMultiSelectFields] Initialization complete');
+}
+
+function addMultiSelectItem(fieldName) {
+    const select = document.getElementById('select-' + fieldName);
+    const selectedOption = select.options[select.selectedIndex];
+
+    // Don't add if no option selected
+    if (!selectedOption || !selectedOption.value) {
+        return;
+    }
+
+    const esid = selectedOption.value;
+    const title = selectedOption.dataset.title || selectedOption.text;
+    const value = selectedOption.dataset.value || '';
+    const display = selectedOption.dataset.display || '';
+    const tooltip = selectedOption.dataset.tooltip || '';
+
+    // Check if already added (this shouldn't happen now with hidden options, but keep as safety)
+    const container = document.getElementById('list-' + fieldName);
+    const existing = Array.from(container.querySelectorAll('.list-item')).find(item =>
+        item.dataset.esid === esid
+    );
+
+    if (existing) {
+        return;
+    }
+
+    renderMultiSelectItem(fieldName, esid, title, value, display, tooltip);
+    updateMultiSelectHiddenFields(fieldName);
+
+    // Hide the selected option from dropdown
+    selectedOption.style.display = 'none';
+    selectedOption.disabled = true;
+
+    // Reset dropdown to first visible option
+    for (let i = 0; i < select.options.length; i++) {
+        if (select.options[i].style.display !== 'none' && !select.options[i].disabled) {
+            select.selectedIndex = i;
+            break;
+        }
+    }
+}
+
+function renderMultiSelectItem(fieldName, esid, title, value, display, tooltip) {
+    const container = document.getElementById('list-' + fieldName);
+    const itemDiv = document.createElement('div');
+    itemDiv.className = 'list-item';
+    itemDiv.dataset.esid = esid;
+    itemDiv.dataset.title = title;
+    if (value) {
+        itemDiv.dataset.value = value;
+    }
+    itemDiv.style.cssText = 'display: flex; align-items: center; gap: 10px; padding: 8px; background: #f8f9fa; border-radius: 4px; margin-bottom: 5px;';
+
+    const textSpan = document.createElement('span');
+    textSpan.style.cssText = 'flex: 1;';
+    // When the field has a display_format, the chip shows the display value
+    // (e.g. fb_page_slug) and surfaces the rest of the source doc via a
+    // hover tooltip. Without display_format, fall back to the title.
+    textSpan.textContent = display || title;
+    if (tooltip) {
+        textSpan.title = tooltip;
+        textSpan.style.cssText += ' text-decoration: underline dotted #888; text-underline-offset: 3px; cursor: help;';
+    }
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'btn btn-sm btn-danger';
+    deleteBtn.textContent = 'Remove';
+    deleteBtn.style.cssText = 'padding: 4px 8px; font-size: 12px;';
+    deleteBtn.onclick = function() {
+        // Show the option back in the dropdown
+        const select = document.getElementById('select-' + fieldName);
+        for (let i = 0; i < select.options.length; i++) {
+            // Match by ESID if available, otherwise match by title
+            const matchByEsid = esid && select.options[i].value === esid;
+            const matchByTitle = !esid && select.options[i].dataset.title === title;
+            if (matchByEsid || matchByTitle) {
+                select.options[i].style.display = '';
+                select.options[i].disabled = false;
+                break;
+            }
+        }
+
+        itemDiv.remove();
+        updateMultiSelectHiddenFields(fieldName);
+    };
+
+    itemDiv.appendChild(textSpan);
+    itemDiv.appendChild(deleteBtn);
+    container.appendChild(itemDiv);
+}
+
+function submitWithOAuth() {
+    document.getElementById('oauth_redirect').value = '1';
+    document.querySelector('#asset-form button[type="submit"]').click();
+}
+
+function previewLogo(fieldName, input) {
+    const previewDiv = document.getElementById('new-logo-preview-' + fieldName);
+    const previewImg = document.getElementById('new-logo-img-' + fieldName);
+    if (input.files && input.files[0]) {
+        const file = input.files[0];
+        if (file.size > 2 * 1024 * 1024) {
+            alert('File size exceeds 2 MB. Please choose a smaller file.');
+            input.value = '';
+            previewDiv.style.display = 'none';
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            previewImg.src = e.target.result;
+            previewDiv.style.display = 'block';
+        };
+        reader.readAsDataURL(file);
+    } else {
+        previewDiv.style.display = 'none';
+    }
+}
+
+function toggleLogoRemove(fieldName, removing) {
+    const fileInput = document.getElementById('file-' + fieldName);
+    const newPreview = document.getElementById('new-logo-preview-' + fieldName);
+    if (removing) {
+        fileInput.value = '';
+        fileInput.disabled = true;
+        newPreview.style.display = 'none';
+    } else {
+        fileInput.disabled = false;
+    }
+}
+
+function updateMultiSelectHiddenFields(fieldName) {
+    const container = document.getElementById('list-' + fieldName);
+    const items = Array.from(container.querySelectorAll('.list-item'));
+
+    const esids = items.map(item => item.dataset.esid);
+    const titles = items.map(item => item.dataset.title);
+    const values = items.map(item => item.dataset.value || '');
+
+    const esidsInput = document.getElementById('hidden-esids-' + fieldName);
+    const titlesInput = document.getElementById('hidden-titles-' + fieldName);
+    const valuesInput = document.getElementById('hidden-values-' + fieldName);
+
+    esidsInput.value = esids.join('|||');
+    titlesInput.value = titles.join('|||');
+    if (valuesInput) {
+        valuesInput.value = values.join('|||');
+    }
+}
+</script>
+{% endblock %}

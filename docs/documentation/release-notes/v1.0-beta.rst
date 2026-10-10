@@ -1,0 +1,235 @@
+.. _v1.0-beta:
+
+v1.0 — May 2026
+================
+
+Release date: May 2026
+
+This is the general availability release of **Kavanah Analytics**, Kavanah Media's digital
+engagement analytics platform. v1.0 delivers the core data aggregation, dashboard
+viewing, and dashboard building capabilities on the existing self-hosted infrastructure.
+
+----
+
+What's New
+----------
+
+**ECharts Dashboard Builder**
+
+A no-code, drag-and-drop visual dashboard builder powered by Apache ECharts.
+Users can create custom charts by dragging data fields onto a canvas, configure
+aggregations and filters, and save dashboards for the whole team.
+
+See :doc:`../dashboards/dashboard-builder` for full documentation.
+
+**Multi-Source Trend Line Charts**
+
+A new chart type in the Dashboard Builder that overlays metrics from multiple
+platforms on a single date-histogram chart. Compare Facebook Reach, Google Clicks,
+and YouTube Views on one timeline.
+
+**Leaflet Map Dashboard**
+
+Geographic reach visualisation using an interactive Leaflet.js map. Shows
+engagement or reach data as dots on a world map, useful for understanding
+the geographic distribution of your audience.
+
+**Two-Factor Authentication (TOTP + YubiKey)**
+
+2FA support for every user account. Admin enables 2FA for a user; the
+user picks **TOTP** (any standard authenticator app — Google
+Authenticator, Authy, 1Password, etc.) or **YubiKey** (hardware key
+via Yubico OTP) themselves on next login. Deployments enforce 2FA for
+all logins by default via the ``ENFORCE_MFA`` config flag.
+
+See :doc:`../management-console/two-factor-auth`.
+
+**Permission-based Management Console**
+
+Replaces the static ``asset_admin`` / ``org_admin`` role gate with a
+fine-grained permission system. Each Management Console page (Asset
+Explorer, Data Explorer, User Management, Dashboard Builder, Imports,
+etc.) is gated by an ``mc_*`` permission that can be granted to any
+custom role from User Management → Roles. ``asset_admin`` and
+``superuser`` carry every ``mc_*`` permission by default.
+
+See :doc:`../management-console/roles-and-permissions`.
+
+**Role-Based Organisation and Team Filtering**
+
+Automatic data isolation based on Elasticsearch security roles. Users
+with ``org_*`` or ``team_*`` roles see only their organisation's data
+across all dashboards — enforced server-side, not relying on
+client-side filtering.
+
+**Data Explorer (Claude-powered NLQ)**
+
+A natural-language query assistant that translates plain-English
+questions into Elasticsearch queries and renders the results as
+charts, tables, or raw ES queries. Supports both Anthropic API and
+AWS Bedrock as the model provider, with Haiku and Sonnet selectable
+per-query. Includes recent-query history, saved-report bundling,
+Excel/PDF export, and per-day usage tracking.
+
+See :doc:`../guide-data-explorer/overview`.
+
+**Public Impact Report URLs**
+
+Eligible Digital Impact Reports can be published to a unique public
+URL — anyone with the link can open the report without a Kavanah
+login, with data scoped server-side to the report's assigned
+organisation or team. Reports can be regenerated (rotates the URL) or
+unpublished at any time.
+
+See :doc:`../guide-dashboards/sharing-reports`.
+
+**Self-service registration**
+
+When ``REGISTRATION_ENABLED=true``, end users can sign up at
+``/register``, verify their email, and wait for an admin to approve
+the request from User Management → Registrations. Off by default on
+managed deployments; useful for self-hosted instances.
+
+**Data Connectors wizard**
+
+Step-by-step guided setup for Facebook (Account → App → App User →
+Pages), Echo, and Chatwoot integrations. Replaces the manual
+Asset-Explorer chain for these platforms while keeping that path
+available for editing.
+
+**Maintenance Alert banner**
+
+Superusers can publish a deployment-wide alert from User Management →
+Settings — the banner shows above every authenticated page until the
+admin hides it.
+
+**Asset CSV Bulk Import**
+
+Import organisations, teams, and platform assets in bulk via CSV upload.
+Supports all major asset types with field validation and conflict detection.
+
+**Backup and Restore**
+
+Create and restore point-in-time backups of all asset data (organisations, teams,
+credentials, dashboard configs, MFA settings). Backups are stored as tar.gz archives
+on the server.
+
+See :doc:`../management-console/backup-restore`.
+
+**Platform Availability Indicators**
+
+The Dashboards page now shows green/grey availability dots per platform tab,
+showing at a glance which platforms have data for the currently selected organisation
+and team. The check runs automatically when the filter changes.
+
+**Primary vs. Partnership Filter Modes**
+
+The organisation/team filter on the Dashboards page supports three modes:
+*All*, *Primary*, and *Partnerships* — for users who manage organisations with
+shared-services teams that span multiple client relationships.
+
+----
+
+Supported Data Sources
+-----------------------
+
+v1.0 supports importing data from the following platforms:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 35 40
+
+   * - Platform
+     - Authentication
+     - Data available
+   * - **Facebook Ads**
+     - OAuth2 user token (via Facebook App)
+     - Ad insights: spend, reach, impressions, clicks, conversions by campaign/ad set/ad
+   * - **Facebook Pages**
+     - OAuth2 user token
+     - Organic reach, engagement, fan growth
+   * - **Instagram**
+     - OAuth2 via Facebook App
+     - Reach, impressions, engagement by post and story
+   * - **Google Ads**
+     - Service account JSON
+     - Campaign performance: spend, clicks, impressions, conversions
+   * - **Google Analytics 4**
+     - Service account JSON
+     - Sessions, users, engagement metrics, traffic sources
+   * - **YouTube**
+     - OAuth2 user token
+     - Views, watch time, subscribers, video-level performance
+   * - **Echo**
+     - API key
+     - Conversation counts, response times, resolution rates
+   * - **Chatwoot**
+     - API key
+     - Conversation counts, response times, daily aggregate insights
+   * - **Disciple Tools**
+     - Direct ES ingestion (no import UI)
+     - Contact pipeline metrics
+
+----
+
+Known Limitations
+-----------------
+
+The following limitations are known in v1.0. They are tracked as backlog items
+for future releases.
+
+**No OpenAPI specification**
+   The REST API does not yet have a formal OpenAPI 3.0 specification. The API
+   reference in this documentation is manually authored from source code. A Swagger
+   spec will be generated as part of Task T-22.
+
+**Disciple Tools: no import UI**
+   Disciple Tools data is ingested directly into Elasticsearch without using the
+   standard Import Data page. Contact Kavanah Media for setup instructions.
+
+**Dashboard Builder: no stacked bar or scatter plot**
+   The Dashboard Builder does not yet support stacked bar charts or scatter plots.
+   These chart types are planned for Dashboard Builder v2 in Phase 2.
+
+**Enterprise white-label branding not available in v1.0**
+   White-label branding (custom logos, colour schemes, domain) is an Enterprise
+   tier feature planned for Phase 3 (Q4 2026).
+
+**Automated weekly reports deferred to v1.1**
+   The automated email reporting feature described in :doc:`../dashboards/automated-reporting`
+   is a Pro tier feature planned for Phase 2. It is not available in v1.0.
+
+**No Stripe billing integration**
+   Subscription billing via Stripe is planned for Phase 2. Users are provisioned
+   manually by the Kavanah Media team.
+
+**Single-node Elasticsearch only**
+   Beta v1.0 runs on a single-node Elasticsearch cluster. Index health may show
+   ``yellow`` (unallocated replica shards) — this is expected and harmless on a
+   single-node setup. Multi-node clustering is planned for the AWS production deployment.
+
+----
+
+Access
+------
+
+Kavanah Analytics v1.0 is available by invitation. To request access:
+
+- Contact Kavanah Media at the address provided in your onboarding communication
+- Specify your organisation name and the subscription tier you need
+
+----
+
+Upgrade Notes
+-------------
+
+Beta v1.0 is the initial release — there is no upgrade path from a prior version.
+
+For future upgrades, the standard procedure is:
+
+1. Create a backup (``POST /api/backup/create``)
+2. Pull the latest code (``git pull origin main``)
+3. Restart the gunicorn workers
+4. Run any database migrations if noted in the release notes
+
+Specific migration steps will be documented in future release notes.

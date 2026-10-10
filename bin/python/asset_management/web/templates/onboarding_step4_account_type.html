@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Step 4 — Account type · Kavanah Analytics</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/cloudscape.css') }}">
+    <style>
+        body {
+            background: var(--cs-bg-page);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 84px 20px 40px;
+        }
+        .login-topbar {
+            position: fixed; top: 0; left: 0; right: 0;
+            height: 56px;
+            background: var(--cs-nav-bg);
+            display: flex; align-items: center;
+            padding: 0 24px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+            z-index: 10;
+        }
+        .login-topbar-logo { height: 24px; width: auto; margin-right: 12px; }
+        .login-topbar-title { font-size: 17px; font-weight: 700; color: #FFFFFF; }
+
+        .wizard-shell { width: 100%; max-width: 640px; }
+
+        .card {
+            background: var(--cs-bg-primary);
+            border: 1px solid var(--cs-border-default);
+            border-radius: var(--cs-radius-l);
+            box-shadow: var(--cs-shadow-m);
+            padding: 36px 36px 28px;
+        }
+
+        .eyebrow {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 11px; font-weight: 600;
+            letter-spacing: 0.08em; text-transform: uppercase;
+            color: var(--cs-text-secondary);
+            margin-bottom: 8px;
+        }
+        .wizard-title {
+            font-size: 24px; font-weight: 700;
+            color: var(--cs-text-heading);
+            margin: 0 0 6px;
+        }
+        .wizard-sub {
+            font-size: var(--cs-font-size-m);
+            color: var(--cs-text-secondary);
+            line-height: 1.5;
+            margin: 0 0 22px;
+        }
+
+        .tile-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+        @media (max-width: 560px) { .tile-grid { grid-template-columns: 1fr; } }
+
+        .tile {
+            border: 1.5px solid var(--cs-border-input);
+            border-radius: var(--cs-radius-s);
+            padding: 18px;
+            cursor: pointer;
+            background: var(--cs-bg-primary);
+            text-align: left;
+            font-family: inherit;
+            transition: border-color 120ms ease-out, box-shadow 120ms ease-out, transform 120ms ease-out;
+            position: relative;
+            color: var(--cs-text-body);
+        }
+        .tile:hover {
+            border-color: var(--cs-btn-primary-bg);
+            box-shadow: 0 4px 12px rgba(9, 114, 211, 0.08);
+            transform: translateY(-1px);
+        }
+        .tile:focus-visible {
+            outline: none;
+            border-color: var(--cs-btn-primary-bg);
+            box-shadow: 0 0 0 3px rgba(9, 114, 211, 0.35);
+        }
+        .tile.selected {
+            border-color: var(--cs-btn-primary-bg);
+            background: var(--cs-bg-page);
+            box-shadow: 0 0 0 3px rgba(9, 114, 211, 0.12);
+        }
+        .tile.selected::after {
+            content: '';
+            position: absolute; top: 12px; right: 12px;
+            width: 20px; height: 20px;
+            background: var(--cs-btn-primary-bg);
+            border-radius: 50%;
+            background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='20 6 9 17 4 12'/></svg>");
+            background-repeat: no-repeat;
+            background-position: center;
+            background-size: 12px 12px;
+        }
+        .tile-icon {
+            width: 40px; height: 40px;
+            border-radius: 9px;
+            background: var(--cs-bg-page);
+            color: var(--cs-btn-primary-bg);
+            display: flex; align-items: center; justify-content: center;
+            margin-bottom: 12px;
+        }
+        .tile-icon svg { width: 20px; height: 20px; }
+        .tile.selected .tile-icon { background: var(--cs-btn-primary-bg); color: #FFFFFF; }
+        .tile-name {
+            font-weight: 600;
+            font-size: 15px;
+            margin-bottom: 4px;
+            color: var(--cs-text-heading);
+            display: flex; align-items: center; gap: 8px;
+        }
+        .tile-name .recommended {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 9px; font-weight: 600;
+            letter-spacing: 0.06em; text-transform: uppercase;
+            background: var(--cs-btn-primary-bg);
+            color: #FFFFFF;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+        .tile-desc {
+            font-size: 13px;
+            color: var(--cs-text-secondary);
+            line-height: 1.5;
+        }
+
+        /* disabled "Agency / multi-client" tile. Grayed,
+           non-interactive (no hover/select states), routed to sales. */
+        .tile-disabled {
+            cursor: not-allowed;
+            opacity: 0.6;
+            background: var(--cs-bg-page);
+        }
+        .tile-disabled:hover {
+            border-color: var(--cs-border-input);
+            box-shadow: none;
+            transform: none;
+        }
+        .tile-disabled .tile-icon {
+            color: var(--cs-text-secondary);
+        }
+        .tile-contact-sales {
+            margin-top: 10px;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--cs-text-secondary);
+        }
+        .tile-contact-sales a { color: var(--cs-text-link); }
+
+        .btn-row {
+            display: flex; align-items: center; justify-content: flex-end;
+            padding-top: 16px;
+            border-top: 1px solid var(--cs-border-divider);
+        }
+        .btn {
+            height: 40px; padding: 0 18px;
+            border-radius: var(--cs-radius-s);
+            font-size: var(--cs-font-size-m);
+            font-weight: 600;
+            font-family: var(--cs-font);
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition: background 90ms ease-out, border-color 90ms ease-out;
+        }
+        .btn-primary {
+            background: var(--cs-btn-primary-bg);
+            color: #FFFFFF;
+            font-weight: 700;
+        }
+        .btn-primary:hover { background: var(--cs-btn-primary-bg-hover); }
+        /* visible disabled state (matches step-5 +
+           #ws-delete-btn:disabled). */
+        .btn-primary:disabled,
+        .btn-primary:disabled:hover {
+            background: var(--cs-btn-primary-bg);
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .btn-primary:focus-visible {
+            outline: none;
+            box-shadow: 0 0 0 2px #FFFFFF, 0 0 0 4px var(--cs-btn-primary-bg);
+        }
+        .btn-ghost {
+            background: transparent;
+            color: var(--cs-text-link);
+            border-color: transparent;
+        }
+        .btn-ghost:hover { background: var(--cs-bg-page); }
+
+        .alert {
+            padding: 12px 14px;
+            margin-bottom: 18px;
+            border-radius: var(--cs-radius-s);
+            background: #FDECEC;
+            border: 1px solid #F5B5B5;
+            color: #8A1A1A;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <a href="#wizard-main" class="cs-skip-link" data-testid="wizard-skip-link">Skip to main content</a>
+    <div class="login-topbar">
+        <img src="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5" alt="" class="login-topbar-logo">
+        <span class="login-topbar-title">Kavanah Analytics</span>
+    </div>
+
+    <main class="wizard-shell" id="wizard-main">
+        {% include "_onboarding_progress.html" %}
+
+        <div class="card">
+            <div class="eyebrow">Account type</div>
+            <h1 class="wizard-title">Who's going to use this?</h1>
+            <p class="wizard-sub">
+                Pick whichever fits best — this decides how we set up your workspace.
+            </p>
+
+            {% if error %}
+            <div class="alert" role="alert">{{ error }}</div>
+            {% endif %}
+
+            <form method="POST" action="{{ url_for('analytics.onboarding_step4_post') }}" id="step2Form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="account_type" id="accountTypeInput" value="{{ selected }}">
+
+                <div class="tile-grid" role="radiogroup" aria-label="Account type">
+                    {# "Just me" (individual) is hidden under paid
+                       plans: step 4 only exposes the self-serve org path.
+                       The individual tile is not rendered (and the POST
+                       rejects account_type=individual as a forged value). #}
+
+                    <button type="button" class="tile {% if selected == 'org_owner' %}selected{% endif %}"
+                            data-type="org_owner"
+                            role="radio"
+                            aria-checked="{{ 'true' if selected == 'org_owner' else 'false' }}">
+                        <div class="tile-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                 stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M3 21h18"/>
+                                <path d="M5 21V7l8-4v18"/>
+                                <path d="M19 21V11l-6-4"/>
+                            </svg>
+                        </div>
+                        <div class="tile-name">
+                            My team or company
+                            {% if not invite %}<span class="recommended">Recommended</span>{% endif %}
+                        </div>
+                        <div class="tile-desc">Several teammates share one workspace. Invite people, centralize ad accounts.</div>
+                    </button>
+
+                    {# "Agency / multi-client" stays visible but is
+                       disabled (not a radio, not selectable, not in the
+                       roving-tabindex group). The self-serve wizard can't
+                       provision an agency yet, so the path is routed to
+                       sales. The POST also rejects account_type=agency. #}
+                    <div class="tile tile-disabled"
+                         data-disabled="1"
+                         aria-disabled="true">
+                        <div class="tile-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                 stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="2" y="6" width="20" height="14" rx="2"/>
+                                <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                            </svg>
+                        </div>
+                        <div class="tile-name">Agency / multi-client</div>
+                        {# / F9: pre-F9 said "many workspaces" — wrong
+                           under the four-tier model. An agency runs ONE
+                           workspace containing MANY client organizations. #}
+                        <div class="tile-desc">I manage several clients, each with their own data. One workspace with multiple client organizations.</div>
+                        <div class="tile-contact-sales">Contact <a href="mailto:sales@kavanahanalytics.com">sales@kavanahanalytics.com</a></div>
+                    </div>
+
+                    {% if invite %}
+                    <button type="button" class="tile {% if selected == 'invited' %}selected{% endif %}"
+                            data-type="invited"
+                            id="invitedTile"
+                            role="radio"
+                            aria-checked="{{ 'true' if selected == 'invited' else 'false' }}">
+                        <div class="tile-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                 stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="9 11 12 14 22 4"/>
+                                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+                            </svg>
+                        </div>
+                        <div class="tile-name">
+                            Joining a team
+                            <span class="recommended">Invited</span>
+                        </div>
+                        <div class="tile-desc">I was invited to an existing workspace. Skip the workspace setup.</div>
+                    </button>
+                    {% endif %}
+                </div>
+
+                {# follow-up (2026-05-20): Back button removed.
+                   The only previous-step target was /onboarding/start,
+                   which kicks the user out of the wizard and re-shows
+                   the sign-up form they already completed. No safe
+                   in-wizard "previous" exists from step 2 — they came
+                   from sign-up (creating an account), so going back
+                   means undoing it. #}
+                <div class="btn-row">
+                    <button type="submit" class="btn btn-primary">Continue →</button>
+                </div>
+            </form>
+        </div>
+    </main>
+
+    <script nonce="{{ csp_nonce }}">
+        // radiogroup arrow-key nav. Click selects; arrow keys
+        // (Up/Down/Left/Right + Home/End) move focus AND selection
+        // following the ARIA radiogroup pattern. Tab still moves out of
+        // the group to the Continue button.
+        (function () {
+            var input = document.getElementById('accountTypeInput');
+            // the disabled Agency tile carries data-disabled and is
+            // excluded here so it never joins the roving-tabindex radiogroup
+            // (no focus, no arrow-key selection, no click selection).
+            var tiles = Array.prototype.slice.call(
+                document.querySelectorAll('.tile-grid .tile:not([data-disabled])'));
+            if (!tiles.length) return;
+
+            function selectTile(tile, focus) {
+                tiles.forEach(function (t) {
+                    t.classList.remove('selected');
+                    t.setAttribute('aria-checked', 'false');
+                    t.setAttribute('tabindex', '-1');
+                });
+                tile.classList.add('selected');
+                tile.setAttribute('aria-checked', 'true');
+                tile.setAttribute('tabindex', '0');
+                input.value = tile.getAttribute('data-type');
+                if (focus) tile.focus();
+            }
+
+            // Initialize roving tabindex: selected tile (or first) is the
+            // single tab stop; arrows move within the group.
+            var initialIdx = tiles.findIndex(function (t) {
+                return t.classList.contains('selected');
+            });
+            if (initialIdx < 0) initialIdx = 0;
+            tiles.forEach(function (t, i) {
+                t.setAttribute('tabindex', i === initialIdx ? '0' : '-1');
+            });
+
+            tiles.forEach(function (tile, i) {
+                tile.addEventListener('click', function () {
+                    selectTile(tile, false);
+                });
+                tile.addEventListener('keydown', function (e) {
+                    var k = e.key;
+                    var next = null;
+                    if (k === 'ArrowRight' || k === 'ArrowDown') {
+                        next = tiles[(i + 1) % tiles.length];
+                    } else if (k === 'ArrowLeft' || k === 'ArrowUp') {
+                        next = tiles[(i - 1 + tiles.length) % tiles.length];
+                    } else if (k === 'Home') {
+                        next = tiles[0];
+                    } else if (k === 'End') {
+                        next = tiles[tiles.length - 1];
+                    }
+                    if (next) {
+                        e.preventDefault();
+                        selectTile(next, true);
+                    }
+                });
+            });
+        })();
+    </script>
+</body>
+</html>

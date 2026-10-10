@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+{# Icons are static assets (auth-exempt path), so the public page can render
+   canvas icon objects with the same base the authenticated viewer uses. #}
+<meta name="cv-icon-base" content="{{ url_for('static', filename='dashboard_builder/icons') }}">
+  <meta name="cv-map-url" content="{{ url_for('static', filename='dashboard_builder/map_with_countries.svg') }}">
+<title>{{ title }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* public viewer for published canvas pages. Header chrome
+     mirrors public_report/viewer.html; the.cvv-* object
+     styles are kept in sync with dashboard_builder/canvas_view.html —
+     both templates feed the same canvas_view.js renderer. */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #f0ece4; font-family: 'DM Sans', system-ui, sans-serif; color: #1a2744; }
+
+  .pr-header {
+    background: #fff;
+    border-bottom: 1px solid #e2ddd4;
+    padding: 14px 28px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+  .pr-title {
+    font-family: 'DM Serif Display', Georgia, serif;
+    font-size: 22px;
+    font-weight: 400;
+    margin: 0;
+    flex: 1 1 auto;
+    min-width: 200px;
+  }
+  .pr-time-range {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: #5a6a80;
+  }
+  .pr-time-range select,
+  .pr-time-range input[type=date] {
+    font-family: inherit;
+    font-size: 13px;
+    padding: 6px 10px;
+    border: 1px solid #d5dbdb;
+    border-radius: 6px;
+    background: #fff;
+  }
+  .cvv-custom-range {
+    display: none;
+    align-items: center;
+    gap: 6px;
+  }
+  .cvv-custom-range.visible { display: inline-flex; }
+  .pr-apply-btn {
+    font-family: inherit;
+    font-size: 13px;
+    padding: 6px 12px;
+    border: 0;
+    border-radius: 6px;
+    background: #1a2744;
+    color: #fff;
+    cursor: pointer;
+  }
+  .pr-apply-btn:hover { background: #2a3758; }
+  .pr-apply-btn:disabled { background: #9aa5b5; cursor: default; }
+
+  .pr-canvas { padding: 20px 0; }
+
+  /* ── Canvas object styles — keep in sync with canvas_view.html ──── */
+  #cvv-stage { position: relative; margin: 0 auto; transform-origin: top left; background: #fff; }
+  .cvv-object { position: absolute; overflow: hidden; }
+  .cvv-text {
+    padding: 6px 8px; font-size: 15px; line-height: 1.4; color: #16191f;
+    white-space: pre-wrap; word-break: break-word;
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex; flex-direction: column; justify-content: center;
+  }
+  /* rich blocks; keep in step with.cv-text in canvas_editor.css */
+  .cvv-text p { margin: 0; }
+  .cvv-text ul, .cvv-text ol { margin: 0; padding-left: 1.4em; }
+  .cvv-data-field {
+    display: flex; flex-direction: column; justify-content: center; gap: 4px;
+    padding: 12px 16px; background: #fff; border: 1px solid #e2ddd4;
+    border-radius: 10px; box-shadow: 0 2px 10px rgba(26,39,68,.06);
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .cvv-data-field .cvv-df-value {
+    font-size: 26px; font-weight: 700; color: #1a2744; line-height: 1.1;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .cvv-data-field .cvv-df-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+    color: #8da0b8; font-weight: 600; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap;
+  }
+  .cvv-data-field.cvv-df-cell {
+    padding: 0; gap: 0; border-radius: 0; box-shadow: none;
+    border: 1px solid #E9EBED; justify-content: stretch; align-items: stretch;
+  }
+  .cvv-df-cell .cvv-df-label {
+    flex: 0 0 55%; display: flex; align-items: center; justify-content: center;
+    padding: 3px 6px; text-transform: none; letter-spacing: 0; font-weight: 700;
+    white-space: normal; text-overflow: clip; line-height: 1.15; text-align: center;
+  }
+  .cvv-df-cell .cvv-df-value {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    font-weight: 500; white-space: nowrap;
+  }
+  .cvv-data-field.cvv-df-plain {
+    background: transparent; border: none; box-shadow: none;
+    border-radius: 0; padding: 4px 6px; gap: 2px;
+  }
+  .cvv-df-plain .cvv-df-label {
+    text-transform: none; letter-spacing: 0; white-space: normal;
+    line-height: 1.2; overflow: visible;
+  }
+  .cvv-icon { display: flex; align-items: center; justify-content: center; }
+  .cvv-icon img { width: 100%; height: 100%; object-fit: contain; }
+  /* shapes + images; keep in step with canvas_editor.css */
+  .cvv-shape, .cvv-image { background: transparent; }
+  .cvv-shape .cvs-text p { margin: 0; }
+  .cvv-shape .cvs-text ul, .cvv-shape .cvs-text ol { margin: 0; padding-left: 1.4em; }
+  .cvv-placeholder-obj {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 6px; padding: 12px; text-align: center;
+    border: 2px dashed #c9953c; border-radius: 10px; background: #fdf8ee;
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .cvv-placeholder-obj .cvv-ph-label { font-size: 14px; font-weight: 700; color: #7a5b1c; }
+  .cvv-placeholder-obj .cvv-ph-reason { font-size: 11px; color: #8a7340; max-width: 90%; }
+  .cvv-error {
+    padding: 24px; color: #d13212; font-size: 13px;
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+
+  @media (max-width: 768px) {
+    .pr-header { padding: 12px 16px; gap: 12px; }
+    .pr-title  { font-size: 19px; }
+  }
+  @media (max-width: 480px) {
+    .pr-header {
+      flex-direction: column;
+      align-items: flex-start;
+      padding: 12px 14px;
+    }
+    .pr-title { font-size: 18px; min-width: 0; }
+    .pr-time-range {
+      flex-wrap: wrap;
+      width: 100%;
+    }
+    .pr-time-range select { flex: 1 1 auto; }
+    .cvv-custom-range { width: 100%; }
+    .cvv-custom-range input[type=date] { flex: 1 1 40%; min-width: 0; }
+  }
+</style>
+</head>
+<body>
+  <header class="pr-header">
+    <h1 class="pr-title">{{ title }}</h1>
+    {# contract carried over to canvas publishes: the time-range
+       dropdown is hidden unless the publisher opted in via "Display time
+       selector"; either way the page loads with the Last-7-days window
+       (canvas_view.js sets the default in public mode). #}
+    {% if display_time_selector %}
+    <div class="pr-time-range">
+      <label for="cvv-time-preset">Time range:</label>
+      <select id="cvv-time-preset">
+        <option value="">All time</option>
+        <option value="now-7d/d" selected>Last 7 days</option>
+        <option value="now-30d/d">Last 30 days</option>
+        <option value="now-90d/d">Last 90 days</option>
+        <option value="now-6M/d">Last 6 months</option>
+        <option value="now-1y/d">Last 12 months</option>
+        <option value="custom">Custom range&hellip;</option>
+      </select>
+      <div class="cvv-custom-range" id="cvv-custom-range">
+        <input type="date" id="cvv-time-from">
+        <span>to</span>
+        <input type="date" id="cvv-time-to">
+        <button class="pr-apply-btn" id="cvv-apply-custom">Apply</button>
+      </div>
+    </div>
+    {% endif %}
+  </header>
+
+  <main class="pr-canvas">
+    <div id="cvv-stage"></div>
+  </main>
+
+  <script nonce="{{ csp_nonce }}">
+    // flips canvas_view.js into public-token mode: document via
+    // /public/api/dashboards/<token>, bindings via /public/api/query_batch.
+    window.CVV_PUBLIC_TOKEN = {{ token | tojson }};
+  </script>
+  {# theme tokens (single source: canvas_theme.py) + the shared
+     resolver, loaded before every canvas renderer. #}
+  <script nonce="{{ csp_nonce }}">window.CANVAS_THEME_TOKENS = {{ canvas_theme_tokens|safe }};</script>
+  <script src="{{ url_for('static', filename='dashboard_builder/canvas_theme.js') }}?v=20260717a"></script>
+  {# shared live geo/trend chart renderer (public transport via
+     CVV_PUBLIC_TOKEN; loaded before the viewer). #}
+  <script src="{{ url_for('static', filename='dashboard_builder/canvas_charts.js') }}?v=20260912a"></script>
+  <script src="{{ url_for('static', filename='dashboard_builder/canvas_view.js') }}?v=20260717a"></script>
+  {# table objects render through the REAL charts.js renderTable.
+     Loaded AFTER canvas_view.js: charts.js reads DASHBOARD_BASE at load time
+     and canvas_view.js sets it ('/public/' in token mode — every table query
+     rides /public/api/query with the token injected by _withExtraFilters).
+     escHtml is a builder.js global charts.js expects — stub it like the
+     legacy public viewer.html does. #}
+  <script nonce="{{ csp_nonce }}">
+    function escHtml(s) {
+      if (!s) return '';
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+  </script>
+  <script src="{{ url_for('static', filename='dashboard_builder/charts.js') }}?v=20261007a"></script>
+</body>
+</html>

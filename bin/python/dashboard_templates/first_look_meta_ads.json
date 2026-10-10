@@ -1,0 +1,180 @@
+{
+  "connector_id": "meta_ads",
+  "created_at": "2026-06-12T14:52:18.246774+00:00",
+  "description": "First-look Meta dashboard.",
+  "echarts_config": {
+    "charts": [
+      {
+        "aggregation": "sum",
+        "chart_id": "fl_meta_spend_total",
+        "chart_type": "metric",
+        "data_view": "*_fb_insights",
+        "filters": [
+          {
+            "field": "ad_account_id",
+            "op": "match_phrase_any",
+            "value": [
+              "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+            ]
+          }
+        ],
+        "hide_title": false,
+        "position": {
+          "col": 0,
+          "h": 2,
+          "row": 0,
+          "w": 3
+        },
+        "title": "Spend",
+        "y_fields": [
+          "insight_spend"
+        ]
+      },
+      {
+        "aggregation": "sum",
+        "chart_id": "fl_meta_impressions_total",
+        "chart_type": "metric",
+        "data_view": "*_fb_insights",
+        "filters": [
+          {
+            "field": "ad_account_id",
+            "op": "match_phrase_any",
+            "value": [
+              "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+            ]
+          }
+        ],
+        "hide_title": false,
+        "position": {
+          "col": 3,
+          "h": 2,
+          "row": 0,
+          "w": 3
+        },
+        "title": "Impressions",
+        "y_fields": [
+          "insight_impressions"
+        ]
+      },
+      {
+        "aggregation": "sum",
+        "chart_id": "fl_meta_reach_total",
+        "chart_type": "metric",
+        "data_view": "*_fb_insights",
+        "filters": [
+          {
+            "field": "ad_account_id",
+            "op": "match_phrase_any",
+            "value": [
+              "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+            ]
+          }
+        ],
+        "hide_title": false,
+        "position": {
+          "col": 6,
+          "h": 2,
+          "row": 0,
+          "w": 3
+        },
+        "title": "Reach",
+        "y_fields": [
+          "insight_reach"
+        ]
+      },
+      {
+        "aggregation": "sum",
+        "chart_id": "fl_meta_clicks_total",
+        "chart_type": "metric",
+        "data_view": "*_fb_insights",
+        "filters": [
+          {
+            "field": "ad_account_id",
+            "op": "match_phrase_any",
+            "value": [
+              "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+            ]
+          }
+        ],
+        "hide_title": false,
+        "position": {
+          "col": 9,
+          "h": 2,
+          "row": 0,
+          "w": 3
+        },
+        "title": "Link clicks",
+        "y_fields": [
+          "insight_clicks"
+        ]
+      },
+      {
+        "aggregation": "sum",
+        "chart_id": "fl_meta_spend_daily",
+        "chart_type": "bar",
+        "data_view": "*_fb_insights",
+        "filters": [
+          {
+            "field": "ad_account_id",
+            "op": "match_phrase_any",
+            "value": [
+              "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+            ]
+          }
+        ],
+        "hide_title": false,
+        "position": {
+          "col": 0,
+          "h": 4,
+          "row": 2,
+          "w": 6
+        },
+        "title": "Daily spend",
+        "x_field": "kibana_date",
+        "y_fields": [
+          "insight_spend"
+        ]
+      },
+      {
+        "aggregation": "sum",
+        "chart_id": "fl_meta_impressions_daily",
+        "chart_type": "bar",
+        "data_view": "*_fb_insights",
+        "filters": [
+          {
+            "field": "ad_account_id",
+            "op": "match_phrase_any",
+            "value": [
+              "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+            ]
+          }
+        ],
+        "hide_title": false,
+        "position": {
+          "col": 6,
+          "h": 4,
+          "row": 2,
+          "w": 6
+        },
+        "title": "Daily impressions",
+        "x_field": "kibana_date",
+        "y_fields": [
+          "insight_impressions"
+        ]
+      }
+    ],
+    "filters": [],
+    "global_date_range": null
+  },
+  "frozen_from_dashboard_id": null,
+  "menu_position": 0,
+  "menu_title": "Meta",
+  "name": "Meta Ads — Spend & impressions",
+  "pack_id": "meta_ads",
+  "placeholder_field": "ad_account_id",
+  "required_sources": [
+    "meta_ads"
+  ],
+  "template_id": "first_look_meta_ads",
+  "updated_at": "2026-06-12T14:52:18.246774+00:00"
+}

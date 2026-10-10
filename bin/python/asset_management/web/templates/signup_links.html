@@ -1,0 +1,105 @@
+{% extends "base_v2.html" %}
+
+{% block title %}Signup links - Kavanah Analytics Management Console{% endblock %}
+
+{% block extra_css %}
+<style>
+/* superuser page for personal signup links. Cloudscape tokens only. */
+.sl-card { background:var(--cs-bg-primary); border:1px solid var(--cs-border-default); border-radius:var(--cs-radius-m); box-shadow:var(--cs-shadow-xs); padding:var(--cs-space-xl); margin-bottom:var(--cs-space-m); max-width:1000px; }
+.sl-card h2 { font-size:var(--cs-font-size-xl); font-weight:var(--cs-font-weight-bold); color:var(--cs-text-heading); margin:0 0 var(--cs-space-xs); }
+.sl-muted { color:var(--cs-text-secondary); font-size:var(--cs-font-size-s); }
+.sl-form textarea { width:100%; min-height:140px; font-family:var(--cs-font-family-mono, monospace); padding:var(--cs-space-s); border:1px solid var(--cs-border-default); border-radius:var(--cs-radius-s); }
+.sl-form .sl-row { display:flex; gap:var(--cs-space-l); align-items:center; margin:var(--cs-space-s) 0; }
+.sl-table { width:100%; border-collapse:collapse; font-size:var(--cs-font-size-s); }
+.sl-table th, .sl-table td { text-align:left; padding:var(--cs-space-xs) var(--cs-space-s); border-bottom:1px solid var(--cs-border-default); vertical-align:top; }
+.sl-link { word-break:break-all; font-family:var(--cs-font-family-mono, monospace); }
+.sl-status-pending { color:var(--cs-text-link); }
+.sl-status-used { color:var(--cs-text-success, #037f0c); }
+.sl-status-expired, .sl-status-revoked { color:var(--cs-text-tertiary); }
+.sl-error { color:var(--cs-text-error, #d91515); }
+.sl-inline { display:inline; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="sl-card">
+    <h2>Signup links</h2>
+    <p class="sl-muted">
+        Public signup is closed. Each link lets one person, at one email address, set up their own workspace as its owner.
+        A link works once and expires after 14 days. Re-sending revokes the old link.
+    </p>
+
+    {% for e in errors %}<p class="sl-error">{{ e }}</p>{% endfor %}
+
+    <form class="sl-form" method="post" action="{{ url_for('signup_links.signup_links_create') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label for="sl-emails"><strong>Email addresses</strong> <span class="sl-muted">(one per line, up to {{ max_emails }})</span></label>
+        <textarea id="sl-emails" name="emails" required></textarea>
+        <div class="sl-row">
+            <label><input type="checkbox" name="send" checked> Email each person their link</label>
+            <label><input type="checkbox" name="sponsored"> Sponsored: comp the workspace they create</label>
+        </div>
+        <button type="submit" class="btn btn-primary">Create links</button>
+    </form>
+</div>
+
+{% if results %}
+<div class="sl-card" id="sl-results">
+    <h2>Just created</h2>
+    <p class="sl-muted">Links are shown once, here. Copy any you need now.</p>
+    <table class="sl-table">
+        <thead><tr><th>Email</th><th>Result</th><th>Link</th></tr></thead>
+        <tbody>
+        {% for r in results %}
+            <tr>
+                <td>{{ r.email }}{% if r.sponsored %} <span class="sl-muted">(sponsored)</span>{% endif %}</td>
+                <td>
+                    {% if not r.ok %}<span class="sl-error">{{ r.error }}</span>
+                    {% elif r.error %}<span class="sl-error">{{ r.error }}</span>
+                    {% elif r.sent %}Emailed{% else %}Created (not emailed){% endif %}
+                    {% if r.revoked %}<br><span class="sl-muted">Replaced an earlier link</span>{% endif %}
+                </td>
+                <td>{% if r.link %}<span class="sl-link">{{ r.link }}</span>{% endif %}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<div class="sl-card">
+    <h2>All links</h2>
+    {% if not grants %}
+    <p class="sl-muted">No signup links yet.</p>
+    {% else %}
+    <table class="sl-table">
+        <thead><tr><th>Email</th><th>Status</th><th>Created</th><th>Expires</th><th>Used by</th><th></th></tr></thead>
+        <tbody>
+        {% for g in grants %}
+            <tr>
+                <td>{{ g.email }}{% if g.sponsored %} <span class="sl-muted">(sponsored)</span>{% endif %}</td>
+                <td class="sl-status-{{ g.status }}">{{ g.status }}</td>
+                <td>{{ (g.created_at or '')[:10] }} <span class="sl-muted">{{ g.created_by }}</span></td>
+                <td>{{ (g.expires_at or '')[:10] }}</td>
+                <td>{{ g.used_by or '' }}</td>
+                <td>
+                    {% if g.status != 'used' %}
+                    <form class="sl-inline" method="post" action="{{ url_for('signup_links.signup_links_resend', jti=g.jti) }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit" class="btn btn-secondary btn-sm">Re-send</button>
+                    </form>
+                    {% endif %}
+                    {% if g.status == 'pending' %}
+                    <form class="sl-inline" method="post" action="{{ url_for('signup_links.signup_links_revoke', jti=g.jti) }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit" class="btn btn-secondary btn-sm">Revoke</button>
+                    </form>
+                    {% endif %}
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</div>
+{% endblock %}

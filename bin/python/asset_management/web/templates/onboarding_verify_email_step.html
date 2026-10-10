@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Step 2 — Verify your email · Kavanah Analytics</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/cloudscape.css') }}">
+    <style>
+        body {
+            background: var(--cs-bg-page);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 84px 20px 40px;
+        }
+        .login-topbar {
+            position: fixed; top: 0; left: 0; right: 0;
+            height: 56px;
+            background: var(--cs-nav-bg);
+            display: flex; align-items: center;
+            padding: 0 24px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+            z-index: 10;
+        }
+        .login-topbar-logo { height: 24px; width: auto; margin-right: 12px; }
+        .login-topbar-title { font-size: 17px; font-weight: 700; color: #FFFFFF; }
+
+        .wizard-shell { width: 100%; max-width: 560px; }
+
+        .card {
+            background: var(--cs-bg-primary);
+            border: 1px solid var(--cs-border-default);
+            border-radius: var(--cs-radius-l);
+            box-shadow: var(--cs-shadow-m);
+            padding: 36px 36px 28px;
+        }
+
+        .eyebrow {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 11px; font-weight: 600;
+            letter-spacing: 0.08em; text-transform: uppercase;
+            color: var(--cs-text-secondary);
+            margin-bottom: 8px;
+        }
+        .wizard-title {
+            font-size: 24px; font-weight: 700;
+            color: var(--cs-text-heading);
+            margin: 0 0 6px;
+        }
+        .wizard-sub {
+            font-size: var(--cs-font-size-m);
+            color: var(--cs-text-secondary);
+            line-height: 1.5;
+            margin: 0 0 22px;
+        }
+
+        .icon-circle {
+            width: 64px; height: 64px;
+            margin: 0 auto 18px;
+            border-radius: 50%;
+            background: #f3f7fc;
+            display: flex; align-items: center; justify-content: center;
+            color: var(--cs-accent, #0972d3);
+        }
+        .icon-circle svg { width: 32px; height: 32px; }
+
+        .email-callout {
+            background: var(--cs-bg-page);
+            border: 1px solid var(--cs-border-default);
+            border-radius: var(--cs-radius-m);
+            padding: 12px 16px;
+            margin-bottom: 18px;
+            font-size: 14px;
+            color: var(--cs-text-primary);
+            text-align: center;
+        }
+        .email-callout strong { color: var(--cs-text-heading); }
+
+        .alert-warn {
+            background: #FFF1E0;
+            border: 1px solid #F2C794;
+            color: #8A4B00;
+            padding: 12px 14px;
+            margin-bottom: 18px;
+            border-radius: var(--cs-radius-s);
+            font-size: 13px;
+        }
+        .alert-info {
+            background: #f3f7fc;
+            border: 1px solid #c9dcef;
+            color: #0F3D6E;
+            padding: 12px 14px;
+            margin-bottom: 18px;
+            border-radius: var(--cs-radius-s);
+            font-size: 13px;
+        }
+
+        .btn-row {
+            display: flex; align-items: center; justify-content: flex-end;
+            padding-top: 16px;
+            border-top: 1px solid var(--cs-border-divider);
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .btn {
+            height: 40px; padding: 0 18px;
+            border-radius: var(--cs-radius-s);
+            font-size: var(--cs-font-size-m);
+            font-weight: 600;
+            font-family: var(--cs-font);
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition: background 90ms ease-out, border-color 90ms ease-out;
+            display: inline-flex; align-items: center;
+        }
+        .btn-primary {
+            background: var(--cs-btn-primary-bg);
+            color: #FFFFFF;
+            font-weight: 700;
+        }
+        .btn-primary:hover { background: var(--cs-btn-primary-bg-hover); }
+        /* visible disabled state so a disabled primary button
+           doesn't read as a live, clickable button (matches step-5 +
+           #ws-delete-btn:disabled). Continue here is disabled until the
+           email is verified. */
+        .btn-primary:disabled,
+        .btn-primary:disabled:hover {
+            background: var(--cs-btn-primary-bg);
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .btn-ghost {
+            background: transparent;
+            color: var(--cs-text-link);
+            border-color: transparent;
+        }
+        .btn-ghost:hover { background: var(--cs-bg-page); }
+
+        .helper-text {
+            font-size: 12px;
+            color: var(--cs-text-disabled);
+            text-align: center;
+            margin-top: 14px;
+        }
+        .helper-text form { display: inline; margin: 0; padding: 0; }
+        .helper-text button {
+            background: none; border: none; padding: 0;
+            color: var(--cs-text-link);
+            font-size: 12px;
+            cursor: pointer;
+            font-family: inherit;
+            text-decoration: underline;
+        }
+        .helper-text button:hover { color: var(--cs-text-link-hover); }
+
+        /* follow-up (2026-05-21): inline change-email affordance.
+           Hidden by default; the "Wrong email?" link toggles .is-open. */
+        .change-email-toggle {
+            display: block;
+            text-align: center;
+            margin-top: 8px;
+            font-size: 12px;
+        }
+        .change-email-toggle a {
+            color: var(--cs-text-link);
+            text-decoration: underline;
+            cursor: pointer;
+        }
+        .change-email-form {
+            display: none;
+            margin: 12px 0 18px;
+            padding: 14px;
+            background: var(--cs-bg-page);
+            border: 1px solid var(--cs-border-default);
+            border-radius: var(--cs-radius-m);
+        }
+        .change-email-form.is-open { display: block; }
+        .change-email-form label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--cs-text-heading);
+            margin-bottom: 6px;
+        }
+        .change-email-form input[type="email"] {
+            width: 100%;
+            box-sizing: border-box;
+            height: 38px;
+            padding: 0 12px;
+            font-family: var(--cs-font);
+            font-size: var(--cs-font-size-m);
+            border: 1px solid var(--cs-border-input);
+            border-radius: var(--cs-radius-s);
+        }
+        .change-email-form .form-row {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+            justify-content: flex-end;
+        }
+        .change-email-form .btn-small {
+            height: 32px;
+            padding: 0 14px;
+            font-size: 13px;
+            border-radius: var(--cs-radius-s);
+            border: 1px solid var(--cs-border-default);
+            background: var(--cs-bg-primary);
+            color: var(--cs-text-body);
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .change-email-form .btn-small.btn-primary-small {
+            background: var(--cs-btn-primary-bg);
+            color: #FFFFFF;
+            border-color: transparent;
+            font-weight: 600;
+        }
+
+        /* follow-up (2026-05-21): hint under the Continue
+           button that explains why it's disabled. Hidden once the
+           polling JS flips the button to enabled. */
+        .pre-verify-hint {
+            font-size: 12px;
+            color: var(--cs-text-disabled);
+            text-align: right;
+            margin-top: 8px;
+        }
+        .pre-verify-hint.is-hidden { display: none; }
+    </style>
+</head>
+<body>
+    <a href="#wizard-main" class="cs-skip-link" data-testid="wizard-skip-link">Skip to main content</a>
+    <div class="login-topbar">
+        <img src="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5" alt="" class="login-topbar-logo">
+        <span class="login-topbar-title">Kavanah Analytics</span>
+    </div>
+
+    <main class="wizard-shell" id="wizard-main">
+        {% include "_onboarding_progress.html" %}
+
+        <div class="card" data-testid="verify-email-step-card">
+            <div class="icon-circle" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                    <polyline points="22,6 12,13 2,6"/>
+                </svg>
+            </div>
+            <div class="eyebrow" style="text-align: center;">Step 2 of 8</div>
+            <h1 class="wizard-title" style="text-align: center;">Verify your email</h1>
+            <p class="wizard-sub" style="text-align: center;">
+                We sent a verification link to your inbox. Click it to confirm
+                your address, then come back here and continue.
+            </p>
+
+            {% if user_email %}
+            <div class="email-callout">
+                Link sent to <strong data-testid="verify-email-step-current-email">{{ user_email }}</strong>
+            </div>
+            <div class="change-email-toggle">
+                <a id="changeEmailToggle"
+                   role="button"
+                   tabindex="0"
+                   data-testid="verify-email-step-change-email-toggle">Wrong email? Change it.</a>
+            </div>
+            <form class="change-email-form"
+                  id="changeEmailForm"
+                  method="POST"
+                  action="{{ url_for('analytics.onboarding_verify_email_step_change_email') }}"
+                  data-testid="verify-email-step-change-email-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <label for="newEmailInput">New email address</label>
+                <input type="email"
+                       id="newEmailInput"
+                       name="new_email"
+                       value="{{ user_email }}"
+                       required
+                       autocomplete="email"
+                       data-testid="verify-email-step-new-email-input">
+                <div class="form-row">
+                    <button type="button"
+                            class="btn-small"
+                            id="changeEmailCancelBtn"
+                            data-testid="verify-email-step-change-email-cancel-btn">Cancel</button>
+                    <button type="submit"
+                            class="btn-small btn-primary-small"
+                            data-testid="verify-email-step-change-email-submit-btn">Update &amp; resend</button>
+                </div>
+            </form>
+            {% endif %}
+
+            {% if not_yet_verified %}
+            <div class="alert-warn" role="alert" data-testid="verify-email-step-not-yet">
+                We don't see your email confirmed yet. Open the link in your
+                inbox, then click Continue.
+            </div>
+            {% endif %}
+
+            {% if request.args.get('changed') %}
+            <div class="alert-info" role="status" data-testid="verify-email-step-changed">
+                Email updated. A fresh verification link is on its way to
+                your new inbox.
+            </div>
+            {% elif request.args.get('change_email_error') == 'invalid' %}
+            <div class="alert-warn" role="alert" data-testid="verify-email-step-change-email-invalid">
+                That doesn't look like a valid email address. Try again.
+            </div>
+            {% elif request.args.get('change_email_error') == 'server' %}
+            <div class="alert-warn" role="alert" data-testid="verify-email-step-change-email-server-error">
+                We couldn't save that change. Try again in a moment.
+            </div>
+            {% elif request.args.get('resent') %}
+            <div class="alert-info" role="status" data-testid="verify-email-step-resent">
+                A fresh verification link is on its way to your inbox.
+            </div>
+            {% endif %}
+
+            {# Item 4: Continue button starts disabled. JS
+               below polls /onboarding/verify-email-step/status every
+               5s and removes the disabled attribute when the response
+               flips to {"verified": true}. The "I've verified —"
+               self-attestation prefix is dropped: the system knows
+               when verification lands, the user does not need to
+               claim it. Server-side POST still re-checks the flag —
+               JS only removes friction, not the security gate. #}
+            <div class="btn-row">
+                <form method="POST"
+                      action="{{ url_for('analytics.onboarding_verify_email_step_post') }}"
+                      id="verifyEmailStepForm"
+                      style="margin: 0;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit"
+                            class="btn btn-primary"
+                            id="verify-email-step-continue-btn"
+                            data-testid="verify-email-step-continue-btn"
+                            {% if not email_verified %}disabled{% endif %}>Continue &rarr;</button>
+                </form>
+            </div>
+
+            {# follow-up (2026-05-21): always-visible hint that
+               explains why Continue is disabled. The polling JS that
+               enables Continue on verification also removes the
+               .is-hidden class' inverse so this hint disappears
+               atomically with the button unlock. Pre-fix there was no
+               feedback explaining the disabled state until the user
+               clicked through and the server bounced them back. #}
+            <div class="pre-verify-hint{% if email_verified %} is-hidden{% endif %}"
+                 id="preVerifyHint"
+                 data-testid="verify-email-step-pre-verify-hint">
+                We'll enable Continue once you click the link in your inbox.
+            </div>
+
+            <div class="helper-text">
+                Didn't get the email? Check your spam folder, or
+                <form method="POST" action="{{ url_for('analytics.onboarding_verify_email_step_resend') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" data-testid="verify-email-step-resend-btn">resend it</button>
+                </form>.
+            </div>
+        </div>
+    </main>
+    <script nonce="{{ csp_nonce }}">
+    (function () {
+        // Item 4 — poll the status endpoint until the user
+        // clicks the link in their inbox, then enable the Continue
+        // button without a page reload.
+        // follow-up — also hide the pre-verify hint when the
+        // button is enabled so the two affordances stay atomic.
+        var btn = document.getElementById('verify-email-step-continue-btn');
+        var hint = document.getElementById('preVerifyHint');
+        if (!btn || !btn.hasAttribute('disabled')) {
+            return;
+        }
+        var statusUrl = "{{ url_for('analytics.onboarding_verify_email_step_status') }}";
+        var POLL_MS = 5000;
+        var poll = function () {
+            fetch(statusUrl, { credentials: 'same-origin', cache: 'no-store' })
+                .then(function (r) { return r.ok ? r.json() : { verified: false }; })
+                .then(function (data) {
+                    if (data && data.verified) {
+                        btn.removeAttribute('disabled');
+                        if (hint) hint.classList.add('is-hidden');
+                        return; // stop polling
+                    }
+                    setTimeout(poll, POLL_MS);
+                })
+                .catch(function () { setTimeout(poll, POLL_MS); });
+        };
+        setTimeout(poll, POLL_MS);
+    })();
+
+    // follow-up — change-email toggle. The form is hidden by
+    // default; clicking "Wrong email? Change it." opens it inline.
+    // Cancel collapses it back without touching the input value, so
+    // a user who opened the form by accident loses nothing.
+    (function () {
+        var toggle = document.getElementById('changeEmailToggle');
+        var form = document.getElementById('changeEmailForm');
+        var cancelBtn = document.getElementById('changeEmailCancelBtn');
+        var newEmailInput = document.getElementById('newEmailInput');
+        if (!toggle || !form) return;
+        function open() {
+            form.classList.add('is-open');
+            if (newEmailInput) {
+                newEmailInput.focus();
+                // Select the local-part so a user with a domain typo
+                // can tab to the @ and edit only what's wrong without
+                // erasing the whole field.
+                var v = newEmailInput.value || '';
+                var atIdx = v.indexOf('@');
+                if (atIdx > 0) newEmailInput.setSelectionRange(0, atIdx);
+            }
+        }
+        function close() {
+            form.classList.remove('is-open');
+            if (toggle && toggle.focus) toggle.focus();
+        }
+        toggle.addEventListener('click', open);
+        toggle.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                open();
+            }
+        });
+        if (cancelBtn) cancelBtn.addEventListener('click', close);
+    })();
+    </script>
+</body>
+</html>

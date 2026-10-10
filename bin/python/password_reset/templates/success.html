@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}Password Reset Successful{% endblock %}
+
+{% block body %}
+<div class="container" style="text-align: center;">
+    <div style="width: 64px; height: 64px; background: var(--cs-success-bg); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px;">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--cs-success)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+    </div>
+
+    <h2>Password Reset Successful!</h2>
+
+    <p style="color: var(--cs-text-secondary); margin: 20px 0;">
+        Your password has been changed. You can now log in with your new password.
+    </p>
+
+    <a href="{{ settings.get('app_url', '').replace('/reset-password', '/login') or '/login' }}" class="btn">
+        Go to Login
+    </a>
+</div>
+{% endblock %}

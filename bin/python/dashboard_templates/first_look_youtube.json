@@ -1,0 +1,180 @@
+{
+  "connector_id": "youtube",
+  "created_at": "2026-08-26T12:45:06.271412+00:00",
+  "description": "First-look YouTube dashboard.",
+  "echarts_config": {
+    "charts": [
+      {
+        "aggregation": "sum",
+        "chart_id": "fl_yt_views_total",
+        "chart_type": "metric",
+        "data_view": "*_youtube_analytics",
+        "filters": [
+          {
+            "field": "youtube_channel_id",
+            "op": "match_phrase_any",
+            "value": [
+              "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+            ]
+          }
+        ],
+        "hide_title": false,
+        "position": {
+          "col": 0,
+          "h": 2,
+          "row": 0,
+          "w": 3
+        },
+        "title": "Views (last 30d)",
+        "y_fields": [
+          "views"
+        ]
+      },
+      {
+        "aggregation": "sum",
+        "chart_id": "fl_yt_watch_minutes_total",
+        "chart_type": "metric",
+        "data_view": "*_youtube_analytics",
+        "filters": [
+          {
+            "field": "youtube_channel_id",
+            "op": "match_phrase_any",
+            "value": [
+              "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+            ]
+          }
+        ],
+        "hide_title": false,
+        "position": {
+          "col": 3,
+          "h": 2,
+          "row": 0,
+          "w": 3
+        },
+        "title": "Watch time (minutes)",
+        "y_fields": [
+          "estimated_minutes_watched"
+        ]
+      },
+      {
+        "aggregation": "sum",
+        "chart_id": "fl_yt_subs_gained_total",
+        "chart_type": "metric",
+        "data_view": "*_youtube_analytics",
+        "filters": [
+          {
+            "field": "youtube_channel_id",
+            "op": "match_phrase_any",
+            "value": [
+              "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+            ]
+          }
+        ],
+        "hide_title": false,
+        "position": {
+          "col": 6,
+          "h": 2,
+          "row": 0,
+          "w": 3
+        },
+        "title": "Subscribers gained",
+        "y_fields": [
+          "subscribers_gained"
+        ]
+      },
+      {
+        "aggregation": "sum",
+        "chart_id": "fl_yt_likes_total",
+        "chart_type": "metric",
+        "data_view": "*_youtube_analytics",
+        "filters": [
+          {
+            "field": "youtube_channel_id",
+            "op": "match_phrase_any",
+            "value": [
+              "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+            ]
+          }
+        ],
+        "hide_title": false,
+        "position": {
+          "col": 9,
+          "h": 2,
+          "row": 0,
+          "w": 3
+        },
+        "title": "Likes",
+        "y_fields": [
+          "likes"
+        ]
+      },
+      {
+        "aggregation": "sum",
+        "chart_id": "fl_yt_views_daily",
+        "chart_type": "bar",
+        "data_view": "*_youtube_analytics",
+        "filters": [
+          {
+            "field": "youtube_channel_id",
+            "op": "match_phrase_any",
+            "value": [
+              "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+            ]
+          }
+        ],
+        "hide_title": false,
+        "position": {
+          "col": 0,
+          "h": 4,
+          "row": 2,
+          "w": 6
+        },
+        "title": "Daily views",
+        "x_field": "kibana_date",
+        "y_fields": [
+          "views"
+        ]
+      },
+      {
+        "aggregation": "sum",
+        "chart_id": "fl_yt_watch_minutes_daily",
+        "chart_type": "bar",
+        "data_view": "*_youtube_analytics",
+        "filters": [
+          {
+            "field": "youtube_channel_id",
+            "op": "match_phrase_any",
+            "value": [
+              "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+            ]
+          }
+        ],
+        "hide_title": false,
+        "position": {
+          "col": 6,
+          "h": 4,
+          "row": 2,
+          "w": 6
+        },
+        "title": "Daily watch time (minutes)",
+        "x_field": "kibana_date",
+        "y_fields": [
+          "estimated_minutes_watched"
+        ]
+      }
+    ],
+    "filters": [],
+    "global_date_range": null
+  },
+  "frozen_from_dashboard_id": null,
+  "menu_position": 0,
+  "menu_title": "YouTube",
+  "name": "YouTube — Views & engagement, last 30d",
+  "pack_id": "youtube",
+  "placeholder_field": "youtube_channel_id",
+  "required_sources": [
+    "youtube"
+  ],
+  "template_id": "first_look_youtube",
+  "updated_at": "2026-08-26T12:45:06.271412+00:00"
+}

@@ -1,0 +1,211 @@
+{% extends "base_v2.html" %}
+
+{% block sidebar %}{% endblock %}
+{% block main_toolbar %}{% endblock %}
+
+{% block title %}Set Up Authenticator App - Kavanah Analytics{% endblock %}
+
+{% block extra_css %}
+<style>
+    .cs-main { margin-left: 0 !important; }
+    .mfa-setup-page { max-width: 540px; margin: 0 auto; }
+    .mfa-setup-page h1 {
+        font-size: 22px;
+        font-weight: var(--cs-font-weight-bold);
+        color: var(--cs-text-heading);
+        margin-bottom: var(--cs-space-xs);
+    }
+    .mfa-setup-page .subtitle {
+        color: var(--cs-text-secondary);
+        font-size: var(--cs-font-size-m);
+        margin-bottom: var(--cs-space-l);
+    }
+    .mfa-setup-card {
+        background: var(--cs-bg-primary);
+        border: 1px solid var(--cs-border-divider);
+        border-radius: var(--cs-radius-l);
+        padding: var(--cs-space-xl);
+    }
+    .mfa-step { margin-bottom: var(--cs-space-l); }
+    .mfa-step-label {
+        font-weight: var(--cs-font-weight-bold);
+        color: var(--cs-text-link);
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 6px;
+    }
+    .mfa-step p {
+        font-size: var(--cs-font-size-m);
+        color: var(--cs-text-secondary);
+        line-height: 1.5;
+        margin-bottom: 8px;
+    }
+    .mfa-qr-wrapper { text-align: center; margin: var(--cs-space-m) 0; }
+    .mfa-qr-wrapper img {
+        border: 1px solid var(--cs-border-divider);
+        border-radius: 8px;
+        padding: 8px;
+        max-width: 200px;
+    }
+    .mfa-manual-key {
+        background: var(--cs-bg-page);
+        border: 1px solid var(--cs-border-divider);
+        border-radius: var(--cs-radius-s);
+        padding: 10px 14px;
+        font-family: 'Courier New', monospace;
+        font-size: 14px;
+        word-break: break-all;
+        color: var(--cs-text-heading);
+        margin-top: 8px;
+    }
+    .mfa-form-row { margin-bottom: var(--cs-space-m); }
+    .mfa-form-row label {
+        display: block;
+        font-size: var(--cs-font-size-s);
+        font-weight: var(--cs-font-weight-medium);
+        color: var(--cs-text-label);
+        margin-bottom: 6px;
+    }
+    .mfa-form-row input {
+        width: 100%;
+        padding: 8px 12px;
+        font-size: var(--cs-font-size-m);
+        border: 1px solid var(--cs-border-input);
+        border-radius: var(--cs-radius-s);
+        font-family: var(--cs-font);
+        box-sizing: border-box;
+    }
+    .mfa-form-row input:focus {
+        outline: none;
+        border-color: var(--cs-border-input-focus);
+        box-shadow: 0 0 0 2px rgba(9, 114, 211, 0.25);
+    }
+    .mfa-actions { display: flex; gap: var(--cs-space-xs); justify-content: space-between; }
+    .mfa-btn {
+        padding: 8px 18px;
+        border-radius: var(--cs-radius-s);
+        font-size: var(--cs-font-size-m);
+        font-weight: var(--cs-font-weight-medium);
+        font-family: var(--cs-font);
+        cursor: pointer;
+        border: 1px solid transparent;
+    }
+    .mfa-btn-primary {
+        background: var(--cs-btn-primary-bg);
+        color: #fff;
+        border-color: var(--cs-btn-primary-bg);
+    }
+    .mfa-btn-primary:hover { background: var(--cs-btn-primary-bg-hover); border-color: var(--cs-btn-primary-bg-hover); }
+    .mfa-btn-cancel {
+        background: var(--cs-btn-normal-bg);
+        color: var(--cs-btn-normal-text);
+        border-color: var(--cs-btn-normal-border);
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+    }
+    .mfa-btn-cancel:hover { background: var(--cs-btn-normal-hover-bg); border-color: var(--cs-text-secondary); text-decoration: none; }
+    .mfa-btn:disabled,
+    .mfa-btn:disabled:hover {
+        opacity: 0.5;
+        cursor: not-allowed;
+        background: var(--cs-btn-primary-bg);
+        border-color: var(--cs-btn-primary-bg);
+    }
+    .alert-error {
+        background: #fef2f2;
+        color: #7f1d1d;
+        border-left: 4px solid #ef4444;
+        padding: 10px 14px;
+        border-radius: var(--cs-radius-s);
+        margin-bottom: var(--cs-space-m);
+    }
+    details summary { cursor: pointer; color: var(--cs-text-link); font-size: 13px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mfa-setup-page">
+    <h1>Set up authenticator app</h1>
+    <p class="subtitle">Use this page to enroll an authenticator app for two-factor sign-in.</p>
+
+    {% if error_message %}
+    <div class="alert-error">{{ error_message }}</div>
+    {% endif %}
+
+    <div class="mfa-setup-card">
+        <div class="mfa-step">
+            <div class="mfa-step-label">Step 1 &mdash; Scan QR code</div>
+            <p>Open Google Authenticator, Authy, 1Password, or another TOTP app and scan the QR below.</p>
+            <div class="mfa-qr-wrapper">
+                <img src="data:image/png;base64,{{ qr_code_b64 }}" alt="QR code for authenticator app">
+            </div>
+            <details>
+                <summary>Can't scan? Enter the key manually</summary>
+                <div class="mfa-manual-key">{{ totp_secret }}</div>
+            </details>
+        </div>
+
+        <div class="mfa-step">
+            <div class="mfa-step-label">Step 2 &mdash; Confirm setup</div>
+            <p>Enter the 6-digit code shown in your authenticator app to finish enrollment.</p>
+            <form method="POST" action="{{ url_for('profile_mfa_totp_confirm') }}" id="profile-totp-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="mfa-form-row">
+                    <label for="code">Verification code</label>
+                    <input type="text" id="code" name="code"
+                           inputmode="numeric" pattern="[0-9]{6}" maxlength="6"
+                           required autofocus autocomplete="one-time-code"
+                           placeholder="6-digit code">
+                </div>
+                <div class="mfa-actions">
+                    <a href="{{ url_for('profile_page') }}" class="mfa-btn mfa-btn-cancel">Cancel</a>
+                    <button type="submit" class="mfa-btn mfa-btn-primary"
+                            id="profile-totp-confirm-btn" disabled>Confirm setup</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+<script nonce="{{ csp_nonce }}">
+(function () {
+    // Enable Confirm only when the input is exactly 6 digits.
+    var input = document.getElementById('code');
+    var btn = document.getElementById('profile-totp-confirm-btn');
+    if (!input || !btn) return;
+    function update() {
+        btn.disabled = !/^\d{6}$/.test(input.value);
+    }
+    input.addEventListener('input', update);
+    update();
+})();
+
+(function () {
+    // Guard against double-submission: a duplicate 6-digit TOTP code
+    // gets rejected as "code already used" on the second call.
+    var form = document.getElementById('profile-totp-form');
+    if (!form) return;
+    var submitted = false;
+    form.addEventListener('submit', function (e) {
+        if (submitted) { e.preventDefault(); return; }
+        submitted = true;
+        form.querySelectorAll('button[type="submit"]').forEach(function (b) {
+            b.disabled = true;
+        });
+    });
+})();
+
+// Drop the inline error banner if the user refreshed the page. Banner is
+// rendered at first paint after a failed submit; we only want it to stick
+// around for that one render, not for subsequent reloads.
+(function () {
+    var navs = (window.performance && performance.getEntriesByType)
+        ? performance.getEntriesByType('navigation') : [];
+    if (navs.length > 0 && navs[0].type === 'reload') {
+        var banner = document.querySelector('.alert-error');
+        if (banner) banner.remove();
+    }
+})();
+</script>
+{% endblock %}

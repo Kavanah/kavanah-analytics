@@ -1,0 +1,376 @@
+{
+  "properties": {
+    "@timestamp": {
+      "type": "date"
+    },
+    "ad_account_id": {
+      "type": "keyword"
+    },
+    "ad_campaign_daily_budget": {
+      "type": "float"
+    },
+    "ad_campaign_id": {
+      "type": "keyword"
+    },
+    "ad_campaign_lifetime_budget": {
+      "type": "float"
+    },
+    "ad_campaign_name": {
+      "type": "keyword"
+    },
+    "ad_created": {
+      "type": "date",
+      "format": "yyyy-MM-dd'T'HH:mm:ssZ"
+    },
+    "ad_id": {
+      "type": "keyword"
+    },
+    "ad_name": {
+      "type": "keyword"
+    },
+    "ad_preview": {
+      "type": "keyword"
+    },
+    "ad_status": {
+      "type": "keyword"
+    },
+    "adset_bid_strategy": {
+      "type": "keyword"
+    },
+    "adset_billing_event": {
+      "type": "keyword"
+    },
+    "adset_daily_budget": {
+      "type": "float"
+    },
+    "adset_id": {
+      "type": "keyword"
+    },
+    "adset_lifetime_budget": {
+      "type": "float"
+    },
+    "adset_name": {
+      "type": "keyword"
+    },
+    "adset_optimization_goal": {
+      "type": "keyword"
+    },
+    "adset_promoted_object": {
+      "type": "object",
+      "dynamic": "true"
+    },
+    "adset_targeting": {
+      "type": "object",
+      "dynamic": "true"
+    },
+    "cost_per_result": {
+      "type": "float"
+    },
+    "cost_result_conversations": {
+      "type": "float"
+    },
+    "cost_result_link_clicks": {
+      "type": "float"
+    },
+    "creative_body": {
+      "type": "text"
+    },
+    "creative_id": {
+      "type": "keyword"
+    },
+    "creative_image_url": {
+      "type": "text"
+    },
+    "creative_title": {
+      "type": "keyword"
+    },
+    "creative_video_id": {
+      "type": "keyword"
+    },
+    "effective_status": {
+      "type": "keyword"
+    },
+    "insight_account_currency": {
+      "type": "keyword"
+    },
+    "insight_actions_landing_page_view": {
+      "type": "float"
+    },
+    "insight_actions_link_click": {
+      "type": "float"
+    },
+    "insight_actions_offsite_conversion_fb_pixel_purchase": {
+      "type": "float"
+    },
+    "insight_actions_onsite_conversion_lead_grouped": {
+      "type": "float"
+    },
+    "insight_actions_onsite_conversion_messaging_conversation_started_7d": {
+      "type": "float"
+    },
+    "insight_actions_page_engagement": {
+      "type": "float"
+    },
+    "insight_actions_post_engagement": {
+      "type": "float"
+    },
+    "insight_actions_post_reaction": {
+      "type": "float"
+    },
+    "insight_actions_comment": {
+      "type": "float"
+    },
+    "insight_actions_video_view": {
+      "type": "float"
+    },
+    "insight_buying_type": {
+      "type": "keyword"
+    },
+    "insight_clicks": {
+      "type": "integer"
+    },
+    "insight_conversion_rate_ranking": {
+      "type": "keyword"
+    },
+    "insight_cost_per_action_type_landing_page_view": {
+      "type": "float"
+    },
+    "insight_cost_per_action_type_link_click": {
+      "type": "float"
+    },
+    "insight_cost_per_action_type_offsite_conversion_fb_pixel_purchase": {
+      "type": "float"
+    },
+    "insight_cost_per_action_type_onsite_conversion_lead_grouped": {
+      "type": "float"
+    },
+    "insight_cost_per_action_type_onsite_conversion_messaging_conversation_started_7d": {
+      "type": "float"
+    },
+    "insight_cost_per_action_type_post_engagement": {
+      "type": "float"
+    },
+    "insight_cost_per_inline_link_click": {
+      "type": "float"
+    },
+    "insight_cost_per_inline_post_engagement": {
+      "type": "float"
+    },
+    "insight_cost_per_unique_click": {
+      "type": "float"
+    },
+    "insight_cost_per_unique_inline_link_click": {
+      "type": "float"
+    },
+    "insight_cpc": {
+      "type": "float"
+    },
+    "insight_cpm": {
+      "type": "float"
+    },
+    "insight_cpp": {
+      "type": "float"
+    },
+    "insight_ctr": {
+      "type": "float"
+    },
+    "insight_date_start": {
+      "type": "date",
+      "format": "yyyy-MM-dd"
+    },
+    "insight_date_stop": {
+      "type": "date",
+      "format": "yyyy-MM-dd"
+    },
+    "insight_engagement_rate_ranking": {
+      "type": "keyword"
+    },
+    "insight_frequency": {
+      "type": "float"
+    },
+    "insight_impressions": {
+      "type": "integer"
+    },
+    "insight_inline_link_click_ctr": {
+      "type": "float"
+    },
+    "insight_inline_link_clicks": {
+      "type": "integer"
+    },
+    "insight_inline_post_engagement": {
+      "type": "integer"
+    },
+    "insight_objective": {
+      "type": "keyword"
+    },
+    "insight_optimization_goal": {
+      "type": "keyword"
+    },
+    "insight_quality_ranking": {
+      "type": "keyword"
+    },
+    "insight_reach": {
+      "type": "integer"
+    },
+    "insight_spend": {
+      "type": "float"
+    },
+    "insight_targeting": {
+      "type": "object",
+      "dynamic": "true"
+    },
+    "kibana_date": {
+      "type": "date",
+      "format": "yyyy-MM-dd"
+    },
+    "date": {
+      "type": "date",
+      "format": "yyyy-MM-dd"
+    },
+    "location_cities": {
+      "properties": {
+        "name": {
+          "type": "keyword"
+        },
+        "coordinates": {
+          "type": "geo_point"
+        }
+      }
+    },
+    "organization_title": {
+      "type": "keyword"
+    },
+    "page_engagement": {
+      "type": "integer"
+    },
+    "page_fan_count": {
+      "type": "integer"
+    },
+    "page_followers_count": {
+      "type": "integer"
+    },
+    "page_id": {
+      "type": "keyword"
+    },
+    "page_is_permanently_closed": {
+      "type": "boolean"
+    },
+    "page_is_published": {
+      "type": "boolean"
+    },
+    "page_is_unclaimed": {
+      "type": "boolean"
+    },
+    "page_link": {
+      "type": "keyword"
+    },
+    "page_name": {
+      "type": "keyword"
+    },
+    "page_new_like_count": {
+      "type": "integer"
+    },
+    "page_talking_about_count": {
+      "type": "integer"
+    },
+    "page_username": {
+      "type": "keyword"
+    },
+    "page_verification_status": {
+      "type": "keyword"
+    },
+    "publisher_platform": {
+      "type": "keyword"
+    },
+    "result_count": {
+      "type": "float"
+    },
+    "result_label": {
+      "type": "keyword"
+    },
+    "result_type": {
+      "type": "keyword"
+    },
+    "team_city": {
+      "type": "keyword"
+    },
+    "team_country": {
+      "type": "keyword"
+    },
+    "team_esid": {
+      "type": "keyword"
+    },
+    "team_site_url": {
+      "type": "keyword"
+    },
+    "team_title": {
+      "type": "keyword"
+    },
+    "insight_attribution_setting": {
+      "type": "text",
+      "fields": {
+        "keyword": {
+          "type": "keyword",
+          "ignore_above": 256
+        }
+      }
+    },
+    "insight_canvas_avg_view_percent": {
+      "type": "float"
+    },
+    "insight_canvas_avg_view_time": {
+      "type": "float"
+    },
+    "insight_cost_per_estimated_ad_recallers": {
+      "type": "float"
+    },
+    "insight_cost_per_outbound_click_outbound_click": {
+      "type": "float"
+    },
+    "insight_cost_per_thruplay_video_view": {
+      "type": "float"
+    },
+    "insight_cost_per_unique_outbound_click_outbound_click": {
+      "type": "float"
+    },
+    "insight_full_view_impressions": {
+      "type": "long"
+    },
+    "insight_outbound_clicks_outbound_click": {
+      "type": "float"
+    },
+    "insight_outbound_clicks_ctr_outbound_click": {
+      "type": "float"
+    },
+    "insight_video_30_sec_watched_actions_video_view_total": {
+      "type": "float"
+    },
+    "insight_video_avg_time_watched_actions_video_view_total": {
+      "type": "float"
+    },
+    "insight_video_p100_watched_actions_video_view_total": {
+      "type": "float"
+    },
+    "insight_video_p25_watched_actions_video_view_total": {
+      "type": "float"
+    },
+    "insight_video_p50_watched_actions_video_view_total": {
+      "type": "float"
+    },
+    "insight_video_p75_watched_actions_video_view_total": {
+      "type": "float"
+    },
+    "insight_video_p95_watched_actions_video_view_total": {
+      "type": "float"
+    },
+    "insight_video_play_actions_video_view_total": {
+      "type": "float"
+    },
+    "insight_video_thruplay_watched_actions_video_view_total": {
+      "type": "float"
+    },
+    "insight_website_ctr_link_click": {
+      "type": "float"
+    }
+  }
+}

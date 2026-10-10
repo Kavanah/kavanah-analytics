@@ -1,0 +1,119 @@
+{
+  "properties": {
+    "@timestamp": {
+      "type": "date"
+    },
+    "kibana_date": {
+      "type": "date"
+    },
+    "youtube_channel_id": {
+      "type": "keyword"
+    },
+    "youtube_channel_title": {
+      "type": "text",
+      "fields": {
+        "keyword": {
+          "type": "keyword"
+        }
+      }
+    },
+    "youtube_channel_handle": {
+      "type": "keyword"
+    },
+    "youtube_channel_esid": {
+      "type": "keyword"
+    },
+    "date": {
+      "type": "date",
+      "format": "yyyy-MM-dd"
+    },
+    "views": {
+      "type": "long"
+    },
+    "estimated_minutes_watched": {
+      "type": "long"
+    },
+    "average_view_duration": {
+      "type": "float"
+    },
+    "subscribers_gained": {
+      "type": "integer"
+    },
+    "subscribers_lost": {
+      "type": "integer"
+    },
+    "likes": {
+      "type": "integer"
+    },
+    "comments": {
+      "type": "integer"
+    },
+    "shares": {
+      "type": "integer"
+    },
+    "videos_added_to_playlists": {
+      "type": "integer"
+    },
+    "videos_removed_from_playlists": {
+      "type": "integer"
+    },
+    "video_id": {
+      "type": "keyword"
+    },
+    "video_title": {
+      "type": "text",
+      "fields": {
+        "keyword": {
+          "type": "keyword"
+        }
+      }
+    },
+    "video_duration_seconds": {
+      "type": "long"
+    },
+    "retention_at_25_pct": {
+      "type": "float"
+    },
+    "retention_at_50_pct": {
+      "type": "float"
+    },
+    "retention_at_75_pct": {
+      "type": "float"
+    },
+    "retention_at_95_pct": {
+      "type": "float"
+    },
+    "retention_at_100_pct": {
+      "type": "float"
+    },
+    "country": {
+      "type": "keyword"
+    },
+    "record_type": {
+      "type": "keyword"
+    },
+    "team_esid": {
+      "type": "keyword"
+    },
+    "team_title": {
+      "type": "keyword"
+    },
+    "team_url": {
+      "type": "keyword"
+    },
+    "team_country": {
+      "type": "keyword"
+    },
+    "team_city": {
+      "type": "keyword"
+    },
+    "organization_title": {
+      "type": "text",
+      "fields": {
+        "keyword": {
+          "type": "keyword"
+        }
+      }
+    }
+  }
+}

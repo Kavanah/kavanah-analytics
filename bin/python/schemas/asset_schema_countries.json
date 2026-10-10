@@ -1,0 +1,24 @@
+{
+  "dynamic_templates": [
+    {
+      "strings_as_keyword": {
+        "match_mapping_type": "string",
+        "mapping": {
+          "type": "keyword",
+          "ignore_above": 8191
+        }
+      }
+    }
+  ],
+  "properties": {
+    "country_title": {
+      "type": "keyword"
+    },
+    "country_iso": {
+      "type": "keyword"
+    },
+    "country_iso3_code": {
+      "type": "keyword"
+    }
+  }
+}

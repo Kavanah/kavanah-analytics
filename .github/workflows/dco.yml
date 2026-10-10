@@ -1,0 +1,50 @@
+# DCO check for the PUBLIC snapshot repo (kavanah-analytics) —.
+#
+# Contribution terms are the Developer Certificate of Origin
+# (https://developercertificate.org): every commit in a pull request must
+# carry a `Signed-off-by: Name <email>` trailer (`git commit -s`). No CLA.
+# See CONTRIBUTING.md "Contribution terms".
+#
+# Self-contained on purpose: no marketplace app, no secrets, hosted runner.
+# Lives under deployment/public-overlay/ in the private repo and is copied
+# onto each export by bin/python/tools/publish_release.py.
+name: DCO
+
+on:
+  pull_request:
+    branches: ["main"]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  dco:
+    name: Signed-off-by on every commit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history for the PR range)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Check every commit carries a Signed-off-by trailer
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          missing=0
+          while IFS= read -r sha; do
+            [ -n "$sha" ] || continue
+            if ! git log -1 --format=%B "$sha" | grep -Eq '^Signed-off-by: .+ <.+@.+>$'; then
+              echo "::error::commit $sha has no Signed-off-by trailer — amend with 'git commit -s --amend' (see CONTRIBUTING.md, Contribution terms)"
+              git log -1 --format='  %h %s' "$sha"
+              missing=$((missing + 1))
+            fi
+          done < <(git rev-list --no-merges "$BASE_SHA".."$HEAD_SHA")
+          if [ "$missing" -gt 0 ]; then
+            echo "$missing commit(s) without a DCO sign-off."
+            exit 1
+          fi
+          echo "All commits carry a Signed-off-by trailer."

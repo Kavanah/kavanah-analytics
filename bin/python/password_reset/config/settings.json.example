@@ -1,0 +1,12 @@
+{
+  "smtp_host": "",
+  "smtp_port": 587,
+  "smtp_username": "",
+  "smtp_password": "",
+  "smtp_use_tls": true,
+  "from_email": "",
+  "admin_contact": "",
+  "token_expiry_minutes": 60,
+  "app_url": "https://YOUR_HOSTNAME/reset-password",
+  "admin_password_hash": ""
+}

@@ -1,0 +1,22 @@
+{
+  "properties": {
+    "@timestamp": {"type": "date"},
+    "kibana_date": {"type": "date"},
+    "record_type": {"type": "keyword"},
+    "link_id": {"type": "keyword"},
+    "link_title": {
+      "type": "text",
+      "fields": {"keyword": {"type": "keyword"}}
+    },
+    "long_url": {"type": "keyword"},
+    "tags": {"type": "keyword"},
+    "clicks": {"type": "long"},
+    "date": {"type": "date", "format": "yyyy-MM-dd"},
+    "team_esid": {"type": "keyword"},
+    "team_title": {"type": "keyword"},
+    "organization_title": {
+      "type": "text",
+      "fields": {"keyword": {"type": "keyword"}}
+    }
+  }
+}

@@ -1,0 +1,48 @@
+# Google Analytics 4 Configuration
+
+# Service Account Credentials
+# Mount the service account JSON file on the host and reference it here
+credentials_file: /app/data/google_analytics/ga_service_account.json
+
+# Data Collection Settings
+days_to_pull: 30          # Number of days to pull (default: 30)
+report_limit: 100000      # Max rows per report (default: 100000)
+
+# Account Filtering (Optional)
+# Whitelist specific GA4 accounts by account ID. Only properties from these accounts will be processed.
+# To find account IDs, run: python3 /app/python/import.py google_analytics export_properties --skip_dimensions=true
+# Look for output like: "Account: Company Marketing (accounts/123456)" - the account ID is "123456"
+# Empty list or omit this section to process all accessible accounts (default behavior)
+account_filter: []
+# Examples:
+#   account_filter: ["123456"]                    # Process only account 123456
+#   account_filter: ["123456", "789012"]          # Process accounts 123456 and 789012
+#   account_filter: []                            # Process all accounts (default)
+
+# Phase 1: Hardcoded Property-to-Team Mapping
+# Maps GA4 property_id to team metadata for Elasticsearch indexing
+# Replace these examples with your actual GA4 property IDs and team information
+property_team_mapping:
+  "123456789":              # GA4 Property ID (as string)
+    team_esid: "team_001"
+    team_title: "Example Team"
+  "987654321":              # Another GA4 Property ID
+    team_esid: "team_002"
+    team_title: "Another Team"
+
+# Default team for unmapped properties
+# Any properties discovered that aren't in property_team_mapping will use these values
+default_team:
+  team_esid: "default"
+  team_title: "Unmapped Properties"
+
+# Logging
+log_level: INFO
+
+# Rate Limiting Configuration
+# Google Analytics API has quotas: 1,250 tokens/property/hour, 50,000 tokens/project/day
+# When rate limits are hit (429 errors), the script will retry with exponential backoff
+rate_limit:
+  max_retries: 5                # Maximum retry attempts before giving up (default: 5)
+  initial_backoff_seconds: 60   # Initial sleep duration in seconds, doubles each retry (default: 60)
+  log_usage: false              # Enable separate usage log file at /app/data/logs/ga_usage_YYYYMMDD.log (default: false)

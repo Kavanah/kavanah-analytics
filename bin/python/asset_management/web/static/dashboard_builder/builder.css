@@ -1,0 +1,2576 @@
+/* ══════════════════════════════════════════════════════════════════════
+   Dashboard Builder – Styles (Cloudscape tokens)
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── Root overrides for the full-page layout ── */
+.db-page {
+  display: flex;
+  flex-direction: column;
+  /* Fallback: topnav (--cs-header-height 56px) + main toolbar (~43px). The
+     old 130px guess left a ~30px dead band under both side panels. */
+  height: calc(100vh - var(--cs-header-height, 56px) - 43px);
+  overflow: hidden;
+}
+
+/* Exact sizing where :has() is available: make the builder page's .cs-main a
+   flex column filling the viewport below the sticky topnav, and let .db-page
+   take whatever the toolbar leaves — the panels reach the bottom no matter
+   how tall the chrome renders. Scoped on .db-page so the other templates
+   that share this stylesheet (view.html, public_report/viewer.html) are
+   untouched. */
+.cs-main:has(> .db-page) {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - var(--cs-header-height, 56px));
+  min-height: 0;
+}
+
+.cs-main:has(> .db-page) > .db-page {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+}
+
+/* ── Top bar ────────────────────────────────── */
+.db-topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--cs-bg-primary, #fff);
+  border-bottom: 1px solid var(--cs-border-divider, #ddd);
+  padding: 8px 18px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  min-height: 44px;
+}
+
+.db-topbar-title {
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--cs-text-heading, #2c3e50);
+  margin-right: 12px;
+}
+
+/* Single-row toolbar, compacted to fit without wrapping or overlap.
+ * Three flat flex children in visual order: creation buttons
+ * (.db-topbar-left) | filters (.db-topbar-filters) | Save actions
+ * (.db-topbar-actions-right, pushed right with margin-left:auto).
+ *
+ * The row never wraps (nowrap). Everything is scaled down — smaller
+ * gaps, tighter button/dropdown padding + font (see .db-topbar.is-
+ * compact rules and the select sizing below) — so the full content
+ * (all labels, both Save buttons) fits one line. The filter cluster is
+ * the shrinkable part: min-width:0 + flex-shrink lets the dropdowns
+ * give up width (truncating long values with an ellipsis) before
+ * anything is forced off the row. */
+.db-topbar-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.db-topbar-left,
+.db-topbar-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* Save actions hug the right edge; auto-margin eats the slack between
+ * the filters and the Save cluster instead of dumping it mid-bar. */
+.db-topbar-actions-right {
+  margin-left: auto;
+}
+
+/* Filter cluster sits between creation buttons and Save actions and is
+ * the only shrinkable child — min-width:0 lets its dropdowns compress
+ * (and truncate) so the row holds without wrapping or overflowing. */
+.db-topbar-filters {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+/* Compact the whole bar so all of it fits one row: smaller outer gap,
+ * tighter title margin, smaller buttons. Tokenless overrides keep it
+ * consistent with the Cloudscape sizing used elsewhere, just smaller. */
+.db-topbar {
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+.db-topbar-title {
+  margin-right: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.db-topbar .db-btn {
+  font-size: 13px;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+
+/* Labels: keep them (no trade-off) but stop them shrinking/wrapping. */
+.db-topbar-filters .db-label,
+.db-topbar-workspace-label {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Toolbar selects — match the dashboards-page .custom-time-filter
+ * select treatment pixel-for-pixel: 28 px tall (4 px shorter than
+ * the form-style select), font-size 13 px, custom SVG chevron via
+ * appearance: none so the dropdown arrow looks the same on every
+ * browser and matches what /dashboards renders.
+ *
+ * The builder's filter row has more selects than /dashboards
+ * (Org + Team + Time range), so this rule matters more here. */
+.db-topbar-filters select {
+  font-family: var(--cs-font, inherit);
+  font-size: var(--cs-font-size-s, 13px);
+  height: 28px;
+  padding: 0 28px 0 6px;
+  border: 1px solid var(--cs-border-input, #7D8998);
+  border-radius: var(--cs-radius-s, 4px);
+  color: var(--cs-text-primary, #000716);
+  background-color: var(--cs-bg-primary, #FFFFFF);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='7'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%235F6B7A' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  appearance: none;
+  -webkit-appearance: none;
+  /* Smaller cap + min-width:0 so the dropdowns shrink (and truncate
+   * long values with the native ellipsis) to keep the single row from
+   * overflowing, rather than holding a fixed 200 px each. */
+  max-width: 160px;
+  min-width: 0;
+  text-overflow: ellipsis;
+  transition: border-color var(--cs-transition-fast, 90ms ease-out),
+              box-shadow var(--cs-transition-fast, 90ms ease-out);
+}
+
+.db-topbar-filters select:hover {
+  border-color: var(--cs-text-secondary, #5F6B7A);
+}
+
+.db-topbar-filters select:focus {
+  outline: none;
+  border-color: var(--cs-border-input-focus, #0972D3);
+  box-shadow: 0 0 0 2px rgba(9, 114, 211, 0.25);
+}
+
+/* follow-up: custom dropdown chevron for the Builder's OTHER select
+ * groups (properties panel, filter rows, table-column pickers). The topbar
+ * selects above already opt into appearance:none + the SVG chevron; these
+ * groups did not, so they rendered the inconsistent NATIVE browser arrow
+ * within the same page. This rule adds ONLY the chevron treatment (arrow +
+ * room for it) and deliberately does NOT touch each group's own
+ * border/background/size — those stay as defined per-container below, so the
+ * fix is chevron-consistency only, no layout change.
+ *
+ * Scoped to the Builder (these container classes are Builder-only); app-wide
+ * selects keep the native arrow, which is the existing norm (.cs-select does
+ * not theme the chevron either). An app-wide pass, if wanted, is a separate
+ * design decision/ticket. */
+.db-form-group select,
+.db-filter-row select,
+.gt-col-field-row select,
+.tc-col-picker-row select,
+.db-dashboard-filter-row select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='7'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%235F6B7A' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+}
+/* (.db-add-chart-row select is handled in its own rule below — it's a DARK row
+ * needing a light chevron, so it sets appearance/background-image itself.) */
+
+/* Custom-range date inputs in the toolbar — base look (font, border,
+ * radius, focus ring) comes from the global input[type="date"] rule
+ * in components.css. Width and toolbar-height overrides stay here:
+ *   - 130 px keeps the toolbar from wrapping at typical widths.
+ *   - 28 px height matches the dashboards-page toolbar treatment so
+ *     the inputs line up with the selects above on /dashboards
+ *     visually too. */
+.db-topbar-filters input[type="date"] {
+  width: 130px;
+  height: 28px;
+  font-size: var(--cs-font-size-s, 13px);
+  padding: 0 6px;
+}
+
+/* When the custom-range slot is open, keep its inputs / Apply tightly
+ * grouped and don't let them wrap mid-group. The whole group can
+ * still wrap as a unit if the toolbar runs out of room. */
+#builder-custom-date-range {
+  flex-wrap: nowrap;
+  gap: 4px !important;
+}
+
+/* When custom range is open, hide every redundant label so the
+ * extra ~330 px the from/to/Apply group needs can fit alongside
+ * Org / Team / Time range / Save & Refresh on the same row.
+ * Hidden:
+ *   - "Time range:" label (its dropdown is right next to the date
+ *     inputs so it's self-evident)
+ *   - The visual divider before "Time range:"
+ *   - "Org:" and "Team:" labels (the dropdowns themselves show
+ *     "All Organizations" / "All Teams" placeholders so context
+ *     stays clear)
+ * JS toggles `is-custom-open` on the filter row. */
+.db-topbar-filters.is-custom-open label[for="builder-time-preset"],
+.db-topbar-filters.is-custom-open label[for="builder-org-filter"],
+.db-topbar-filters.is-custom-open label[for="builder-team-filter"],
+.db-topbar-filters.is-custom-open > .db-topbar-divider-time {
+  display: none;
+}
+
+/* Compress Org / Team dropdowns when custom is open so the
+ * inline custom-range inputs fit. 200 → 140 px gives back
+ * ~120 px and the dropdown selection is still readable. */
+.db-topbar-filters.is-custom-open #builder-org-filter,
+.db-topbar-filters.is-custom-open #builder-team-filter {
+  max-width: 140px;
+}
+
+.db-topbar-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--cs-border-divider, #ccc);
+  margin: 0 4px;
+}
+
+.db-title-input {
+  padding: 0 10px;
+  border: 1px solid var(--cs-border-input, #ccc);
+  border-radius: 4px;
+  font-size: 14px;
+  font-family: inherit;
+  width: 220px;
+  height: 32px;
+}
+
+.db-title-input:focus {
+  outline: none;
+  border-color: var(--cs-border-input-focus, #3498db);
+  box-shadow: 0 0 0 2px rgba(9, 114, 211, 0.25);
+}
+
+.db-label {
+  font-size: 13px;
+  color: var(--cs-text-secondary, #555);
+}
+
+/* read-only workspace name shown to a single-workspace user in the
+   topbar (a multi-workspace user gets a <select> instead). Styled to read as
+   a value next to the "Workspace:" label, not an interactive control. */
+.db-topbar-workspace-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cs-text-heading, #2c3e50);
+}
+
+/* ── Three-column layout ────────────────────── */
+.db-layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ── Shared panel styles ────────────────────── */
+.db-panel-left,
+.db-panel-right {
+  flex-shrink: 0;
+  overflow-y: auto;
+  background: var(--cs-nav-bg, #232F3E);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* follow-up: reserve the scrollbar gutter permanently so content
+   width doesn't jump (and the DASHBOARDS header row doesn't truncate) the
+   moment an expanded menu group makes the panel scroll. */
+.db-panel-left { width: 200px; scrollbar-gutter: stable; }
+.db-panel-right { width: 300px; background: var(--cs-bg-secondary, #FAFAFA); border-left: 1px solid var(--cs-border-default, #ddd); }
+
+.db-section-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--cs-nav-text, #95a5a6);
+  margin-top: 12px;
+  margin-bottom: 4px;
+}
+
+.db-panel-left .db-section-label { color: var(--cs-nav-text, #95a5a6); }
+.db-panel-right .db-section-label { color: var(--cs-text-secondary, #555); }
+
+/* ── Add chart dropdown row ──────────────────── */
+.db-add-chart-row {
+  display: flex;
+  gap: 4px;
+}
+
+.db-add-chart-row select {
+  flex: 1;
+  min-width: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  /* extra right padding for the chevron added below */
+  padding: 5px 26px 5px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(255,255,255,0.15);
+  /* follow-up: this row is DARK (light text on #37475A), so it needs
+   * a LIGHT chevron — the shared rule's dark-gray arrow would be invisible.
+   * Use background-color (not the `background` shorthand, which would reset the
+   * background-image set here) + a light-stroked SVG. */
+  background-color: var(--cs-nav-bg-hover, #37475A);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='7'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23D1D5DB' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  color: var(--cs-nav-text, #D1D5DB);
+  font-size: 12px;
+}
+
+/* ── Left-panel buttons (dark surface) ───────────────────────
+ * The base .db-btn (defined further down) is a light-surface button and
+ * used to override the intended dark styling here — white buttons on the
+ * navy panel. Scope the nav idiom to the panel instead: the two-class
+ * selector outranks the base rule regardless of source order. The
+ * add-chart "+" re-asserts its primary blue below. */
+.db-panel-left .db-btn {
+  background: var(--cs-nav-bg-hover, #37475A);
+  border-color: rgba(255,255,255,0.2);
+  color: var(--cs-nav-text, #D1D5DB);
+  font-size: 12px;
+}
+
+.db-panel-left .db-btn:hover {
+  background: rgba(255,255,255,0.12);
+  border-color: rgba(255,255,255,0.35);
+}
+
+.db-panel-left .db-btn-add {
+  background: var(--cs-btn-primary-bg, #0972D3);
+  border-color: var(--cs-btn-primary-bg, #0972D3);
+  color: #fff;
+}
+
+.db-panel-left .db-btn-add:hover {
+  background: var(--cs-btn-primary-bg-hover, #033160);
+  border-color: var(--cs-btn-primary-bg-hover, #033160);
+}
+
+/* Full-width stacked actions under Add Chart (+ Canvas page, Templates) —
+ * one column on an even 8px rhythm, centered labels. */
+.db-panel-left .db-btn-block {
+  width: 100%;
+  height: 28px;
+  margin-top: 8px;
+  justify-content: center;
+}
+
+/* ── Show-hidden-dashboards toggle (left panel) ──
+ * Per-user view preference persisted in localStorage
+ * (db-show-hidden-dashboards). Unchecked by default: hidden
+ * (visibility_mode == 'hide') dashboards are filtered out of the
+ * explorer until the box is ticked. */
+.db-show-hidden-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--cs-nav-text, #95a5a6);
+  cursor: pointer;
+  user-select: none;
+}
+
+.db-show-hidden-toggle input { cursor: pointer; }
+
+/* ── Dashboard Explorer (left panel) ────────── */
+.db-dashboard-explorer {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: auto;
+  min-height: 0;
+}
+
+.db-explorer-loading,
+.db-explorer-empty {
+  font-size: 11px;
+  color: var(--cs-nav-text, #95a5a6);
+  padding: 8px 0;
+}
+
+.db-explorer-group { margin-bottom: 2px; }
+
+.db-explorer-group-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 2px;
+  cursor: pointer;
+  border-radius: 4px;
+  user-select: none;
+  transition: background 90ms ease-out;
+}
+
+.db-explorer-group-header:hover { background: rgba(255,255,255,0.06); }
+
+.db-explorer-arrow {
+  font-size: 8px;
+  color: var(--cs-nav-text, #95a5a6);
+  display: inline-block;
+  transition: transform 150ms ease;
+  width: 10px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.db-explorer-arrow.expanded { transform: rotate(90deg); }
+
+.db-explorer-group-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--cs-nav-text, #D1D5DB);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.db-explorer-group-count {
+  font-size: 10px;
+  color: var(--cs-nav-text, #95a5a6);
+  flex-shrink: 0;
+}
+
+.db-explorer-items { padding-left: 14px; }
+.db-explorer-items.collapsed { display: none; }
+
+.db-explorer-item {
+  padding: 3px 6px;
+  font-size: 12px;
+  color: var(--cs-nav-text, #D1D5DB);
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 90ms ease-out;
+}
+
+.db-explorer-item { display: flex; align-items: center; }
+
+/* follow-up: clip long titles with an ellipsis. Without this a
+   long-named row overflowed the label box and pushed the hover-revealed
+   ✎/× action buttons past the panel edge (the explorer allows overflow-x),
+   leaving the row with NO reachable delete button — clicks landed on the
+   row body and just selected it. The full title stays on item.title. */
+.db-explorer-item-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* owning-team suffix on same-titled rows (one starter-pack copy
+   per team). Muted so the dashboard name stays the primary text. */
+.db-explorer-item-team {
+  color: var(--cs-text-secondary);
+  font-weight: normal;
+}
+
+/* follow-up: visibility_mode == 'hide' shows up as a
+   strikethrough on the dashboard name so an editor can see the
+   dashboard exists (it's still editable from the Builder) while
+   knowing it's hidden from the user-facing /dashboards page.
+   Replaces the prior red ✕ icon which read as "deletable". */
+.db-explorer-item-label.is-hidden {
+  text-decoration: line-through;
+  opacity: 0.65;
+}
+
+.db-explorer-delete-btn {
+  display: none;
+  margin-left: 4px;
+  font-size: 14px;
+  font-weight: bold;
+  color: #e53e3e;
+  cursor: pointer;
+  flex-shrink: 0;
+  line-height: 1;
+  padding: 0 2px;
+  border-radius: 3px;
+}
+.db-explorer-delete-btn:hover { background: rgba(229,62,62,0.2); }
+
+.db-explorer-item:hover .db-explorer-delete-btn { display: inline; }
+
+/* follow-up: delete-empty-menu button on the group header.
+   Same color + hover-reveal pattern as the dashboard delete button;
+   the JS only renders this element when the group has zero
+   dashboards AND the current user is a workspace admin. */
+.db-explorer-menu-delete-btn {
+  display: none;
+  margin-left: auto;
+  font-size: 14px;
+  font-weight: bold;
+  color: #e53e3e;
+  cursor: pointer;
+  flex-shrink: 0;
+  line-height: 1;
+  padding: 0 4px;
+  border-radius: 3px;
+}
+.db-explorer-menu-delete-btn:hover { background: rgba(229,62,62,0.2); }
+
+.db-explorer-group-header:hover .db-explorer-menu-delete-btn { display: inline; }
+
+.db-explorer-item:hover { background: rgba(255,255,255,0.08); }
+.db-explorer-item.active {
+  background: var(--cs-btn-primary-bg, #0972D3);
+  color: #fff;
+}
+
+/* ── workspace-scoped menu controls ──────────────── */
+
+.db-dashboards-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  /* Keep the button on the label's row, inset from the panel edge — the
+     compact button size below is what makes the shared content row fit. */
+  padding-right: 4px;
+}
+
+/* If font metrics ever make the row too tight, the label ellipsizes rather
+   than the button wrapping or being pushed into the panel edge.
+
+    follow-up: the row must fit the SCROLLED panel width (~155px,
+   not 172px) — expanding a menu group used to pop the panel scrollbar in
+   and truncate DASHBOARDS to "DASHBOAR…". scrollbar-gutter on
+   .db-panel-left keeps the width constant; the tighter letter-spacing
+   here (0.08em is the generic .db-section-label) buys the label back. */
+.db-dashboards-header .db-section-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: 0.04em;
+}
+
+.db-btn-add-menu {
+  /* Compact override of the base .db-btn (32px/14px): the button shares the
+     content row with the full DASHBOARDS label and stays clear of the
+     panel edge. The "+ Menu" text (not "+ Add Menu") is what makes the row
+     fit — pixel-shaving the chrome alone never bought enough slack. */
+  height: 22px;
+  padding: 0 5px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.db-explorer-group-drag-handle {
+  display: inline-grid;
+  grid-template-columns: 3px 3px;
+  grid-template-rows: 3px 3px 3px;
+  gap: 2px;
+  align-content: center;
+  cursor: grab;
+  user-select: none;
+  flex-shrink: 0;
+  padding: 2px 3px;
+  margin-right: 2px;
+}
+.db-drag-dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--cs-nav-text, #95a5a6);
+  display: block;
+}
+.db-explorer-group-drag-handle:active { cursor: grabbing; }
+.db-explorer-group-header:hover .db-drag-dot {
+  background: var(--cs-text-primary, #f1f3f5);
+}
+
+/* per-dashboard drag handle (reorder within a menu). Same
+   2x3 grip as the menu handle but hover-revealed so the dense item
+   list stays clean until the row is hovered. Only rendered for
+   workspace admins (the JS gates it on _isWorkspaceAdmin). */
+.db-explorer-item-drag-handle {
+  display: none;
+  grid-template-columns: 3px 3px;
+  grid-template-rows: 3px 3px 3px;
+  gap: 2px;
+  align-content: center;
+  cursor: grab;
+  user-select: none;
+  flex-shrink: 0;
+  padding: 2px 3px;
+  margin-right: 4px;
+}
+.db-explorer-item:hover .db-explorer-item-drag-handle { display: inline-grid; }
+.db-explorer-item-drag-handle:active { cursor: grabbing; }
+.db-explorer-item:hover .db-explorer-item-drag-handle .db-drag-dot {
+  background: var(--cs-text-primary, #f1f3f5);
+}
+
+/* Right-panel checkbox lists (replaces <select multiple>) */
+.db-checkbox-filter {
+  width: 100%;
+  margin-bottom: 4px;
+  font-size: 12px;
+  padding: 4px 6px;
+}
+
+.db-checkbox-list {
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid var(--cs-border, #cdd5df);
+  border-radius: 4px;
+  padding: 4px 6px;
+  background: var(--cs-bg-primary, #fff);
+}
+
+/* teams-only visibility controls in the Dashboard Properties panel. */
+.db-field-hint {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: var(--cs-text-secondary, #5F6B7A);
+}
+
+/* Phase 3 — deprecation note on an existing builder team filter
+   (team filtering moved to the viewer's top-bar multi-select). */
+.db-field-hint-deprecated {
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-left: 3px solid var(--cs-border-warning, #E9A23B);
+  background: var(--cs-bg-secondary, #F1F3F3);
+  color: var(--cs-text-primary, #000716);
+  border-radius: var(--cs-radius-s, 4px);
+}
+
+.db-teams-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.db-teams-toolbar-actions {
+  display: flex;
+  gap: 4px;
+}
+
+/* A lightweight text button for the Select All / Unselect All actions —
+ * borderless, accent-colored, sized to sit inline with the Teams label. */
+.db-btn-link {
+  height: auto;
+  padding: 0 4px;
+  border: none;
+  background: transparent;
+  color: var(--cs-border-input-focus, #0972D3);
+  font-size: 11px;
+  font-weight: 500;
+}
+.db-btn-link:hover {
+  text-decoration: underline;
+  background: transparent;
+}
+
+.db-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+.db-checkbox-row:hover { background: rgba(0,0,0,0.04); }
+.db-checkbox-row input[type="checkbox"] { flex-shrink: 0; }
+.db-checkbox-label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.db-form-error {
+  color: #e53e3e;
+  font-size: 11px;
+  margin-top: 4px;
+}
+
+/* ── Canvas ──────────────────────────────────── */
+.db-canvas {
+  flex: 1;
+  overflow-y: auto;
+  background: var(--cs-bg-page, #F1F3F3);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.db-canvas-empty {
+  text-align: center;
+  color: var(--cs-text-disabled, #aaa);
+  padding: 40px 20px;
+  font-size: 14px;
+}
+
+.db-chart-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: stretch;
+}
+
+.db-canvas-footer {
+  display: flex;
+  justify-content: center;
+  padding-bottom: 20px;
+}
+
+/* ── Chart slot cards ────────────────────────── */
+.chart-slot {
+  background: var(--cs-bg-primary, #fff);
+  border-radius: 8px;
+  box-shadow: var(--cs-shadow-s, 0 1px 2px rgba(0,0,0,0.08));
+  overflow: hidden;
+  border: 2px solid transparent;
+  transition: border-color 90ms ease-out, box-shadow 90ms ease-out;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: calc(50% - 8px);
+  min-width: 260px;
+  min-height: 220px;
+  box-sizing: border-box;
+}
+
+/* metric scorecards carry only a label + number, so they don't need
+   the table/chart floor (260x220). Let them shrink much smaller. The JS resize
+   clamp (_initResizeHandle) reads the same per-type floor so drag-resize and CSS
+   agree. */
+.chart-slot.chart-type-metric {
+  min-width: 140px;
+  min-height: 90px;
+}
+
+/* ── Resize handle ───────────────────────────── */
+.chart-resize-handle {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 18px;
+  height: 18px;
+  cursor: se-resize;
+  z-index: 10;
+  border-radius: 0 0 6px 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 2px,
+    rgba(0,0,0,0.22) 2px,
+    rgba(0,0,0,0.22) 3px
+  );
+}
+
+.chart-slot:hover .chart-resize-handle { opacity: 1; }
+
+.chart-slot.selected { border-color: var(--cs-btn-primary-bg, #0972D3); }
+
+.chart-slot-header {
+  display: flex;
+  align-items: center;
+  background: var(--cs-bg-secondary, #FAFAFA);
+  padding: 8px 12px;
+  gap: 8px;
+  border-bottom: 1px solid var(--cs-border-divider, #E9EBED);
+}
+
+.chart-title {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cs-text-heading, #000716);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chart-slot-header button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--cs-text-tertiary, #888);
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background 90ms ease-out, color 90ms ease-out;
+}
+
+.chart-slot-header button:hover { background: var(--cs-bg-hover, #F4F4F4); color: var(--cs-text-primary, #000716); }
+
+/* ── Standard chart Y field rows (right panel) ─ */
+/* Each selected Y field gets a stacked row: a header line with the
+   raw field name + remove button, and a Label input below. The
+   override flows into config.y_field_labels and drives bar/line
+   series names + the metric KPI's label, matching how the table
+   chart's table_columns[i].label works. */
+.std-y-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  background: var(--cs-info-bg, #F0F5FC);
+  border: 1px solid var(--cs-btn-primary-bg, #0972D3);
+  border-radius: 6px;
+  padding: 4px 6px;
+  margin: 2px 0;
+}
+
+.std-y-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.std-y-row-field {
+  font-size: 12px;
+  color: var(--cs-btn-primary-bg, #0972D3);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.std-y-row-label {
+  width: 100%;
+  font-size: 12px;
+  padding: 2px 6px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  box-sizing: border-box;
+}
+
+.btn-rm-std-y {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--cs-error, #D91515);
+  font-size: 11px;
+  padding: 0 1px;
+  line-height: 1;
+}
+
+.btn-rm-std-y:hover { color: #B80D0D; }
+
+/* ── Chart render area ───────────────────────── */
+.chart-render-area {
+  flex: 1;
+  min-height: 160px;
+  padding: 8px;
+  overflow: hidden;
+}
+
+/* let table slots be dragged shorter. Two things blocked it:
+   (1) the .db-chart-grid is `align-items: stretch` (intentional, so a row of
+       metric scorecards auto-equalizes height — commit 7bf92b31ca8). Stretch
+       overrode the slot's dragged style.height, so the inline height changed
+       but the box didn't. `align-self: flex-start` opts table slots out of the
+       row stretch so they keep their own height. Metric cards / charts keep
+       stretch.
+   (2) the base .chart-render-area min-height:160px is a flex:1 floor that
+       refuses to shrink below 160px; drop it to 0 so the dragged height takes
+       effect and overflow:auto scrolls the rows that no longer fit. */
+.chart-slot.chart-type-table,
+.chart-slot.chart-type-posts_table { align-self: flex-start; }
+.chart-slot.chart-type-table .chart-render-area,
+.chart-slot.chart-type-posts_table .chart-render-area { overflow: auto; min-height: 0; }
+.chart-slot.chart-type-metric { height: auto !important; }
+/* the base.chart-render-area min-height:160px (sized for charts)
+   was the real height floor on metric cards: the slot is height:auto, so it
+   grew to fit the 160px inner area regardless of the slot's own 90px floor.
+   Drop it to 0 so metric scorecards can shrink to their content. Mirrors the
+   grouped_table / canva / report render-area overrides above. */
+.chart-slot.chart-type-metric .chart-render-area { overflow: visible; min-height: 0; }
+
+/* Grouped table slots size to content — no empty space */
+.chart-slot.chart-type-grouped_table { height: auto; min-height: 0; }
+.chart-slot.chart-type-grouped_table .chart-render-area { flex: none; min-height: 0; overflow-x: auto; overflow-y: visible; }
+.chart-slot.chart-type-leaflet_map { width: 100%; height: 700px; min-height: 500px; }
+.chart-slot.chart-type-canva { width: 100% !important; height: auto; min-height: 0; }
+.chart-slot.chart-type-canva .chart-render-area { flex: none; min-height: 0; overflow-x: auto; overflow-y: visible; }
+.chart-slot.chart-type-report,
+.chart-slot.chart-type-google_report,
+.chart-slot.chart-type-combined_report { width: 100% !important; height: auto; min-height: 0; }
+.chart-slot.chart-type-report .chart-render-area,
+.chart-slot.chart-type-google_report .chart-render-area,
+.chart-slot.chart-type-combined_report .chart-render-area { flex: none; min-height: 0; overflow-x: auto; overflow-y: visible; }
+
+/* ── Canva report rendering ────────────────────── */
+.cv-report {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
+}
+.cv-section {
+  border-radius: 16px;
+  padding: 24px 20px;
+}
+.cv-section-title {
+  text-align: center;
+  font-size: 17px;
+  font-weight: 700;
+  margin-bottom: 20px;
+}
+.cv-metrics-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+}
+.cv-metric-card {
+  background: rgba(255,255,255,0.18);
+  border-radius: 12px;
+  padding: 14px 10px;
+  text-align: center;
+  min-width: 130px;
+  flex: 1 1 130px;
+  max-width: 200px;
+}
+.cv-metric-label {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.cv-metric-value {
+  font-size: 28px;
+  font-weight: 700;
+}
+
+/* Print: preserve colors */
+@media print {
+  .cv-section, .cv-metric-card {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
+
+/* (Canva config panel editor removed — layout is hardcoded to match mockup) */
+
+/* Suppress browser focus outline on Leaflet SVG paths (prevents black frame on click) */
+.leaflet-interactive { outline: none !important; }
+
+/* ── Modern Leaflet zoom controls ────────────── */
+.leaflet-control-zoom {
+  border: none !important;
+  border-radius: 8px !important;
+  box-shadow: 0 2px 8px rgba(0,7,22,0.15) !important;
+  overflow: hidden;
+}
+.leaflet-control-zoom a {
+  width: 36px !important;
+  height: 36px !important;
+  line-height: 36px !important;
+  font-size: 18px !important;
+  color: #000716 !important;
+  background: #FFFFFF !important;
+  border-bottom: 1px solid #E9EBED !important;
+  transition: background 90ms ease-out;
+}
+.leaflet-control-zoom a:last-child { border-bottom: none !important; }
+.leaflet-control-zoom a:hover {
+  background: #F4F4F4 !important;
+  color: #000716 !important;
+}
+.leaflet-control-zoom a.leaflet-disabled {
+  color: #9BA7B6 !important;
+  background: #FAFAFA !important;
+}
+
+/* ── Map container frame ─────────────────────── */
+.chart-slot.chart-type-leaflet_map .chart-render-area {
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(0,7,22,0.08);
+  border: 1px solid #E9EBED;
+}
+
+/* ── Modern circle marker shadows ────────────── */
+.map-marker-shadow {
+  filter: drop-shadow(0 2px 4px rgba(0,7,22,0.25));
+}
+
+/* Match Leaflet container backdrop to the street-map's light base so
+   un-loaded tiles during pan don't show as big grey squares. */
+.leaflet-container {
+  background: #E6EEF5;
+}
+
+/* ── Leaflet attribution (minimal) ───────────── */
+.leaflet-control-attribution {
+  background: rgba(255,255,255,0.7) !important;
+  font-size: 10px !important;
+  padding: 2px 6px !important;
+  border-radius: 4px 0 0 0 !important;
+  color: #7D8998 !important;
+}
+.leaflet-control-attribution a { color: #5F6B7A !important; }
+
+/* ── Leaflet permanent stat tooltip boxes ────── */
+.map-stat-tooltip {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+.map-stat-tooltip::before { display: none !important; }
+.map-stat-box {
+  background: #FFFFFF;
+  border: 1px solid #D5DBDB;
+  border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(0,7,22,0.12), 0 1px 3px rgba(0,7,22,0.08);
+  padding: 10px 14px;
+  white-space: nowrap;
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+  background: rgba(255,255,255,0.95);
+}
+.map-stat-name {
+  font-size: 11px;
+  font-weight: 700;
+  color: #5F6B7A;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.map-stat-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: #000716;
+  line-height: 1.4;
+  margin-top: 3px;
+}
+.map-stat-value strong { color: #0972D3; font-weight: 700; }
+
+/* ── Inline chart legend ─────────────────────── */
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 18px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--cs-border-divider, #E9EBED);
+  background: var(--cs-bg-secondary, #FAFAFA);
+  flex-shrink: 0;
+}
+
+.chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--cs-text-primary, #000716);
+  cursor: pointer;
+  user-select: none;
+}
+
+.chart-legend-item input[type="checkbox"] {
+  cursor: pointer;
+  margin: 0;
+}
+
+.chart-legend-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.chart-legend-label {
+  white-space: nowrap;
+}
+
+/* ── Error state ─────────────────────────────── */
+.chart-error {
+  padding: 16px;
+  background: var(--cs-error-bg, #FDF3F1);
+  border: 1px solid var(--cs-error, #D91515);
+  border-radius: var(--cs-radius-s, 4px);
+  margin: 8px;
+  font-size: 12px;
+  color: #721c24;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+/* ── Metric / KPI rendering ──────────────────── */
+.metric-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  /* tighter padding so a shrunk scorecard hugs its label+value. */
+  padding: 10px 14px;
+}
+
+.metric-value {
+  font-size: 36px;
+  font-weight: 700;
+  color: #000716;
+}
+
+.metric-label {
+  font-size: 13px;
+  color: #5F6B7A;
+  /* label sits ABOVE the value (GA4 style); gap goes below it. */
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.metric-no-data {
+  font-size: 18px;
+  font-weight: 400;
+  color: #aaa;
+}
+
+/* ── Profile card (Instagram account) ────────── */
+.profile-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 16px;
+  box-sizing: border-box;
+  overflow: auto;
+}
+
+.profile-card--empty {
+  align-items: center;
+  justify-content: center;
+  color: #aaa;
+  font-size: 14px;
+}
+
+.profile-card-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.profile-card-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #e9edf2;
+  border: 1px solid #d4dbe3;
+}
+
+.profile-card-avatar--placeholder {
+  display: inline-block;
+}
+
+.profile-card-name {
+  font-size: 18px;
+  font-weight: 700;
+  color: #000716;
+  margin-top: 8px;
+}
+
+.profile-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: #000716;
+}
+
+.profile-card-row {
+  line-height: 1.4;
+}
+
+.profile-card-key {
+  color: #5F6B7A;
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+.profile-card-bio .profile-card-val {
+  color: #2c3a47;
+}
+
+.profile-card-link {
+  color: #2c6da0;
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.profile-card-link:hover {
+  text-decoration: underline;
+}
+
+/* ── Metric breakdown grid ───────────────────── */
+.metric-breakdown-grid {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.metric-breakdown-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  background: #dbeafe;
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.metric-breakdown-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #1e3a5f;
+  margin-bottom: 4px;
+  text-transform: capitalize;
+  word-break: break-word;
+}
+
+.metric-breakdown-value {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #1a2e44;
+  line-height: 1.1;
+}
+
+/* ── Table rendering ─────────────────────────── */
+.dash-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.dash-table th,
+.dash-table td {
+  padding: 8px 12px;
+  border: 1px solid var(--cs-border-divider, #E9EBED);
+  text-align: left;
+}
+
+.dash-table th {
+  background: #2c6da0;
+  color: #fff;
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.01em;
+}
+
+.dash-table tr:nth-child(even) td { background: var(--cs-bg-secondary, #FAFAFA); }
+.dash-table tr:hover td { background: var(--cs-bg-active, #E8F4FD); }
+
+/* ── Right panel config ──────────────────────── */
+.db-panel-right-placeholder {
+  padding: 20px;
+  text-align: center;
+  color: #aaa;
+  font-size: 13px;
+}
+
+.db-config-panel {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.db-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 8px;
+}
+
+.db-form-group label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.db-form-group--checkbox {
+  flex-direction: row;
+  align-items: center;
+}
+
+.db-form-group--checkbox label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+/* The .db-form-group--checkbox modifier originally undid the broad
+ * .db-form-group input rule below (which gave every input a 100%
+ * width and a grey 1px border). Now that we have a proper site-wide
+ * custom checkbox component in components.css, the override is no
+ * longer needed — the :not selector below scopes the broad rule to
+ * non-checkbox inputs instead. Kept as a no-op anchor so the
+ * --checkbox modifier still has a hook for layout flags. */
+.db-form-group input:not([type="checkbox"]),
+.db-form-group select {
+  padding: 5px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 13px;
+  width: 100%;
+}
+/* follow-up: room for the custom chevron (added in the shared rule
+ * near .db-topbar-filters). Set on the select alone so the input padding above
+ * is unaffected. */
+.db-form-group select {
+  padding-right: 26px;
+}
+
+.db-readonly { background: #f5f5f5; color: #888; }
+
+/* ── theme picker (Create New Dashboard modal, canvas only) ──
+ * One card per built-in theme: a swatch strip (page/accent/header + chart
+ * series dots) over the theme name. Selection mirrors the .active pattern
+ * used across the builder's toggle buttons. */
+.db-theme-picker {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+.db-theme-card {
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  padding: 6px;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+.db-theme-card:hover { border-color: #999; }
+.db-theme-card.active {
+  border-color: #2c6da0;
+  box-shadow: 0 0 0 2px rgba(44, 109, 160, 0.25);
+}
+.db-theme-swatch {
+  display: flex;
+  height: 26px;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+.db-theme-swatch span { flex: 1; }
+.db-theme-card-name {
+  display: block;
+  margin-top: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #333;
+}
+
+.field-search-input {
+  width: 100%;
+  padding: 4px 7px;
+  border: 1px solid #ccc;
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  font-size: 12px;
+  box-sizing: border-box;
+  background: #f9f9f9;
+}
+.field-search-input + select {
+  border-radius: 0 0 4px 4px;
+}
+
+.db-details {
+  margin-top: 4px;
+}
+
+.db-details summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 6px 0;
+  border-top: 1px solid #e5e5e5;
+}
+
+.db-toggles-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 0;
+}
+
+.db-toggle-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #333;
+}
+
+.db-toggle-item input[type="checkbox"] { cursor: pointer; }
+
+.db-scale-row {
+  display: flex;
+  gap: 8px;
+}
+
+.db-scale-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.db-filters-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 0;
+}
+
+.db-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.db-filter-row select,
+.db-filter-row input[type="text"],
+.db-filter-row input[type="number"] {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 12px;
+}
+/* follow-up: chevron room (select only). */
+.db-filter-row select {
+  padding-right: 26px;
+}
+
+.db-filter-row .btn-rm-filter {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #c0392b;
+  font-size: 14px;
+  padding: 2px 4px;
+}
+
+/* ── Buttons ─────────────────────────────────── */
+.db-btn {
+  padding: 0 14px;
+  height: 32px;
+  border: 1px solid var(--cs-btn-normal-border, #7D8998);
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  background: var(--cs-btn-normal-bg, #fff);
+  color: var(--cs-btn-normal-text, #000716);
+  transition: all 90ms ease-out;
+  display: inline-flex;
+  align-items: center;
+}
+
+.db-btn:hover { background: var(--cs-btn-normal-hover-bg, #F4F4F4); border-color: var(--cs-text-secondary, #5F6B7A); }
+
+.db-btn-primary {
+  background: var(--cs-btn-primary-bg, #0972D3);
+  border-color: var(--cs-btn-primary-bg, #0972D3);
+  color: #fff;
+  font-weight: 700;
+}
+
+.db-btn-primary:hover { background: var(--cs-btn-primary-bg-hover, #033160); border-color: var(--cs-btn-primary-bg-hover, #033160); }
+
+.db-btn-add {
+  background: var(--cs-btn-primary-bg, #0972D3);
+  border-color: var(--cs-btn-primary-bg, #0972D3);
+  color: #fff;
+  font-weight: 700;
+}
+
+.db-btn-add:hover { background: var(--cs-btn-primary-bg-hover, #033160); border-color: var(--cs-btn-primary-bg-hover, #033160); }
+
+.db-btn-primary:disabled,
+.db-btn-primary[disabled] {
+  background: #85c1e9;
+  border-color: #7fb3d3;
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+/* Catch-all disabled state for any non-primary .db-btn (e.g. the
+ * custom-range Apply button while the range is invalid). Without
+ * this rule, secondary buttons rely on inline JS opacity/cursor,
+ * which is fragile across themes. */
+.db-btn:disabled,
+.db-btn[disabled] {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.db-btn-sm {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+/* ── Modal ───────────────────────────────────── */
+.db-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,7,22,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(2px);
+}
+
+.db-modal {
+  background: #fff;
+  border-radius: 8px;
+  width: 480px;
+  max-width: 95vw;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+}
+
+.db-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid #eee;
+}
+
+.db-modal-header h3 { font-size: 16px; color: #2c3e50; }
+
+.db-modal-close {
+  background: none;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  color: #888;
+}
+
+.db-modal-body { padding: 20px; }
+
+/* Chart type tiles — only used inside the Add Chart modal now */
+.db-chart-types-modal {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.db-chart-types-modal .chart-type-tile {
+  background: #f0f3f5;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 10px 6px;
+  text-align: center;
+  cursor: pointer;
+  user-select: none;
+  transition: background 90ms ease-out, border-color 90ms ease-out;
+}
+
+.db-chart-types-modal .chart-type-tile:hover { background: #e3e8ec; border-color: var(--cs-btn-primary-bg, #0972D3); }
+
+.db-chart-types-modal .chart-type-icon { font-size: 20px; margin-bottom: 4px; }
+.db-chart-types-modal .chart-type-label { font-size: 11px; color: #555; }
+
+/* Templates tile in modal — spans full width */
+.chart-type-tile--templates {
+  grid-column: 1 / -1;
+  cursor: pointer;
+  background: #2c5282 !important;
+  border-color: #3182ce !important;
+  color: #fff;
+}
+.chart-type-tile--templates:hover { background: #2b6cb0 !important; border-color: #63b3ed !important; }
+.chart-type-tile--templates .chart-type-label { color: #fff !important; }
+
+/* ── Template browser ─────────────────────────────────────────
+   Uniform list, no per-template thumbnails. Filter chips group by
+   connector_id. The old .template-card / .template-preview CSS was
+   replaced wholesale here; the previews lived only in the modal that
+   this rule set styled.                                                  */
+
+.template-filter-chips .template-chip {
+  padding: 4px 10px;
+  border: 1px solid #cbd5e0;
+  border-radius: 999px;
+  background: #fff;
+  color: #4a5568;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.template-filter-chips .template-chip:hover {
+  background: #ebf8ff;
+  border-color: #3498db;
+  color: #2b6cb0;
+}
+.template-filter-chips .template-chip.active {
+  background: #3498db;
+  border-color: #3498db;
+  color: #fff;
+}
+
+.template-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.template-row {
+  padding: 12px 14px;
+  border-bottom: 1px solid #edf2f7;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.template-row:last-child { border-bottom: none; }
+.template-row:hover { background: #f7fafc; }
+
+.template-row-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2c3e50;
+  margin-bottom: 3px;
+}
+
+.template-row-desc {
+  font-size: 12px;
+  color: #718096;
+  line-height: 1.4;
+}
+
+.template-row[data-is-available="false"] {
+  cursor: not-allowed;
+  background: #f7f7f7;
+}
+.template-row[data-is-available="false"] .template-row-title,
+.template-row[data-is-available="false"] .template-row-desc {
+  color: #a0aec0;
+}
+.template-row[data-is-available="false"]:hover {
+  background: #f7f7f7;
+}
+.template-row-unavailable {
+  font-size: 11px;
+  color: #c05621;
+  margin-top: 4px;
+  font-style: italic;
+}
+
+/* ── Utility ─────────────────────────────────── */
+.db-hint { font-size: 12px; color: #aaa; font-style: italic; }
+
+/* canvas drop target highlight */
+.db-canvas.drag-over-canvas {
+  outline: 3px dashed #3498db;
+  outline-offset: -8px;
+}
+
+/* ── Grouped Table rendering ─────────────────── */
+.gt-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.gt-table th,
+.gt-table td {
+  padding: 10px 14px;
+  border: 1px solid var(--cs-border-divider, #E9EBED);
+  text-align: center;
+}
+
+/* tighter padding on regular table charts (not grouped tables —
+   those keep their generous spacing because the title/group header rows
+   are the visual anchor of the layout). Header gets even tighter padding
+   plus a smaller sort button so the header row matches data-row height. */
+.chart-slot.chart-type-table .gt-table th,
+.chart-slot.chart-type-table .gt-table td,
+.chart-slot.chart-type-posts_table .gt-table th,
+.chart-slot.chart-type-posts_table .gt-table td {
+  padding: 4px 10px;
+}
+.chart-slot.chart-type-table .gt-table th,
+.chart-slot.chart-type-posts_table .gt-table th {
+  padding: 2px 10px;
+}
+.chart-slot.chart-type-table .gt-table th .gt-sort-btn {
+  font-size: 13px;
+}
+
+.gt-title-cell  { font-size: 14px; font-weight: 700; letter-spacing: 0.01em; }
+.gt-group-cell  { font-weight: 600; font-size: 12px; }
+
+/* R5 (UI) — deduplicated-field rendering. An explained-empty dedup
+   cell shows a muted em-dash with the reason copy on hover (title attr); the
+   caption under the table carries the snapped-window label, any column-level
+   reason, and an inline refresh link. */
+.gt-table td.gt-dedup-empty {
+  color: var(--cs-text-muted, #999);
+  font-style: italic;
+}
+.gt-dedup-caption {
+  color: var(--cs-text-muted, #888);
+  font-size: 11px;
+  padding: 4px 4px 2px;
+}
+.gt-dedup-caption .gt-dedup-window { font-weight: 600; }
+.gt-dedup-caption .gt-dedup-refresh { color: var(--cs-link, #2c6da0); text-decoration: none; }
+.gt-dedup-caption .gt-dedup-refresh:hover { text-decoration: underline; }
+.gt-col-cell    { font-weight: 600; font-size: 13px; letter-spacing: 0.01em; }
+.gt-data-cell   { color: var(--cs-text-primary, #000716); font-weight: 500; background: var(--cs-bg-primary, #fff); border-color: var(--cs-border-divider, #E9EBED); }
+
+/* Long free-text cells (e.g. post captions) wrap instead of stretching
+   the table off-screen. Capped width keeps the column readable; an
+   explicit per-column width still overrides this via the
+   inline width on table-layout:fixed tables. Scoped to table charts so
+   grouped tables are unaffected. */
+.chart-slot.chart-type-table .gt-data-cell,
+.chart-slot.chart-type-posts_table .gt-data-cell {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 360px;
+  vertical-align: top;
+}
+
+.gt-table tbody tr:hover td.gt-data-cell { background: var(--cs-bg-hover, #F4F4F4); }
+
+/* Left border separator between groups */
+.gt-group-sep { border-left: 3px solid rgba(0,0,0,0.15) !important; }
+
+/* ── Grouped Table config panel (right panel) ── */
+.db-color-row {
+  display: flex;
+  align-items: center;
+  flex-direction: row;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.db-color-row label {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 600;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.db-color-row input[type="color"] {
+  width: 40px;
+  height: 28px;
+  padding: 2px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/* Text style row: color swatch + font size input side by side */
+.db-text-style-row {
+  display: flex;
+  align-items: center;
+  flex-direction: row;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.db-text-style-row label {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 600;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.db-text-style-row input[type="color"] {
+  width: 40px;
+  height: 28px;
+  padding: 2px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.db-font-size-input {
+  width: 46px;
+  padding: 4px 5px;
+  font-size: 12px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.db-font-size-label {
+  font-size: 11px;
+  color: #888;
+}
+
+.db-bold-toggle {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #555;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+}
+
+/* Floating remove button on grouped table slots (no slot header) */
+.gt-remove-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: rgba(0,0,0,0.55);
+  color: #fff;
+  border: none;
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  font-size: 12px;
+  line-height: 22px;
+  text-align: center;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 10;
+}
+.chart-slot:hover .gt-remove-btn { opacity: 1; }
+.gt-remove-btn:hover { background: #c0392b !important; }
+
+/* inflated-reach warning triangle. Sits in the slot's top-left
+   corner (the remove button owns top-right). Always visible — it warns the
+   viewer that the reach figure is an un-deduplicated daily sum. The plain-
+   language explanation is the element's native title (hover tooltip). */
+.reach-warning-badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  font-size: 14px;
+  line-height: 1;
+  color: #e67e22;
+  cursor: help;
+  z-index: 10;
+  user-select: none;
+  text-shadow: 0 0 2px rgba(255,255,255,0.9);
+}
+
+/* inline reach warning on a TABLE column header. Sits just before
+   the column label, pointing at the exact inflated reach column. The header
+   has white text on a dark fill, so the amber ⚠ is kept bright with a subtle
+   dark outline for contrast. */
+.reach-warning-inline {
+  color: #ffcf66;
+  cursor: help;
+  user-select: none;
+  font-size: 0.95em;
+  text-shadow: 0 0 2px rgba(0,0,0,0.55);
+}
+
+/* Always-available drag handle (top-left of every chart slot). Fades in
+   on slot hover like the remove button, but unlike the title-bar handle
+   it's present even when hide_title hides the header. Six-dot grip drawn
+   with a radial-gradient tile. */
+.chart-drag-handle {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  background-color: rgba(0,0,0,0.45);
+  background-image: radial-gradient(rgba(255,255,255,0.95) 1px, transparent 1.2px);
+  background-size: 5px 5px;
+  background-position: 5px 5px;
+  background-repeat: repeat;
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 10;
+}
+.chart-slot:hover .chart-drag-handle { opacity: 1; }
+.chart-drag-handle:hover { background-color: rgba(44,109,160,0.85); }
+.chart-drag-handle:active { cursor: grabbing; }
+
+.gt-group-block {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  margin-bottom: 8px;
+  padding: 8px;
+  background: #f0f4f8;
+}
+
+.gt-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.gt-group-header input {
+  flex: 1;
+  padding: 4px 7px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.gt-col-list { margin-bottom: 4px; }
+
+/* Column card — vertical layout */
+.gt-col-card {
+  border: 1px solid #dde3e9;
+  border-radius: 4px;
+  margin-bottom: 6px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.gt-col-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  background: #e5eaef;
+  border-bottom: 1px solid #d0d8e0;
+  font-size: 11px;
+  font-weight: 600;
+  color: #444;
+}
+
+.gt-col-card-header .btn-rm-col {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #c0392b;
+  font-size: 13px;
+  padding: 0 3px;
+  line-height: 1;
+}
+.gt-col-card-header .btn-rm-col:hover { color: #e74c3c; }
+
+.gt-col-field-row {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 8px;
+  gap: 2px;
+  border-bottom: 1px solid #f0f2f4;
+}
+.gt-col-field-row:last-child { border-bottom: none; }
+
+.gt-col-field-row > label {
+  font-size: 11px;
+  color: #666;
+}
+
+.gt-col-field-row input,
+.gt-col-field-row select {
+  width: 100%;
+  padding: 4px 26px 4px 6px; /* follow-up: room for the chevron */
+  font-size: 12px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  box-sizing: border-box;
+}
+
+.gt-add-col-btn {
+  font-size: 11px;
+  padding: 3px 8px;
+  margin-top: 2px;
+}
+
+.gt-no-columns {
+  font-size: 11px;
+  color: #aaa;
+  font-style: italic;
+  padding: 4px 0;
+}
+
+/* ── Table column sort button & menu ─────────── */
+.gt-col-header-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.gt-col-header-label { flex: 1; }
+
+.gt-sort-btn {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.65);
+  cursor: pointer;
+  padding: 0 3px;
+  font-size: 19px;
+  line-height: 1;
+  border-radius: 3px;
+  flex-shrink: 0;
+  transition: color 0.1s, background 0.1s;
+}
+.gt-sort-btn:hover {
+  color: #fff;
+  background: rgba(255,255,255,0.2);
+}
+
+.gt-sort-menu {
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.15);
+  min-width: 148px;
+  overflow: hidden;
+}
+
+.gt-sort-opt {
+  padding: 8px 14px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  color: #2c3e50;
+}
+.gt-sort-opt:hover { background: #f0f4f8; }
+
+/* ── Table column editor cards (right panel) ─── */
+.tc-col-card {
+  border: 1px solid #dde3e9;
+  border-radius: 4px;
+  background: #fff;
+  margin-bottom: 6px;
+  overflow: hidden;
+}
+
+.tc-col-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: #e5eaef;
+  border-bottom: 1px solid #d0d8e0;
+  font-size: 11px;
+  font-weight: 600;
+  color: #444;
+}
+
+.tc-col-card-header > span:first-child { flex: 1; }
+
+.tc-col-move-btns { display: flex; gap: 2px; flex-shrink: 0; }
+
+.tc-col-move {
+  background: none;
+  border: 1px solid #bbb;
+  border-radius: 3px;
+  color: #555;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0 4px;
+  line-height: 1.4;
+}
+.tc-col-move:hover:not(:disabled) { background: #d0d8e0; }
+.tc-col-move:disabled { color: #ccc; border-color: #ddd; cursor: default; }
+
+.tc-col-card-body { padding: 6px 8px; }
+
+.tc-col-card-body .db-form-group { margin-bottom: 5px; }
+
+.tc-col-remove {
+  background: none;
+  border: none;
+  color: #999;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0;
+  line-height: 1;
+}
+.tc-col-remove:hover { color: #c0392b; }
+
+/* ── Edit / Properties mode tabs in #config-panel ──────────────── */
+/* The tabs sit at the top of the config panel and switch the panel between
+ * data-binding fields ("Edit") and display-only fields ("Properties").
+ * Population-driven hides (inline style.display = 'none') still win — these
+ * rules only ADD hiding when a section doesn't belong to the active mode. */
+
+.db-mode-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid #e5e8ea;
+  margin-bottom: 12px;
+  padding-bottom: 0;
+}
+
+.db-mode-tab {
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #6c757d;
+  cursor: pointer;
+  margin-bottom: -1px;
+  border-radius: 0;
+}
+
+.db-mode-tab:hover {
+  color: #2c6da0;
+}
+
+.db-mode-tab.is-active {
+  color: #2c6da0;
+  border-bottom-color: #2c6da0;
+}
+
+/* When Edit mode is active, hide all properties-only sections.
+   Tab buttons themselves are always visible — the :not(.db-mode-tab)
+   exclusion stops the rule from hiding the inactive tab. */
+.db-config-panel--mode-edit [data-mode="properties"]:not(.db-mode-tab) {
+  display: none !important;
+}
+
+/* When Properties mode is active, hide all edit-only sections. */
+.db-config-panel--mode-properties [data-mode="edit"]:not(.db-mode-tab) {
+  display: none !important;
+}
+
+/* ── Edit / Properties buttons at the bottom of each chart slot ─ */
+/* These are the discoverability affordance — without them it's not obvious
+ * the user can click into the chart to configure it. */
+
+.chart-slot-footer {
+  display: flex;
+  gap: 6px;
+  padding: 6px 8px;
+  background: #f7f8fa;
+  border-top: 1px solid #e5e8ea;
+}
+
+.chart-slot-footer .db-btn {
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
+/* ── Collapsible left sidebar with a narrow rail ────────────────── */
+/* The whole left panel collapses to a 32px rail showing only the toggle
+ * chevron. State persists in localStorage under "db-left-panel-collapsed".
+ * The default 14px panel padding is replaced with `0` when collapsed so the
+ * rail edges line up with the toggle button. */
+
+.db-panel-left {
+  position: relative;
+  transition: width 0.18s ease, padding 0.18s ease;
+}
+
+.db-panel-left.is-collapsed {
+  width: 32px;
+  padding: 8px 0;
+}
+
+.db-panel-left.is-collapsed .db-panel-left-body {
+  display: none;
+}
+
+.db-panel-left-toggle {
+  background: transparent;
+  border: 0;
+  width: 100%;
+  padding: 4px 0;
+  margin: -4px 0 6px 0;
+  color: var(--cs-nav-text, #95a5a6);
+  cursor: pointer;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  border-radius: 3px;
+}
+
+.db-panel-left-toggle:hover {
+  color: var(--cs-text, #fff);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.db-panel-left.is-collapsed .db-panel-left-toggle {
+  justify-content: center;
+  margin: 0;
+}
+
+.db-panel-left-toggle-chevron {
+  font-size: 18px;
+  line-height: 1;
+  display: inline-block;
+  transition: transform 0.18s ease;
+  width: 18px;
+  text-align: center;
+}
+
+/* Flip the chevron when collapsed: ‹ becomes › */
+.db-panel-left.is-collapsed .db-panel-left-toggle-chevron {
+  transform: rotate(180deg);
+}
+
+/* ── Phase 17 T2/T3 — table column resize drag handle ─────────────── */
+/* The handle is a 6px-wide bar pinned to the right edge of each <th>.
+ * Visible on hover only — invisible by default so it doesn't visually
+ * fragment the column header. */
+
+.gt-col-cell {
+  position: relative;
+}
+
+.gt-col-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -3px;        /* straddle the column boundary so the cursor lands on the handle just before the next column */
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  user-select: none;
+  z-index: 2;
+  /* Subtle hairline appears on hover so users can find the handle. */
+  background: transparent;
+  transition: background-color 0.1s ease;
+}
+
+.gt-col-resize-handle:hover,
+body.gt-col-resizing .gt-col-resize-handle {
+  background: rgba(44, 109, 160, 0.4);   /* matches header bg #2c6da0 */
+}
+
+/* Force the resize cursor on the whole document while a drag is live —
+ * otherwise the cursor flips back to default the moment the pointer
+ * leaves the handle (which it almost always does during a fast drag). */
+body.gt-col-resizing,
+body.gt-col-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+/* ── Phase 17 T4 — collapsible config-panel sections ─────────────── */
+/* Each section header is a labeled button that toggles a collapsed
+ * state on the nearest .db-section ancestor. When .is-collapsed is
+ * set, the section's body (all .db-form-group + nested non-section
+ * children) is hidden via display:none.
+ *
+ * Implementation note: we keep the existing flat HTML and rely on
+ * runtime DOM walking (initCollapsibleSections in builder.js) to
+ * insert .db-section wrappers and .db-section-body groupings. This
+ * keeps the index.html template churn small. */
+
+.db-section-label--collapsible {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin-top: 12px;
+  margin-bottom: 4px;
+  cursor: pointer;
+  text-align: left;
+  user-select: none;
+}
+
+.db-section-collapse-chevron {
+  display: inline-block;
+  font-size: 10px;
+  width: 12px;
+  text-align: center;
+  color: inherit;
+}
+
+/* Expanded → ▲ ("click to collapse up").
+ * Collapsed → ▼ ("click to expand down").
+ * The arrow represents the action, not the current state — matches
+ * GitHub / macOS Finder disclosure-widget convention. */
+.db-section .db-section-collapse-chevron::before {
+  content: '▲';
+}
+.db-section.is-collapsed .db-section-collapse-chevron::before {
+  content: '▼';
+}
+
+.db-section.is-collapsed .db-section-body {
+  display: none;
+}
+
+/* ── Phase 17 T4 — table column picker + actions ──────────────────── */
+/* The dropdown sits full-width on its own row (visual parity with the
+ * other form fields below). The action buttons (move up/down, add,
+ * remove) sit on a row directly below so they're never squeezed off-
+ * screen on a narrow right panel. */
+.tc-col-picker-row {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.tc-col-picker-row select {
+  width: 100%;
+  padding: 5px 26px 5px 8px; /* follow-up: room for the chevron */
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 13px;
+  /* background-color (not the `background` shorthand) so it doesn't reset the
+   * chevron background-image from the shared rule. */
+  background-color: #fff;
+}
+
+.tc-col-picker-actions {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.tc-col-picker-actions .db-btn-sm {
+  padding: 4px 8px;
+  font-size: 13px;
+  line-height: 1.2;
+  min-width: 32px;
+}
+
+/* ── Phase 18 — calculation column formula error display ──────────── */
+.tc-formula-err {
+  margin-top: 4px;
+  padding: 4px 6px;
+  background: #fdecea;
+  color: #8b1a10;
+  border: 1px solid #f5b7ad;
+  border-radius: 3px;
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+/* ── Dashboard-level filter controls ───────────────────────────── */
+
+/* Scroll the editor list inside the filters modal so very long lists
+   don't push Add Filter / Done off the bottom of the viewport. */
+#dashboard-filters-modal #dashboard-filters-list {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+/* Editor row in the filters-modal list — stacks label + control
+   pairs vertically with a divider between rows. */
+.db-dashboard-filter-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 0;
+  border-bottom: 1px solid #e5e8ea;
+}
+.db-dashboard-filter-row:last-child {
+  border-bottom: 0;
+}
+.db-dashboard-filter-row label {
+  font-size: 11px;
+  font-weight: 500;
+  color: #555;
+  margin-top: 4px;
+}
+.db-dashboard-filter-row input[type="text"],
+.db-dashboard-filter-row select {
+  width: 100%;
+  padding: 5px 26px 5px 6px; /* follow-up: room for the chevron */
+  font-size: 12px;
+  border: 1px solid #ccd0d4;
+  border-radius: 3px;
+}
+.db-dashboard-filter-row > button {
+  align-self: flex-start;
+  margin-top: 6px;
+}
+
+/* Filter strip — horizontal row of buttons above the chart grid.
+   Each button opens a value-picker popover. */
+.db-filter-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 16px;
+  background: #f5f7fa;
+  border-bottom: 1px solid #e5e8ea;
+}
+
+.db-filter-strip-item {
+  position: relative;  /* anchor for the popover */
+}
+
+.db-filter-strip-btn {
+  background: #fff;
+  border: 1px solid #ccd0d4;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: #333;
+  cursor: pointer;
+  /* Single-line label that gets clipped when overflowing (no ellipsis).
+     Hover tooltip shows the full title + selection list (set via the
+     button's ``title`` attribute in dashboard_filters.js). max-width
+     stays in line with the popover's 240px so the strip stays
+     predictable. */
+  white-space: nowrap;
+  overflow: hidden;
+  max-width: 240px;
+}
+.db-filter-strip-btn:hover {
+  background: #f0f4f8;
+  border-color: #2c6da0;
+}
+
+/* "+ Filters" entry button at the right end of the strip. Always
+   present in builder mode (hidden in viewer via DASHBOARD_FILTERS_READONLY).
+   Margin-left:auto pushes it to the right when filters exist. */
+.db-filter-strip-add {
+  margin-left: auto;
+  background: #fff;
+  border: 1px dashed #2c6da0;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: #2c6da0;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.db-filter-strip-add:hover {
+  background: #2c6da0;
+  color: #fff;
+  border-style: solid;
+}
+
+.db-filter-strip-hint {
+  font-size: 12px;
+  color: #888;
+  font-style: italic;
+  align-self: center;
+}
+
+/* Popover — value-picker panel anchored to the filter strip button. */
+.db-filter-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 1000;
+  width: 240px;
+  max-height: 320px;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 1px solid #ccd0d4;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  padding: 8px;
+}
+.db-filter-popover-search {
+  width: 100%;
+  padding: 5px 6px;
+  font-size: 12px;
+  border: 1px solid #ccd0d4;
+  border-radius: 3px;
+  margin-bottom: 6px;
+}
+.db-filter-popover-loading,
+.db-filter-popover-empty {
+  font-size: 12px;
+  color: #888;
+  font-style: italic;
+  padding: 8px 4px;
+}
+/* Select All / Clear All bulk controls in the value popover. */
+.db-filter-popover-actions {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.db-filter-popover-actions .db-btn {
+  flex: 1;
+}
+.db-filter-popover-list {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+.db-filter-popover-item {
+  display: block;
+  padding: 4px 4px;
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 2px;
+  /* Single-line; clip on overflow (no ellipsis). Hover tooltip carries
+     the full value via the label's title attribute. */
+  white-space: nowrap;
+  overflow: hidden;
+}
+.db-filter-popover-item:hover {
+  background: #f0f4f8;
+}
+
+/* follow-up: explicit Canvas Editor entry on canvas explorer rows
+   (a click now selects the row for properties/visibility editing). */
+.db-explorer-canvas-edit-btn {
+  display: none;
+  margin-left: 4px;
+  font-size: 13px;
+  color: #0972d3;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.db-explorer-item:hover .db-explorer-canvas-edit-btn { display: inline; }
+
+
+/* follow-up: read-only preview of a selected canvas page in the
+   builder center area (the same viewer /dashboards embeds). */
+.db-canvas-preview-frame {
+  width: 100%; height: 100%; min-height: 72vh; border: none;
+  background: #f7f8fa; border-radius: 8px;
+}

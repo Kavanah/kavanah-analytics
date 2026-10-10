@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Step 7 — Review permissions · Kavanah Analytics</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/cloudscape.css') }}">
+    <style>
+        body {
+            background: var(--cs-bg-page);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 84px 20px 40px;
+        }
+        .login-topbar {
+            position: fixed; top: 0; left: 0; right: 0;
+            height: 56px;
+            background: var(--cs-nav-bg);
+            display: flex; align-items: center;
+            padding: 0 24px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+            z-index: 10;
+        }
+        .login-topbar-logo { height: 24px; width: auto; margin-right: 12px; }
+        .login-topbar-title { font-size: 17px; font-weight: 700; color: #FFFFFF; }
+
+        .wizard-shell { width: 100%; max-width: 720px; }
+
+        .card {
+            background: var(--cs-bg-primary);
+            border: 1px solid var(--cs-border-default);
+            border-radius: var(--cs-radius-l);
+            box-shadow: var(--cs-shadow-m);
+            padding: 36px 36px 28px;
+        }
+
+        .eyebrow {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 11px; font-weight: 600;
+            letter-spacing: 0.08em; text-transform: uppercase;
+            color: var(--cs-text-secondary);
+            margin-bottom: 8px;
+        }
+        .wizard-title {
+            font-size: 24px; font-weight: 700;
+            color: var(--cs-text-heading);
+            margin: 0 0 6px;
+        }
+        .wizard-sub {
+            font-size: var(--cs-font-size-m);
+            color: var(--cs-text-secondary);
+            line-height: 1.5;
+            margin: 0 0 22px;
+        }
+        .wizard-sub strong { color: var(--cs-text-heading); }
+
+        .oauth-error {
+            display: flex;
+            gap: 12px;
+            padding: 14px 16px;
+            margin-bottom: 18px;
+            background: #FFF4E5;
+            border: 1px solid #F2C879;
+            border-radius: var(--cs-radius-m);
+        }
+        .oauth-error-icon {
+            width: 22px; height: 22px;
+            flex: 0 0 22px;
+            border-radius: 999px;
+            background: #B45F0B;
+            color: #FFFFFF;
+            display: flex; align-items: center; justify-content: center;
+            margin-top: 1px;
+        }
+        .oauth-error-icon svg { width: 12px; height: 12px; }
+        .oauth-error-body { flex: 1; min-width: 0; }
+        .oauth-error-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #7A3F00;
+            margin-bottom: 4px;
+        }
+        .oauth-error-detail {
+            font-size: 13px;
+            color: #5C4520;
+            line-height: 1.5;
+            margin-bottom: 8px;
+        }
+        .oauth-error-retry {
+            display: inline-block;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--cs-text-link);
+            text-decoration: none;
+        }
+        .oauth-error-retry:hover { text-decoration: underline; }
+
+        .account-context {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 12px 16px;
+            margin-bottom: 18px;
+            background: var(--cs-bg-page);
+            border: 1px solid var(--cs-border-default);
+            border-radius: var(--cs-radius-m);
+            font-size: 13px;
+            color: var(--cs-text-secondary);
+        }
+        .account-context-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 0;
+        }
+        .account-context-avatar {
+            width: 28px; height: 28px;
+            flex: 0 0 28px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #1877F2, #0866FF);
+            color: #FFFFFF;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700;
+            font-size: 12px;
+        }
+        .account-context-text {
+            min-width: 0;
+            line-height: 1.35;
+        }
+        .account-context-title {
+            font-weight: 600;
+            color: var(--cs-text-heading);
+            font-size: 13px;
+        }
+        .account-context-detail {
+            font-size: 12px;
+            color: var(--cs-text-secondary);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 360px;
+        }
+        .account-context-detail strong { color: var(--cs-text-heading); }
+        .account-context-switch {
+            color: var(--cs-text-link);
+            text-decoration: none;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .account-context-switch:hover { text-decoration: underline; }
+
+        .scope-list {
+            border: 1px solid var(--cs-border-default);
+            border-radius: var(--cs-radius-m);
+            padding: 4px 16px;
+            margin-bottom: 18px;
+        }
+        .scope-item {
+            display: flex; gap: 14px;
+            padding: 14px 0;
+            border-bottom: 1px solid var(--cs-border-divider);
+            align-items: flex-start;
+        }
+        .scope-item:last-child { border-bottom: none; }
+        .scope-icon {
+            width: 28px; height: 28px;
+            flex: 0 0 28px;
+            border-radius: 8px;
+            background: rgba(9, 114, 211, 0.10);
+            color: var(--cs-btn-primary-bg);
+            display: flex; align-items: center; justify-content: center;
+            margin-top: 2px;
+        }
+        .scope-icon svg { width: 16px; height: 16px; }
+        .scope-name {
+            font-weight: 600;
+            font-size: 14px;
+            color: var(--cs-text-heading);
+            margin-bottom: 4px;
+        }
+        .scope-why {
+            font-size: 13px;
+            color: var(--cs-text-secondary);
+            line-height: 1.5;
+        }
+        .scope-key {
+            display: inline-block;
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 11px;
+            background: var(--cs-bg-page);
+            border: 1px solid var(--cs-border-default);
+            color: var(--cs-text-body);
+            padding: 1px 6px;
+            border-radius: 4px;
+            margin-right: 4px;
+        }
+
+        .never-box {
+            display: flex; gap: 12px;
+            padding: 14px 16px;
+            margin-bottom: 22px;
+            background: #ECF7EE;
+            border: 1px solid #BFE3C6;
+            border-radius: var(--cs-radius-m);
+        }
+        .never-icon {
+            width: 22px; height: 22px;
+            flex: 0 0 22px;
+            border-radius: 999px;
+            background: #1B873A;
+            color: #FFFFFF;
+            display: flex; align-items: center; justify-content: center;
+            margin-top: 1px;
+        }
+        .never-icon svg { width: 12px; height: 12px; }
+        .never-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: #1B873A;
+            margin-bottom: 4px;
+        }
+        .never-list ul {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 2px 18px;
+            font-size: 13px;
+            color: var(--cs-text-body);
+        }
+        .never-list li::before {
+            content: '✓ ';
+            color: #1B873A;
+            font-weight: 700;
+        }
+        @media (max-width: 560px) {
+            .never-list ul { grid-template-columns: 1fr; }
+        }
+
+        .btn-row {
+            display: flex; align-items: center; justify-content: space-between;
+            padding-top: 18px;
+            margin-top: 22px;
+            border-top: 1px solid var(--cs-border-divider);
+        }
+        .btn-row-right {
+            display: flex; gap: 10px; align-items: center;
+        }
+        .btn {
+            height: 40px; padding: 0 18px;
+            border-radius: var(--cs-radius-s);
+            font-size: var(--cs-font-size-m);
+            font-weight: 600;
+            font-family: var(--cs-font);
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition: background 90ms ease-out, border-color 90ms ease-out;
+            display: inline-flex; align-items: center;
+        }
+        .btn-primary {
+            background: var(--cs-btn-primary-bg);
+            color: #FFFFFF;
+            font-weight: 700;
+        }
+        .btn-primary:hover { background: var(--cs-btn-primary-bg-hover); }
+        .btn-primary:focus-visible {
+            outline: none;
+            box-shadow: 0 0 0 2px #FFFFFF, 0 0 0 4px var(--cs-btn-primary-bg);
+        }
+        .btn-ghost {
+            background: transparent;
+            color: var(--cs-text-link);
+            border-color: transparent;
+        }
+        .btn-ghost:hover { background: var(--cs-bg-page); }
+        .btn-secondary {
+            background: var(--cs-bg-primary);
+            color: var(--cs-text-body);
+            border-color: var(--cs-border-input);
+        }
+        .btn-secondary:hover { border-color: var(--cs-btn-primary-bg); color: var(--cs-btn-primary-bg); }
+
+        /* partial-scope explainer */
+        .partial-scope {
+            display: flex;
+            gap: 12px;
+            padding: 16px;
+            margin-bottom: 18px;
+            background: #FFF4E5;
+            border: 1px solid #F2C879;
+            border-radius: var(--cs-radius-m);
+        }
+        .partial-scope-icon {
+            width: 22px; height: 22px;
+            flex: 0 0 22px;
+            border-radius: 999px;
+            background: #B45F0B;
+            color: #FFFFFF;
+            display: flex; align-items: center; justify-content: center;
+            margin-top: 1px;
+        }
+        .partial-scope-icon svg { width: 12px; height: 12px; }
+        .partial-scope-body { flex: 1; min-width: 0; }
+        .partial-scope-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #7A3F00;
+            margin-bottom: 4px;
+        }
+        .partial-scope-intro {
+            font-size: 13px;
+            color: #5C4520;
+            line-height: 1.5;
+            margin-bottom: 10px;
+        }
+        .partial-scope-list {
+            list-style: none;
+            margin: 0 0 12px;
+            padding: 0;
+        }
+        .partial-scope-list li {
+            font-size: 13px;
+            color: #5C4520;
+            line-height: 1.5;
+            padding: 6px 0;
+            border-top: 1px solid #F2C879;
+        }
+        .partial-scope-list li:first-child { border-top: none; }
+        .partial-scope-list .miss-name {
+            font-weight: 600;
+            color: #7A3F00;
+        }
+        .partial-scope-cta {
+            display: inline-flex;
+            align-items: center;
+            height: 36px;
+            padding: 0 16px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #FFFFFF;
+            background: #B45F0B;
+            border-radius: var(--cs-radius-s);
+            text-decoration: none;
+        }
+        .partial-scope-cta:hover { background: #94500A; }
+
+        /* NONE_USABLE docs-handoff card */
+        .none-usable {
+            display: flex;
+            gap: 12px;
+            padding: 16px;
+            margin-bottom: 18px;
+            background: #FDECEA;
+            border: 1px solid #F4B4AC;
+            border-radius: var(--cs-radius-m);
+        }
+        .none-usable-icon {
+            width: 22px; height: 22px;
+            flex: 0 0 22px;
+            border-radius: 999px;
+            background: #C0392B;
+            color: #FFFFFF;
+            display: flex; align-items: center; justify-content: center;
+            margin-top: 1px;
+        }
+        .none-usable-icon svg { width: 12px; height: 12px; }
+        .none-usable-body { flex: 1; min-width: 0; }
+        .none-usable-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #8C1F11;
+            margin-bottom: 4px;
+        }
+        .none-usable-intro {
+            font-size: 13px;
+            color: #6A1A0F;
+            line-height: 1.5;
+            margin-bottom: 10px;
+        }
+        .none-usable-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .none-usable-actions a {
+            font-size: 13px;
+            font-weight: 600;
+            text-decoration: none;
+        }
+        .none-usable-cta-primary {
+            display: inline-flex;
+            align-items: center;
+            height: 36px;
+            padding: 0 16px;
+            color: #FFFFFF;
+            background: #C0392B;
+            border-radius: var(--cs-radius-s);
+        }
+        .none-usable-cta-primary:hover { background: #952B20; }
+        .none-usable-cta-secondary {
+            display: inline-flex;
+            align-items: center;
+            height: 36px;
+            padding: 0 16px;
+            color: #8C1F11;
+            border: 1px solid #F4B4AC;
+            border-radius: var(--cs-radius-s);
+        }
+        .none-usable-cta-secondary:hover { background: #FDECEA; }
+    </style>
+</head>
+<body>
+    <a href="#wizard-main" class="cs-skip-link" data-testid="wizard-skip-link">Skip to main content</a>
+    <div class="login-topbar">
+        <img src="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5" alt="" class="login-topbar-logo">
+        <span class="login-topbar-title">Kavanah Analytics</span>
+    </div>
+
+    <main class="wizard-shell" id="wizard-main">
+        {% include "_onboarding_progress.html" %}
+
+        <div class="card" data-testid="step5-permissions-card">
+            {# ── partial-scope explainer (user granted some but not all) ── #}
+            {% if reconciliation and reconciliation.outcome.value == 'partial' %}
+            <div class="partial-scope" data-testid="step5-partial-scope" role="alert">
+                <div class="partial-scope-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="12" y1="8" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12" y2="17"/>
+                    </svg>
+                </div>
+                <div class="partial-scope-body">
+                    <div class="partial-scope-title" data-testid="step5-partial-scope-title">
+                        Some permissions are missing
+                    </div>
+                    <div class="partial-scope-intro" data-testid="step5-partial-scope-intro">
+                        You granted access to {{ connector_name }}, but a few permissions
+                        we need are missing. Without them we can't import everything you
+                        picked. Re-grant access to fix this — we'll only ask for what's missing.
+                    </div>
+                    <ul class="partial-scope-list" data-testid="step5-partial-scope-list">
+                        {% for row in reconciliation.missing_rows %}
+                        <li data-testid="step5-partial-scope-row">
+                            <span class="miss-name">{{ row.name }}.</span>
+                            {{ row.why }}
+                            {% for key in row.missing_keys %}<span class="scope-key">{{ key }}</span>{% endfor %}
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    <a class="partial-scope-cta"
+                       href="{{ regrant_url }}"
+                       data-testid="step5-regrant-link">Re-grant access →</a>
+                </div>
+            </div>
+            {% endif %}
+
+            {# ── NONE_USABLE — user denied everything, route to docs ── #}
+            {% if reconciliation and reconciliation.outcome.value == 'none_usable' %}
+            <div class="none-usable" data-testid="step5-none-usable" role="alert">
+                <div class="none-usable-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </div>
+                <div class="none-usable-body">
+                    <div class="none-usable-title" data-testid="step5-none-usable-title">
+                        No permissions were granted
+                    </div>
+                    <div class="none-usable-intro" data-testid="step5-none-usable-intro">
+                        You didn't grant any of the permissions we asked for, so we can't
+                        connect {{ connector_name }}. You can try the connection again, or
+                        read our docs to understand which permissions Kavanah needs.
+                    </div>
+                    <div class="none-usable-actions">
+                        <a class="none-usable-cta-primary"
+                           href="{{ url_for('analytics.onboarding_step7_start_oauth') }}"
+                           data-testid="step5-none-usable-retry-link">Try the connection again →</a>
+                        <a class="none-usable-cta-secondary"
+                           href="{{ docs_url }}"
+                           data-testid="step5-none-usable-docs-link"
+                           target="_blank"
+                           rel="noopener">Read the docs →</a>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if oauth_error %}
+            <div class="oauth-error" data-testid="step5-oauth-error" role="alert">
+                <div class="oauth-error-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="12" y1="8" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12" y2="17"/>
+                    </svg>
+                </div>
+                <div class="oauth-error-body">
+                    <div class="oauth-error-title" data-testid="step5-oauth-error-title">
+                        {{ oauth_error.title }}
+                    </div>
+                    <div class="oauth-error-detail" data-testid="step5-oauth-error-body">
+                        {{ oauth_error.body }}
+                    </div>
+                    <a class="oauth-error-retry"
+                       href="{{ retry_url }}"
+                       data-testid="step5-oauth-error-retry-link">{{ oauth_error.cta_label }} →</a>
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="eyebrow">Review permissions</div>
+            <h1 class="wizard-title">What Kavanah will be able to do</h1>
+            <p class="wizard-sub">
+                When you click <strong>Continue</strong>,
+                <strong data-testid="step5-connector-name">{{ connector_name }}</strong>
+                will ask you to grant these permissions. We use them only for what's described below.
+            </p>
+
+            {% if identity_surface %}
+            <div class="account-context" data-testid="step5-account-context">
+                <div class="account-context-left">
+                    <div class="account-context-avatar" data-testid="step5-account-avatar"
+                         aria-hidden="true">{{ identity_surface.initials }}</div>
+                    <div class="account-context-text">
+                        <div class="account-context-title">
+                            Logged in as
+                            <span data-testid="step5-account-name">{{ identity_surface.display_name }}</span>
+                        </div>
+                        <div class="account-context-detail">
+                            <strong data-testid="step5-account-email">{{ identity_surface.display_email }}</strong>
+                            — if this isn't the right
+                            <span data-testid="step5-account-provider">{{ identity_surface.provider_label }}</span>
+                            account, switch before continuing.
+                        </div>
+                    </div>
+                </div>
+                <a class="account-context-switch"
+                   href="{{ identity_surface.switch_url }}"
+                   data-testid="step5-switch-account-link"
+                   rel="noopener">Switch account</a>
+            </div>
+            {% endif %}
+
+            <div class="scope-list" data-testid="step5-scope-list"
+                 role="list" aria-label="Permissions Kavanah will request">
+                {% for group in scope_groups %}
+                <div class="scope-item" data-testid="step5-scope-item" role="listitem">
+                    <div class="scope-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 2L4 7v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V7l-8-5z"/>
+                            <path d="M9 12l2 2 4-4"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="scope-name">{{ group.name }}</div>
+                        <div class="scope-why">
+                            {% for key in group.scope_keys %}<span class="scope-key">{{ key }}</span>{% endfor %}
+                            {{ group.why }}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            <div class="never-box" data-testid="step5-never-box">
+                <div class="never-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                </div>
+                <div>
+                    <div class="never-title">Kavanah will never:</div>
+                    <div class="never-list">
+                        <ul>
+                            {% for item in never_does %}
+                            <li>{{ item }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <form method="POST" action="{{ url_for('analytics.onboarding_step7_post') }}" id="step5Form" novalidate>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+                {# follow-up (2026-05-20): Cancel button removed.
+                   It POSTed action=cancel which fired the
+                   onboarding_step7_skip audit event then redirected to
+                   /onboarding/step-6 — but the visible "← Back" link
+                   to the right already lands the user on step-4 with
+                   the same end state, so Cancel was UI duplication.
+                   Skips can still be derived from the funnel as
+                   "step-5 entered + no step-5 continue + step-4
+                   re-entered" sequence. #}
+                <div class="btn-row">
+                    <a class="btn btn-ghost"
+                       href="{{ url_for('analytics.onboarding_step6_page') }}"
+                       data-testid="step5-back-link">← Back</a>
+                    <button type="submit"
+                            name="action"
+                            value="continue"
+                            class="btn btn-primary"
+                            data-testid="step5-continue-btn">Continue to {{ connector_name }} →</button>
+                </div>
+            </form>
+        </div>
+    </main>
+</body>
+</html>

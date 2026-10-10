@@ -1,0 +1,174 @@
+{% extends "base_v2.html" %}
+
+{% block sidebar %}{% endblock %}
+{% block main_toolbar %}{% endblock %}
+
+{% block title %}Register YubiKey - Kavanah Analytics{% endblock %}
+
+{% block extra_css %}
+<style>
+    .cs-main { margin-left: 0 !important; }
+    .mfa-setup-page { max-width: 540px; margin: 0 auto; }
+    .mfa-setup-page h1 {
+        font-size: 22px;
+        font-weight: var(--cs-font-weight-bold);
+        color: var(--cs-text-heading);
+        margin-bottom: var(--cs-space-xs);
+    }
+    .mfa-setup-page .subtitle {
+        color: var(--cs-text-secondary);
+        font-size: var(--cs-font-size-m);
+        margin-bottom: var(--cs-space-l);
+    }
+    .mfa-setup-card {
+        background: var(--cs-bg-primary);
+        border: 1px solid var(--cs-border-divider);
+        border-radius: var(--cs-radius-l);
+        padding: var(--cs-space-xl);
+    }
+    .mfa-step { margin-bottom: var(--cs-space-l); }
+    .mfa-step p {
+        font-size: var(--cs-font-size-m);
+        color: var(--cs-text-secondary);
+        line-height: 1.5;
+        margin-bottom: 8px;
+    }
+    .mfa-form-row { margin-bottom: var(--cs-space-m); }
+    .mfa-form-row label {
+        display: block;
+        font-size: var(--cs-font-size-s);
+        font-weight: var(--cs-font-weight-medium);
+        color: var(--cs-text-label);
+        margin-bottom: 6px;
+    }
+    .mfa-form-row input {
+        width: 100%;
+        padding: 8px 12px;
+        font-size: var(--cs-font-size-m);
+        border: 1px solid var(--cs-border-input);
+        border-radius: var(--cs-radius-s);
+        font-family: 'Courier New', monospace;
+        box-sizing: border-box;
+        letter-spacing: 1px;
+    }
+    .mfa-form-row input:focus {
+        outline: none;
+        border-color: var(--cs-border-input-focus);
+        box-shadow: 0 0 0 2px rgba(9, 114, 211, 0.25);
+    }
+    .mfa-actions { display: flex; gap: var(--cs-space-xs); justify-content: space-between; }
+    .mfa-btn {
+        padding: 8px 18px;
+        border-radius: var(--cs-radius-s);
+        font-size: var(--cs-font-size-m);
+        font-weight: var(--cs-font-weight-medium);
+        font-family: var(--cs-font);
+        cursor: pointer;
+        border: 1px solid transparent;
+    }
+    .mfa-btn-primary {
+        background: var(--cs-btn-primary-bg);
+        color: #fff;
+        border-color: var(--cs-btn-primary-bg);
+    }
+    .mfa-btn-primary:hover { background: var(--cs-btn-primary-bg-hover); border-color: var(--cs-btn-primary-bg-hover); }
+    .mfa-btn-cancel {
+        background: var(--cs-btn-normal-bg);
+        color: var(--cs-btn-normal-text);
+        border-color: var(--cs-btn-normal-border);
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+    }
+    .mfa-btn-cancel:hover { background: var(--cs-btn-normal-hover-bg); border-color: var(--cs-text-secondary); text-decoration: none; }
+    .mfa-btn:disabled,
+    .mfa-btn:disabled:hover {
+        opacity: 0.5;
+        cursor: not-allowed;
+        background: var(--cs-btn-primary-bg);
+        border-color: var(--cs-btn-primary-bg);
+    }
+    .alert-error {
+        background: #fef2f2;
+        color: #7f1d1d;
+        border-left: 4px solid #ef4444;
+        padding: 10px 14px;
+        border-radius: var(--cs-radius-s);
+        margin-bottom: var(--cs-space-m);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mfa-setup-page">
+    <h1>Register your YubiKey</h1>
+    <p class="subtitle">Insert your YubiKey, click in the field below, and touch the YubiKey button.</p>
+
+    {% if error_message %}
+    <div class="alert-error">{{ error_message }}</div>
+    {% endif %}
+
+    <div class="mfa-setup-card">
+        <form method="POST" action="{{ url_for('profile_mfa_yubikey_register') }}" id="profile-yubikey-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="mfa-step">
+                <p>Insert your YubiKey into a USB port. When you click in the field below and touch the YubiKey, it will type a one-time password automatically.</p>
+                <div class="mfa-form-row">
+                    <label for="otp">YubiKey OTP</label>
+                    <input type="password" id="otp" name="otp"
+                           required autofocus autocomplete="off" maxlength="44"
+                           placeholder="Touch your YubiKey here">
+                </div>
+            </div>
+            <div class="mfa-actions">
+                <a href="{{ url_for('profile_page') }}" class="mfa-btn mfa-btn-cancel">Cancel</a>
+                <button type="submit" class="mfa-btn mfa-btn-primary"
+                        id="profile-yubikey-register-btn" disabled>Register YubiKey</button>
+            </div>
+        </form>
+    </div>
+</div>
+<script nonce="{{ csp_nonce }}">
+(function () {
+    // Enable Register only when the input is a 44-character modhex YubiKey OTP.
+    // Modhex alphabet: c b d e f g h i j k l n r t u v
+    var YUBI_RE = /^[cbdefghijklnrtuv]{44}$/i;
+    var input = document.getElementById('otp');
+    var btn = document.getElementById('profile-yubikey-register-btn');
+    if (!input || !btn) return;
+    function update() {
+        btn.disabled = !YUBI_RE.test(input.value.trim());
+    }
+    input.addEventListener('input', update);
+    update();
+})();
+
+(function () {
+    // Guard against double-submission: YubiKeys type the OTP and press Enter,
+    // and a user double-click would post the same OTP twice — Yubico rejects
+    // the second call as REPLAYED_OTP.
+    var form = document.getElementById('profile-yubikey-form');
+    if (!form) return;
+    var submitted = false;
+    form.addEventListener('submit', function (e) {
+        if (submitted) { e.preventDefault(); return; }
+        submitted = true;
+        form.querySelectorAll('button[type="submit"]').forEach(function (b) {
+            b.disabled = true;
+        });
+    });
+})();
+
+// Drop the inline error banner if the user refreshed the page. Banner is
+// rendered at first paint after a failed submit; we only want it to stick
+// around for that one render, not for subsequent reloads.
+(function () {
+    var navs = (window.performance && performance.getEntriesByType)
+        ? performance.getEntriesByType('navigation') : [];
+    if (navs.length > 0 && navs[0].type === 'reload') {
+        var banner = document.querySelector('.alert-error');
+        if (banner) banner.remove();
+    }
+})();
+</script>
+{% endblock %}

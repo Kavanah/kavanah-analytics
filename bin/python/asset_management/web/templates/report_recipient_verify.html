@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ title }} - Kavanah Analytics</title>
+    {# public confirmation page for an external scheduled-report
+       recipient. Reached from an inbox with no session, so it extends nothing
+       that needs one. Jinja autoescapes every value below. #}
+    <style>
+        body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; background: #F6F7F9; color: #1F2933; }
+        main { max-width: 32rem; margin: 10vh auto; background: #fff; padding: 2rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+        h1 { font-size: 1.4rem; margin: 0 0 .75rem; }
+        p { margin: 0 0 .75rem; line-height: 1.5; }
+        .muted { color: #5F6B7A; }
+    </style>
+</head>
+<body>
+    <main>
+        <h1>{{ title }}</h1>
+        <p>{{ body }}</p>
+        <p class="muted">You can close this window.</p>
+    </main>
+</body>
+</html>

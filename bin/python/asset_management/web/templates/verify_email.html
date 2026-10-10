@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Verification - Kavanah Analytics</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/cloudscape.css') }}">
+    <style>
+        body { background: var(--cs-bg-page); display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+        .login-topbar { position: fixed; top: 0; left: 0; right: 0; height: 56px; background: var(--cs-nav-bg); display: flex; align-items: center; padding: 0 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.25); z-index: 10; }
+        .login-topbar-logo { height: 24px; width: auto; margin-right: 12px; }
+        .login-topbar-title { font-size: 17px; font-weight: 700; color: #FFFFFF; }
+        .card { background: var(--cs-bg-primary); border: 1px solid var(--cs-border-default); border-radius: var(--cs-radius-l); box-shadow: var(--cs-shadow-m); padding: 40px 36px; max-width: 460px; width: 100%; text-align: center; margin-top: 28px; }
+        .card h1 { font-size: 24px; font-weight: 700; color: var(--cs-text-heading); margin-bottom: 6px; }
+        .card .subtitle { color: var(--cs-text-secondary); font-size: var(--cs-font-size-m); margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--cs-border-divider); }
+        .icon { width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; font-size: 28px; }
+        .icon-success { background: var(--cs-success-bg); color: var(--cs-success); }
+        .icon-error { background: var(--cs-error-bg); color: var(--cs-error); }
+        .card p { color: var(--cs-text-primary); font-size: 15px; line-height: 1.6; margin: 12px 0; }
+        .info-box { background: var(--cs-bg-page); border: 1px solid var(--cs-border-divider); border-radius: var(--cs-radius-s); padding: 16px 20px; margin: 20px 0; font-size: var(--cs-font-size-m); color: var(--cs-text-secondary); }
+        .alert-error { background: var(--cs-error-bg); color: var(--cs-error); border: 1px solid var(--cs-error); border-radius: var(--cs-radius-s); padding: 15px; margin: 20px 0; font-size: var(--cs-font-size-m); }
+        .link { display: inline-block; margin-top: 20px; color: var(--cs-text-link); text-decoration: none; font-size: var(--cs-font-size-m); font-weight: 500; }
+        .link:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="login-topbar">
+        <img src="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5" alt="" class="login-topbar-logo">
+        <span class="login-topbar-title">Kavanah Analytics</span>
+    </div>
+    <div class="card">
+        <h1>Email Verification</h1>
+        <p class="subtitle">Kavanah Analytics</p>
+        {% if success %}
+        <div class="icon icon-success">&#10003;</div>
+        <p>Your email has been verified successfully!</p>
+        <div class="info-box">An administrator will now review your registration. You'll receive an email notification once your account has been approved and is ready to use.</div>
+        {% else %}
+        <div class="icon icon-error">&#10007;</div>
+        <p>Verification failed</p>
+        <div class="alert-error">{{ error }}</div>
+        {% endif %}
+        <a href="/login" class="link">Go to Login</a>
+    </div>
+</body>
+</html>

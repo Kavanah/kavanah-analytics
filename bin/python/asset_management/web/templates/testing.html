@@ -1,0 +1,2838 @@
+{% extends "base_v2.html" %}
+
+{% block title %}Testing - Kavanah Analytics Management Console{% endblock %}
+
+{% block extra_css %}
+<style>
+    .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 24px;
+    }
+    .page-header h2 { color: var(--cs-text-heading, #000716); font-size: 24px; font-weight: 600; margin: 0; }
+    .page-header p  { color: var(--cs-text-secondary, #5F6B7A); font-size: 14px; margin: 4px 0 0; }
+
+    /* Tab navigation */
+    .tab-nav {
+        display: flex;
+        gap: 4px;
+        margin-bottom: 20px;
+        border-bottom: 2px solid #e2e8f0;
+    }
+    .tab-btn {
+        background: none;
+        border: none;
+        padding: 10px 20px;
+        font-size: 14px;
+        font-weight: 600;
+        color: #64748b;
+        cursor: pointer;
+        border-bottom: 2px solid transparent;
+        margin-bottom: -2px;
+        border-radius: 6px 6px 0 0;
+        transition: color 0.15s, border-color 0.15s;
+    }
+    .tab-btn:hover { color: #334155; background: #f8fafc; }
+    .tab-btn.active { color: var(--cs-btn-primary-bg, #0972D3); border-bottom-color: var(--cs-btn-primary-bg, #0972D3); }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── Toolbar ─────────────────────────────────────────────────────────── */
+    .test-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        padding: 16px 20px;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+    }
+    .btn-run {
+        background: var(--cs-btn-primary-bg, #0972D3);
+        color: white;
+        border: none;
+        border-radius: 6px;
+        padding: 10px 22px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+    .btn-run:hover  { background: #5a6fd6; }
+    .btn-run:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    .stat-pill {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 14px;
+        font-weight: 600;
+        padding: 6px 14px;
+        border-radius: 20px;
+    }
+    .stat-pass    { background: #d4edda; color: #155724; }
+    .stat-fail    { background: #f8d7da; color: #721c24; }
+    .stat-pending { background: #e2e8f0; color: #475569; }
+    .stat-progress { background: #e0e7ff; color: #3730a3; margin-left: auto; }
+
+    /* Progress bar */
+    .progress-wrap {
+        height: 4px;
+        background: #e2e8f0;
+        border-radius: 2px;
+        margin-bottom: 20px;
+        overflow: hidden;
+        display: none;
+    }
+    .progress-wrap.visible { display: block; }
+    .progress-bar {
+        height: 100%;
+        background: var(--cs-btn-primary-bg, #0972D3);
+        border-radius: 2px;
+        transition: width 0.3s ease;
+        width: 0%;
+    }
+
+    /* Results table */
+    .results-card {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        overflow: hidden;
+    }
+    .results-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+    }
+    .results-table th {
+        background: #f1f5f9;
+        color: #475569;
+        padding: 10px 14px;
+        text-align: left;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        border-bottom: 2px solid #e2e8f0;
+        white-space: nowrap;
+    }
+    .results-table td {
+        padding: 10px 14px;
+        border-bottom: 1px solid #f0f4f8;
+        vertical-align: middle;
+    }
+    .results-table tr:last-child td { border-bottom: none; }
+    .results-table tr:hover td { background: #fafbfc; }
+
+    .dash-title { font-weight: 600; color: var(--cs-text-heading, #000716); }
+    .dash-id    { font-size: 11px; color: #94a3b8; font-family: monospace; }
+
+    /* Type badge */
+    .type-badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 9px;
+        font-size: 11px;
+        font-weight: 700;
+    }
+    .type-kibana  { background: #fef3c7; color: #92400e; }
+    .type-echarts { background: #dbeafe; color: #1e40af; }
+
+    /* Status badge */
+    .status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 3px 10px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+    .status-pending  { background: #f1f5f9; color: #64748b; }
+    .status-running  { background: #e0e7ff; color: #3730a3; }
+    .status-pass     { background: #d4edda; color: #155724; }
+    .status-fail     { background: #f8d7da; color: #721c24; }
+    .status-warn     { background: #fff3cd; color: #856404; }
+
+    .spinner {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border: 2px solid #a5b4fc;
+        border-top-color: #4f46e5;
+        border-radius: 50%;
+        animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .duration { color: var(--cs-text-secondary, #5F6B7A); white-space: nowrap; }
+
+    /* Details column */
+    .detail-ok   { color: #155724; }
+    .detail-err  { color: #721c24; }
+    .detail-warn { color: #856404; }
+
+    .error-list {
+        margin: 4px 0 0;
+        padding-left: 16px;
+        font-size: 11px;
+        color: #721c24;
+        max-height: 80px;
+        overflow-y: auto;
+    }
+    .error-list li { margin-bottom: 2px; word-break: break-word; }
+
+    /* Re-run button */
+    .btn-rerun {
+        background: none;
+        border: 1px solid #cbd5e1;
+        border-radius: 4px;
+        padding: 3px 8px;
+        font-size: 11px;
+        cursor: pointer;
+        color: #475569;
+        white-space: nowrap;
+    }
+    .btn-rerun:hover { background: #f1f5f9; }
+
+    /* Load test metric highlights */
+    .lt-cell-warn {
+        display: inline-block;
+        background: #fff3cd;
+        color: #856404;
+        font-weight: 600;
+        padding: 2px 8px;
+        border-radius: 4px;
+        border: 1px solid #ffc107;
+    }
+    .lt-cell-bad {
+        display: inline-block;
+        background: #f8d7da;
+        color: #721c24;
+        font-weight: 600;
+        padding: 2px 8px;
+        border-radius: 4px;
+        border: 1px solid #dc3545;
+    }
+
+    /* Empty state */
+    .empty-state { text-align: center; padding: 48px; color: #94a3b8; }
+
+    /* Hidden iframe container */
+    #test-iframe-container {
+        position: fixed;
+        top: -9999px;
+        left: -9999px;
+        width: 1200px;
+        height: 800px;
+        pointer-events: none;
+        overflow: hidden;
+    }
+
+    /* ── Dashboard Comparison styles ─────────────────────────────────────── */
+    .cmp-toolbar {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        padding: 16px 20px;
+        margin-bottom: 20px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        flex-wrap: wrap;
+    }
+    .cmp-toolbar label { font-size: 13px; color: #555; display: flex; align-items: center; gap: 6px; }
+    .cmp-toolbar input[type=date], .cmp-toolbar input[type=text] {
+        border: 1px solid #cbd5e1; border-radius: 4px; padding: 5px 8px; font-size: 13px;
+    }
+    .cmp-toolbar input[type=text] { width: 160px; }
+    .btn-refresh {
+        background: var(--cs-btn-primary-bg, #0972D3); color: white; border: none; border-radius: 6px;
+        padding: 9px 20px; font-size: 14px; font-weight: 600; cursor: pointer;
+    }
+    .btn-refresh:hover { background: #5a6fd6; }
+    .btn-refresh:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    .cmp-status { font-size: 13px; color: #64748b; margin-bottom: 12px; min-height: 20px; }
+
+    .cmp-card {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        overflow: hidden;
+        margin-bottom: 12px;
+    }
+    .cmp-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .cmp-table thead tr { background: var(--cs-text-heading, #000716); color: #fff; }
+    .cmp-table thead th { padding: 10px 14px; text-align: left; font-size: 13px; font-weight: 600; white-space: nowrap; }
+    .cmp-table thead th:not(:first-child) { text-align: right; }
+    .cmp-table tbody tr.group-header td {
+        background: #eaf0f6; font-weight: 700; font-size: 11px; text-transform: uppercase;
+        letter-spacing: .04em; color: #2c6da0; padding: 6px 14px;
+        border-top: 2px solid #d5e8f5;
+    }
+    .cmp-table tbody td { padding: 8px 14px; border-bottom: 1px solid #f0f4f8; }
+    .cmp-table tbody tr:hover td { background: #fafbfc; }
+    .cmp-table tbody tr.group-header:hover td { background: #eaf0f6; }
+    .cmp-table td.cmp-val { text-align: right; font-variant-numeric: tabular-nums; font-family: 'SF Mono', Consolas, monospace; }
+    .cmp-val-ok   { color: #155724; font-weight: 600; }
+    .cmp-val-zero { color: #94a3b8; }
+    .cmp-val-err  { color: #c0392b; font-size: 12px; }
+    .cmp-val-na   { color: #cbd5e1; }
+    .cmp-val-load { color: #cbd5e1; font-style: italic; }
+    .cmp-mismatch { background: #fff8e1 !important; }
+    td.cmp-mismatch-cell { background: #ffe0b2 !important; }
+    .cmp-legend { font-size: 12px; color: #94a3b8; margin-top: 10px; }
+    .cmp-legend span { margin-right: 14px; }
+
+    /* ── Security Dashboard ────────────────────────────────────────────── */
+    .sec-test-row { display: flex; padding: 4px 16px; font-size: 12px; border-bottom: 1px solid #f0f4f8; align-items: center; }
+    .sec-test-row:last-child { border-bottom: none; }
+    .sec-test-row .sec-icon { width: 20px; text-align: center; flex-shrink: 0; }
+    .sec-test-row .sec-name { flex: 1; font-family: monospace; color: #334155; }
+    .sec-test-row.sec-fail { background: #fff5f5; }
+    .sec-test-row.sec-skip { background: #f8fafc; color: #64748b; }
+    .sec-test-row.sec-pass .sec-icon { color: #155724; }
+    .sec-test-row.sec-fail .sec-icon { color: #721c24; font-weight: 700; }
+    .sec-test-row.sec-skip .sec-icon { color: #94a3b8; }
+    .sec-ci-pass { color: #155724; font-weight: 600; }
+    .sec-ci-fail { color: #721c24; font-weight: 600; }
+    .sec-ci-pending { color: #856404; }
+    .sec-vuln-row { padding: 8px 16px; border-bottom: 1px solid #f0f4f8; }
+    .sec-vuln-row:last-child { border-bottom: none; }
+
+    /* ── Load Testing ──────────────────────────────────────────── */
+    .lt-field { font-size: 13px; color: #555; display: flex; align-items: center; gap: 6px; }
+    .lt-field input, .lt-field select {
+        border: 1px solid #cbd5e1; border-radius: 4px; padding: 5px 8px; font-size: 13px; background: #fff;
+    }
+    .lt-help {
+        font-size: 12px; color: #64748b; background: #f8fafc; border: 1px solid #e2e8f0;
+        border-radius: 6px; padding: 8px 14px; margin-bottom: 16px; line-height: 1.5;
+    }
+    .lt-card-header {
+        padding: 12px 16px; border-bottom: 1px solid #f0f4f8;
+        display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    }
+    .lt-card-header strong { font-size: 14px; color: var(--cs-text-heading, #000716); }
+    .lt-chart { width: 100%; height: 320px; }
+    .lt-details { margin-bottom: 16px; }
+    .lt-details > summary {
+        padding: 12px 16px; font-size: 13px; font-weight: 600; color: #475569;
+        cursor: pointer; user-select: none;
+    }
+    .lock-badge {
+        display: inline-block; font-size: 10px; font-weight: 600; font-family: monospace;
+        background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0;
+        padding: 1px 6px; border-radius: 3px; white-space: nowrap;
+    }
+    .lock-badge.conflict { background: #f8d7da; color: #721c24; border-color: #dc3545; }
+    .light-badge {
+        display: inline-block; font-size: 10px; font-weight: 700; background: #fef3c7;
+        color: #92400e; padding: 1px 6px; border-radius: 3px; margin-left: 6px;
+    }
+    tr.imp-conflict td { background: #fff5f5 !important; }
+    .imp-date {
+        border: 1px solid #cbd5e1; border-radius: 4px; padding: 2px 4px; font-size: 12px; width: 118px;
+    }
+</style>
+{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"
+        integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H"
+        crossorigin="anonymous"></script>
+<!-- degradation + resource charts on the Load Testing tab.
+     Same SRI-pinned tag as dashboard_builder/view.html. -->
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js" integrity="sha384-pPi0zxBAoDu6+JXW/C68UZLvBUUtU+7zonhif43rqj7pxsGyqyqzcian2Rj37Rss" crossorigin="anonymous"></script>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h2>Testing</h2>
+        <p>Dashboard health checks and cross-dashboard data comparison tools.</p>
+    </div>
+</div>
+
+<!-- Tab navigation -->
+<div class="tab-nav">
+    <button class="tab-btn active" onclick="switchTab('regression', this)">▶ Regression Tests</button>
+    <button class="tab-btn" onclick="switchTab('comparison', this)">⊞ Dashboard Comparison</button>
+    <button class="tab-btn" onclick="switchTab('loadtest', this); ltTabOpened();">⚡ Load Testing</button>
+    <button class="tab-btn" onclick="switchTab('visual', this); ftInit();">📸 Visual Regression</button>
+    <button class="tab-btn" onclick="switchTab('security', this); secInit();">🔒 Security</button>
+</div>
+
+<!-- ── Tab 1: Regression Tests ────────────────────────────────────────────── -->
+<div id="tab-regression" class="tab-panel active">
+
+    <!-- Toolbar -->
+    <div class="test-toolbar">
+        <button class="btn-run" id="btn-run" onclick="runAllTests()">▶ Run All Tests</button>
+        <span class="stat-pill stat-pass"   id="stat-pass">✓ 0 passed</span>
+        <span class="stat-pill stat-fail"   id="stat-fail">✗ 0 failed</span>
+        <span class="stat-pill stat-pending" id="stat-pending">○ — pending</span>
+        <span class="stat-pill stat-progress" id="stat-progress" style="display:none;">0 / 0</span>
+    </div>
+
+    <!-- Progress bar -->
+    <div class="progress-wrap" id="progress-wrap">
+        <div class="progress-bar" id="progress-bar"></div>
+    </div>
+
+    <!-- Results table -->
+    <div class="results-card">
+        <table class="results-table">
+            <thead>
+                <tr>
+                    <th style="width:36%">Dashboard</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Duration</th>
+                    <th>Details</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody id="results-body">
+                <tr><td colspan="6" class="empty-state">Loading dashboards…</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+</div>
+
+<!-- ── Tab 2: Dashboard Comparison ──────────────────────────────────────── -->
+<div id="tab-comparison" class="tab-panel">
+
+    <div class="cmp-toolbar">
+        <label>From <input type="date" id="cmp-date-from"></label>
+        <label>To <input type="date" id="cmp-date-to"></label>
+        <label>Org <input type="text" id="cmp-filter-org" placeholder="(all)"></label>
+        <label>Team <input type="text" id="cmp-filter-team" placeholder="(all)"></label>
+        <button class="btn-refresh" id="cmp-refresh-btn" onclick="cmpRefresh()">Refresh</button>
+    </div>
+
+    <div class="cmp-status" id="cmp-status">Set a date range and click Refresh.</div>
+
+    <div class="cmp-card">
+        <table class="cmp-table">
+            <thead>
+                <tr>
+                    <th>Stat</th>
+                    <th style="width:140px;text-align:right">Summary</th>
+                    <th style="width:140px;text-align:right">Trends (total)</th>
+                    <th style="width:140px;text-align:right">Maps (total)</th>
+                </tr>
+            </thead>
+            <tbody id="cmp-tbody"></tbody>
+        </table>
+    </div>
+
+    <div class="cmp-legend">
+        <span>Highlighted row = Summary vs Trends mismatch &gt;1%</span>
+        <span style="color:#cbd5e1">— = not applicable</span>
+    </div>
+
+</div>
+
+<!-- ── Tab 3: Load Testing ─────────────────────────────────────────────── -->
+<div id="tab-loadtest" class="tab-panel">
+
+    <div class="test-toolbar">
+        <label class="lt-field">
+            Profile
+            <select id="lt-profile" onchange="ltProfileChanged()">
+                <option value="steps" selected>Stepped baseline → ramp</option>
+                <option value="classic">Classic</option>
+            </select>
+        </label>
+        <label class="lt-field lt-steps-only" title="Comma-separated user counts, one step each. The first step must be 1 — that lone probe user is the baseline.">
+            Step users
+            <input type="text" id="lt-step-users" value="1,5,10,25,50" style="width:110px;">
+        </label>
+        <label class="lt-field lt-steps-only">
+            Step duration
+            <select id="lt-step-seconds">
+                <option value="60">60s</option>
+                <option value="120" selected>2 min</option>
+                <option value="180">3 min</option>
+                <option value="300">5 min</option>
+            </select>
+        </label>
+        <label class="lt-field lt-classic-only" style="display:none;">
+            Users
+            <input type="number" id="lt-users" value="10" min="1" max="100" style="width:60px;">
+        </label>
+        <label class="lt-field lt-classic-only" style="display:none;">
+            Duration
+            <select id="lt-duration">
+                <option value="30s">30s</option>
+                <option value="60s" selected>60s</option>
+                <option value="120s">2 min</option>
+                <option value="300s">5 min</option>
+                <option value="600s">10 min</option>
+                <option value="900s">15 min</option>
+            </select>
+        </label>
+        <label class="lt-field lt-classic-only" style="display:none;">
+            Spawn rate
+            <input type="number" id="lt-spawn-rate" value="2" min="1" max="20" style="width:60px;">
+        </label>
+        <label class="lt-field">
+            Identity
+            <select id="lt-identity">
+                <option value="pool" selected>Pool (identities.csv)</option>
+                <option value="single">Single (env)</option>
+            </select>
+        </label>
+        <label class="lt-field" title="Unscoped identities can't see any dashboards — they only exercise the 403 scope gate, so by default they're left out to keep the user count meaning 'users actually loading dashboards'.">
+            <input type="checkbox" id="lt-include-unscoped"> Include unscoped users
+        </label>
+        <button class="btn-run" id="lt-run-btn" onclick="runLocust()">▶ Run Load Test</button>
+        <button class="btn-run" id="lt-stop-btn" onclick="stopLocust()" style="display:none;background:#e74c3c;">■ Stop</button>
+        <span class="stat-pill stat-progress" id="lt-users-now" style="display:none;margin-left:auto;">👥 —</span>
+        <span class="stat-pill stat-progress" id="lt-status" style="display:none;"></span>
+        <span id="lt-timer" style="display:none;font-family:'SF Mono',Consolas,monospace;font-size:14px;font-weight:600;color:#334155;"></span>
+    </div>
+
+    <div class="lt-help">
+        A stepped run keeps one <strong>probe user</strong> viewing dashboards for the whole run — its step-1
+        experience is the baseline (1.0×) everything else is compared against. Each simulated user fires
+        <strong>all of a dashboard's chart queries every 2–5 seconds</strong> with almost no think time, so this
+        models N users <em>actively</em> hitting dashboards simultaneously — N simulated users represent more
+        than N real people. Pool identities see fewer dashboards than the probe (they are background load,
+        that's expected). <strong>Unscoped</strong> identities (no workspace/org/team grant) can't see any
+        dashboards at all and are left out by default so the user count means users actually loading dashboards;
+        check "Include unscoped users" to add them back — their dashboards-list 403s are the scope gate working,
+        not a broken run.
+    </div>
+
+    <!-- Baseline strip -->
+    <div class="results-card" id="lt-baseline-card" style="display:none;margin-bottom:16px;">
+        <div style="padding:12px 16px;display:flex;gap:24px;align-items:center;flex-wrap:wrap;">
+            <div style="font-size:13px;color:#334155;">
+                <strong>Baseline (1 user):</strong> <span id="lt-baseline-vals">—</span>
+            </div>
+            <div id="lt-worst-steps" style="display:flex;gap:10px;flex-wrap:wrap;font-size:12px;"></div>
+        </div>
+    </div>
+
+    <!-- Degradation chart -->
+    <div class="results-card" id="lt-degradation-card" style="display:none;margin-bottom:16px;">
+        <div class="lt-card-header">
+            <strong>Degradation vs. baseline</strong>
+            <span style="font-size:12px;color:#94a3b8;">probe user's response times as a multiple of its 1-user baseline; shaded bands = user count</span>
+        </div>
+        <div id="lt-degradation-chart" class="lt-chart"></div>
+    </div>
+
+    <!-- Resource chart -->
+    <div class="results-card" id="lt-resource-card" style="display:none;margin-bottom:16px;">
+        <div class="lt-card-header">
+            <strong>Server resources</strong>
+            <span style="font-size:12px;color:#94a3b8;">CPU % (left) and memory % (right), sampled every 5s on the server</span>
+        </div>
+        <div id="lt-resource-chart" class="lt-chart"></div>
+    </div>
+
+    <!-- Import capacity sub-panel -->
+    <div class="results-card" id="lt-import-card" style="margin-bottom:16px;">
+        <div class="lt-card-header">
+            <strong>Import Capacity Test</strong>
+            <button class="btn-rerun" id="lt-imp-load-btn" onclick="impLoadCandidates()">⟳ Load candidates</button>
+            <span id="lt-imp-count" style="font-size:12px;color:#64748b;"></span>
+            <label style="font-size:12px;color:#64748b;margin-left:12px;white-space:nowrap;">Worst case:
+                <input type="number" id="lt-imp-worst-n" value="10" min="1" max="20"
+                       style="width:52px;padding:3px 4px;font-size:12px;">
+            </label>
+            <button class="btn-rerun" id="lt-imp-worst-btn" onclick="impWorstCaseSelect()">⚡ Auto-select</button>
+            <button class="btn-run" id="lt-imp-run-btn" onclick="impRunSelected()" disabled
+                    style="padding:6px 16px;font-size:13px;margin-left:auto;">▶ Run 0 imports</button>
+        </div>
+        <div style="padding:8px 16px;font-size:12px;color:#64748b;border-bottom:1px solid #f0f4f8;line-height:1.5;">
+            Each selected row is a <strong>real import running fully in parallel</strong> with the others,
+            re-importing an already-imported date range (never force-refetching). This models scheduled imports
+            from different teams landing at the same moment — e.g. 100 workspaces averaging 5 sources with 25%
+            scheduled together would mean ~25 overlapping imports. True parallelism is bounded by import
+            locks: two selections whose <span class="lock-badge">lock groups</span> conflict would silently
+            serialize, so the server rejects them; same-source rows on different lock groups run concurrently
+            , up to 20 per batch. <strong>Worst case</strong> auto-selects the N heaviest
+            non-conflicting rows (echo &gt; google_ads / GA4 / youtube &gt; the rest), freshest data first —
+            review the checked rows, then Run. <span class="light-badge">light</span> = Facebook skip-guards
+            make the re-import nearly free. Runs alongside a load test or on its own.
+        </div>
+        <div id="lt-imp-msg" style="display:none;padding:8px 16px;font-size:12px;border-bottom:1px solid #f0f4f8;"></div>
+        <div style="max-height:320px;overflow-y:auto;">
+            <table class="results-table">
+                <thead>
+                    <tr>
+                        <th style="width:28px;position:sticky;top:0;z-index:1;"></th>
+                        <th style="position:sticky;top:0;z-index:1;">Source</th>
+                        <th style="position:sticky;top:0;z-index:1;">Team</th>
+                        <th style="position:sticky;top:0;z-index:1;">Last data</th>
+                        <th style="position:sticky;top:0;z-index:1;">Range</th>
+                        <th style="position:sticky;top:0;z-index:1;">Lock group</th>
+                    </tr>
+                </thead>
+                <tbody id="lt-imp-body">
+                    <tr><td colspan="6" class="empty-state">Click “Load candidates” to list (team, source) pairs with importable data.</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div id="lt-imp-status" style="display:none;border-top:1px solid #f0f4f8;"></div>
+    </div>
+
+    <!-- Raw stats table (collapsed by default — baseline comparison above is the headline) -->
+    <details class="results-card lt-details">
+        <summary>Raw stats table</summary>
+        <div id="lt-stats-card" style="max-height:400px;overflow-y:auto;">
+            <table class="results-table" id="lt-stats-table" style="position:relative;">
+                <thead>
+                    <tr>
+                        <th style="position:sticky;top:0;z-index:1;">Endpoint</th>
+                        <th style="position:sticky;top:0;z-index:1;">Requests</th>
+                        <th style="position:sticky;top:0;z-index:1;">Failures</th>
+                        <th style="position:sticky;top:0;z-index:1;">Median (ms)</th>
+                        <th style="position:sticky;top:0;z-index:1;">p95 (ms)</th>
+                        <th style="position:sticky;top:0;z-index:1;">RPS</th>
+                    </tr>
+                </thead>
+                <tbody id="lt-stats-body">
+                    <tr><td colspan="6" class="empty-state">No results yet. Run a load test to see stats.</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div id="lt-failures-wrap" style="display:none;border-top:1px solid #f0f4f8;">
+            <div style="padding:8px 16px;font-size:12px;color:#64748b;line-height:1.5;">
+                <strong style="color:#475569;">Failure breakdown.</strong> 403s on
+                <code>api/dashboards [list]</code> are the unscoped pool identities hitting the
+                deliberate scope gate — expected signal, not a broken run.
+            </div>
+            <table class="results-table">
+                <thead>
+                    <tr><th>Method</th><th>Endpoint</th><th>Error</th><th>Count</th></tr>
+                </thead>
+                <tbody id="lt-failures-body"></tbody>
+            </table>
+        </div>
+    </details>
+
+    <!-- Log output (collapsed by default) -->
+    <details class="results-card lt-details" style="padding:0;">
+        <summary>Log</summary>
+        <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;background:#1e293b;">
+            <span style="color:#94a3b8;font-size:12px;font-weight:600;">LOG</span>
+            <input type="text" id="lt-log-search" placeholder="Search log…" oninput="highlightLogSearch()"
+                   style="flex:1;max-width:300px;border:1px solid #334155;border-radius:4px;padding:4px 8px;font-size:12px;background:#0f172a;color:#e2e8f0;">
+            <span id="lt-search-count" style="color:#64748b;font-size:11px;"></span>
+        </div>
+        <pre id="lt-log-content" style="margin:0;padding:1.25rem 1.5rem;font-size:0.78rem;line-height:1.55;
+             white-space:pre-wrap;word-break:break-all;color:#e2e8f0;
+             background:#0f172a;border-radius:0 0 0.5rem 0.5rem;min-height:200px;
+             max-height:50vh;overflow-y:auto;">No load test run yet. Configure parameters above and click Run.</pre>
+    </details>
+
+</div>
+
+<!-- ── Tab 4: Visual Regression ──────────────────────────────────────────── -->
+<div id="tab-visual" class="tab-panel">
+
+    <div class="test-toolbar">
+        <label for="ft-org-filter" style="font-size:12px;color:#64748b;">Organization</label>
+        <select id="ft-org-filter" style="padding:5px 10px;border:1px solid #cbd5e1;border-radius:5px;font-size:12px;background:white;min-width:180px;">
+            <option value="">— pick an org —</option>
+        </select>
+        <label for="ft-team-filter" style="font-size:12px;color:#64748b;">Team</label>
+        <select id="ft-team-filter" style="padding:5px 10px;border:1px solid #cbd5e1;border-radius:5px;font-size:12px;background:white;min-width:180px;">
+            <option value="">All teams</option>
+        </select>
+        <button class="btn-run" id="ft-btn-load" onclick="ftLoadDashboards()" style="padding:6px 14px;font-size:13px;">▶ Load Dashboards</button>
+        <span id="ft-count" style="font-size:12px;color:#64748b;"></span>
+        <span style="margin-left:auto;font-size:11px;color:#94a3b8;">
+            Iframes lazy-load as you scroll. Pure visual sanity check.
+        </span>
+    </div>
+
+    <div id="ft-list" style="display:flex;flex-direction:column;gap:18px;margin-top:12px;"></div>
+
+    <div id="ft-empty" class="results-card" style="padding:40px;text-align:center;color:#94a3b8;font-size:14px;">
+        Pick an org (and optionally a team) → click <strong>Load Dashboards</strong>.
+        Each dashboard you can view will render inline in a single scrollable column.
+    </div>
+
+</div>
+
+<!-- ── Tab 5: Security Dashboard ────────────────────────────────────────── -->
+<div id="tab-security" class="tab-panel">
+
+    <!-- CI Scan Status -->
+    <div class="results-card" style="margin-bottom:16px;">
+        <div style="padding:12px 16px;border-bottom:1px solid #f0f4f8;display:flex;align-items:center;gap:10px;">
+            <strong style="font-size:14px;color:var(--cs-text-heading, #000716);">CI Pipeline Status</strong>
+            <span id="sec-ci-status" style="font-size:12px;color:#94a3b8;"></span>
+        </div>
+        <table class="results-table" id="sec-ci-table">
+            <thead><tr>
+                <th>Scanner</th><th>Last Run</th><th>Status</th><th>Run #</th><th></th>
+            </tr></thead>
+            <tbody id="sec-ci-body">
+                <tr><td colspan="5" class="empty-state">Loading…</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Security Tests -->
+    <div class="results-card" style="margin-bottom:16px;">
+        <div style="padding:12px 16px;border-bottom:1px solid #f0f4f8;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <strong style="font-size:14px;color:var(--cs-text-heading, #000716);">Security Regression Tests</strong>
+            <label for="sec-release-plan" style="font-size:12px;color:#64748b;">Release plan</label>
+            <select id="sec-release-plan" style="padding:5px 8px;font-size:12px;border:1px solid #cbd5e1;border-radius:4px;background:#fff;">
+                <option value="">All security tests</option>
+            </select>
+            <button class="btn-run" id="sec-btn-run" onclick="secRunTests()" style="padding:6px 16px;font-size:13px;">▶ Run Security Tests</button>
+            <span class="stat-pill stat-pass" id="sec-stat-pass" style="display:none;">✓ 0</span>
+            <span class="stat-pill stat-fail" id="sec-stat-fail" style="display:none;">✗ 0</span>
+            <span class="stat-pill" id="sec-stat-skip" style="display:none;background:#f1f5f9;color:#64748b;">⊘ 0</span>
+            <span id="sec-playwright-staleness" style="font-size:11px;color:#94a3b8;display:none;"></span>
+        </div>
+        <div id="sec-test-results" style="max-height:400px;overflow-y:auto;"></div>
+        <details id="sec-test-log-wrap" style="display:none;">
+            <summary style="padding:10px 16px;font-size:12px;color:#64748b;cursor:pointer;border-top:1px solid #f0f4f8;">Raw log output</summary>
+            <pre id="sec-test-log" style="margin:0;padding:12px 16px;font-size:11px;line-height:1.5;white-space:pre-wrap;background:#0f172a;color:#e2e8f0;max-height:300px;overflow-y:auto;"></pre>
+        </details>
+    </div>
+
+    <!-- Dependency Audit -->
+    <div class="results-card">
+        <div style="padding:12px 16px;border-bottom:1px solid #f0f4f8;display:flex;align-items:center;gap:10px;">
+            <strong style="font-size:14px;color:var(--cs-text-heading, #000716);">Dependency Audit</strong>
+            <button class="btn-run" id="sec-btn-audit" onclick="secRunAudit()" style="padding:6px 16px;font-size:13px;">▶ Run pip-audit</button>
+            <span id="sec-audit-status" style="font-size:12px;"></span>
+        </div>
+        <div id="sec-audit-results" style="padding:16px;text-align:center;color:#94a3b8;font-size:13px;">
+            Click <strong>Run pip-audit</strong> to scan Python dependencies for known vulnerabilities.
+        </div>
+    </div>
+
+</div>
+
+<!-- Hidden iframe host (regression tests) -->
+<div id="test-iframe-container"></div>
+
+<script nonce="{{ csp_nonce }}">
+// ═══════════════════════════════════════════════════════════════════════════
+// Tab switching
+// ═══════════════════════════════════════════════════════════════════════════
+function switchTab(name, btn) {
+    document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+    document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+    document.getElementById('tab-' + name).classList.add('active');
+    btn.classList.add('active');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Regression Tests
+// ═══════════════════════════════════════════════════════════════════════════
+var DASHBOARDS_URL = '{{ url_for("api_testing_dashboards") }}';
+
+var _dashboards  = [];
+var _running     = false;
+
+window.addEventListener('DOMContentLoaded', function() {
+    fetch(DASHBOARDS_URL)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            _dashboards = data;
+            renderRows(data);
+            updateStats();
+        })
+        .catch(function(e) {
+            document.getElementById('results-body').innerHTML =
+                '<tr><td colspan="6" class="empty-state" style="color:#721c24;">Failed to load dashboards: ' + escHtml(e.message) + '</td></tr>';
+        });
+
+    // Init comparison date pickers
+    var to = new Date();
+    var from = new Date(to);
+    from.setDate(from.getDate() - 30);
+    document.getElementById('cmp-date-to').value   = to.toISOString().slice(0, 10);
+    document.getElementById('cmp-date-from').value = from.toISOString().slice(0, 10);
+});
+
+function renderRows(dashboards) {
+    var tbody = document.getElementById('results-body');
+    if (!dashboards.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No dashboards found.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = '';
+    dashboards.forEach(function(d, i) {
+        var tr = document.createElement('tr');
+        tr.id = 'row-' + i;
+        tr.innerHTML =
+            '<td><div class="dash-title">' + escHtml(d.title) + '</div>' +
+                '<div class="dash-id">' + escHtml(d.id) + '</div></td>' +
+            '<td><span class="type-badge type-' + d.type + '">' + (d.type === 'kibana' ? 'Kibana' : 'ECharts') + '</span></td>' +
+            '<td id="status-' + i + '"><span class="status-badge status-pending">○ Pending</span></td>' +
+            '<td id="dur-' + i + '" class="duration">—</td>' +
+            '<td id="detail-' + i + '">—</td>' +
+            '<td><button class="btn-rerun" onclick="runSingle(' + i + ')">Re-run</button></td>';
+        tbody.appendChild(tr);
+    });
+    document.getElementById('stat-pending').textContent = '○ ' + dashboards.length + ' pending';
+}
+
+function updateStats() {
+    var pass = 0, fail = 0, pending = 0;
+    _dashboards.forEach(function(d) {
+        var s = d._state || 'pending';
+        if (s === 'pass') pass++;
+        else if (s === 'fail') fail++;
+        else pending++;
+    });
+    document.getElementById('stat-pass').textContent    = '✓ ' + pass + ' passed';
+    document.getElementById('stat-fail').textContent    = '✗ ' + fail + ' failed';
+    document.getElementById('stat-pending').textContent = '○ ' + pending + ' pending';
+}
+
+function updateProgress(done, total) {
+    document.getElementById('stat-progress').textContent = done + ' / ' + total;
+    document.getElementById('progress-bar').style.width  = (total ? (done / total * 100) : 0) + '%';
+}
+
+function runAllTests() {
+    if (_running) return;
+    _dashboards.forEach(function(d) { d._state = 'pending'; });
+    renderRows(_dashboards);
+    runSequence(_dashboards.map(function(_, i) { return i; }));
+}
+
+function runSingle(idx) {
+    if (_running) return;
+    _dashboards[idx]._state = 'pending';
+    setStatus(idx, 'pending', '○ Pending', '—', '—');
+    runSequence([idx]);
+}
+
+function runSequence(indices) {
+    _running = true;
+    var btn = document.getElementById('btn-run');
+    btn.disabled = true;
+    btn.textContent = '⏳ Running…';
+
+    document.getElementById('progress-wrap').classList.add('visible');
+    document.getElementById('stat-progress').style.display = '';
+    updateProgress(0, indices.length);
+
+    var done = 0;
+
+    function next(i) {
+        if (i >= indices.length) {
+            _running = false;
+            btn.disabled = false;
+            btn.textContent = '▶ Run All Tests';
+            updateStats();
+            return;
+        }
+        var idx = indices[i];
+        runOneTest(idx).then(function() {
+            done++;
+            updateProgress(done, indices.length);
+            updateStats();
+            next(i + 1);
+        }).catch(function() {
+            // Safety net: if runOneTest rejects unexpectedly, mark it failed
+            // and keep the sequence going instead of getting stuck.
+            done++;
+            _dashboards[idx]._state = 'fail';
+            try { setStatus(idx, 'fail', '✗ Fail', '—', '<span class="detail-err">Internal test error</span>'); } catch(e2) {}
+            updateProgress(done, indices.length);
+            updateStats();
+            next(i + 1);
+        });
+    }
+    next(0);
+}
+
+function runOneTest(idx) {
+    var d = _dashboards[idx];
+    var start = Date.now();
+    setStatus(idx, 'running', '<span class="spinner"></span> Running', '—', '—');
+
+    return testDashboard(d, idx)
+        .then(function(result) {
+            var elapsed = ((Date.now() - start) / 1000).toFixed(1) + 's';
+            if (result.ok) {
+                d._state = 'pass';
+                setStatus(idx, 'pass', '✓ Pass', elapsed,
+                    '<span class="detail-ok">' + escHtml(result.detail || 'OK') + '</span>');
+            } else {
+                d._state = 'fail';
+                var detailHtml = '<span class="detail-err">' + escHtml(result.detail || 'Unknown error') + '</span>';
+                if (result.errors && result.errors.length) {
+                    detailHtml += '<ul class="error-list">' +
+                        result.errors.slice(0, 5).map(function(e) {
+                            return '<li>' + escHtml(e.message || String(e)) + '</li>';
+                        }).join('') + '</ul>';
+                }
+                setStatus(idx, 'fail', '✗ Fail', elapsed, detailHtml);
+            }
+        })
+        .catch(function(e) {
+            var elapsed = ((Date.now() - start) / 1000).toFixed(1) + 's';
+            d._state = 'fail';
+            try {
+                setStatus(idx, 'fail', '✗ Fail', elapsed,
+                    '<span class="detail-err">Unexpected error: ' + escHtml(e.message) + '</span>');
+            } catch(e2) {}
+        });
+}
+
+function testDashboard(d, idx) {
+    var controller = new AbortController();
+    var fetchTimer = setTimeout(function() { controller.abort(); }, 15000);
+    return fetch(d.check_url, { signal: controller.signal })
+        .then(function(r) { clearTimeout(fetchTimer); return r.json(); })
+        .then(function(data) {
+            if (!data.ok) {
+                return { ok: false, detail: 'API check failed: ' + (data.error || 'unknown') };
+            }
+            return iframeTest(d);
+        })
+        .catch(function(e) {
+            clearTimeout(fetchTimer);
+            var msg = e.name === 'AbortError' ? 'API check timed out (15s)' : 'API check error: ' + e.message;
+            return { ok: false, detail: msg };
+        });
+}
+
+function iframeTest(d) {
+    return new Promise(function(resolve) {
+        var container = document.getElementById('test-iframe-container');
+        var iframe = document.createElement('iframe');
+        var TIMEOUT_MS = 20000;
+        var done = false;
+
+        iframe.setAttribute('sandbox', 'allow-same-origin allow-scripts allow-forms allow-popups');
+        iframe.style.width  = '1200px';
+        iframe.style.height = '800px';
+        iframe.style.border = 'none';
+
+        function finish(result) {
+            if (done) return;
+            done = true;
+            clearTimeout(timer);
+            window.removeEventListener('message', onMessage);
+            iframe.remove();
+            resolve(result);
+        }
+
+        var timer = setTimeout(function() {
+            finish({ ok: false, detail: 'Load timeout (20s)' });
+        }, TIMEOUT_MS);
+
+        function onMessage(e) {
+            if (e.source !== iframe.contentWindow) return;
+            var msg = e.data || {};
+            if (msg.type === 'echarts-test-done') {
+                if (msg.error_count > 0) {
+                    finish({ ok: false, detail: msg.error_count + ' console error(s)', errors: msg.errors });
+                } else {
+                    finish({ ok: true, detail: 'No errors (' + (msg.error_count === 0 ? '0' : msg.error_count) + ')' });
+                }
+            }
+        }
+        window.addEventListener('message', onMessage);
+
+        if (d.type === 'kibana') {
+            iframe.addEventListener('load', function() {
+                finish({ ok: true, detail: 'Loaded successfully' });
+            });
+            iframe.addEventListener('error', function() {
+                finish({ ok: false, detail: 'Iframe load error' });
+            });
+        }
+
+        container.appendChild(iframe);
+        iframe.src = d.iframe_url;
+    });
+}
+
+function setStatus(idx, stateClass, statusHtml, duration, detailHtml) {
+    var statusEl = document.getElementById('status-' + idx);
+    var durEl    = document.getElementById('dur-' + idx);
+    var detailEl = document.getElementById('detail-' + idx);
+    if (statusEl) statusEl.innerHTML = '<span class="status-badge status-' + stateClass + '">' + statusHtml + '</span>';
+    if (durEl)    durEl.textContent  = duration;
+    if (detailEl) detailEl.innerHTML = detailHtml;
+}
+
+function escHtml(s) {
+    if (!s) return '';
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Dashboard Comparison
+// ═══════════════════════════════════════════════════════════════════════════
+var CMP_API_BASE = '/assets/dashboard-builder/';
+
+var CMP_STATS = [
+  // ── Content ──────────────────────────────────────────────────────────────
+  { group: 'Content' },
+  { label: 'Meta Reach',
+    summary: { data_view: '*fb_insights',     field: 'insight_reach',            agg: 'sum' },
+    trends: 'Meta', maps: 'reach' },
+  { label: 'Organic Facebook',
+    // page_impressions_unique → page_total_media_view_unique (Meta v23 deprecation).
+    summary: { data_view: '*fb_page_insights', field: 'page_total_media_view_unique',  agg: 'sum' },
+    trends: 'Organic Facebook', maps: 'organic_facebook' },
+  { label: 'Organic Instagram',
+    summary: { data_view: '*ig_insights',      field: 'ig_insight_reach',         agg: 'sum' },
+    trends: 'Organic Instagram', maps: 'organic_instagram' },
+  { label: 'Organic Web',
+    summary: { data_view: '*ga_metrics',       field: 'totalUsers',               agg: 'sum' },
+    trends: 'Organic Web', maps: 'organic_web' },
+
+  // ── Video / Engagement ───────────────────────────────────────────────────
+  { group: 'Video & Engagement' },
+  { label: '15s Video Views',
+    summary: { data_view: '*fb_page_insights', field: 'page_video_views_15s_total',     agg: 'sum' },
+    trends: '15s Video Views', maps: 'videos_15s' },
+  { label: 'View Time (s)',
+    summary: { data_view: '*fb_page_insights', field: 'page_video_avg_sec_watched',     agg: 'sum' },
+    trends: 'View Time', maps: 'view_time' },
+  { label: 'FB Reactions',
+    summary: { data_view: '*fb_page_insights', field: 'page_actions_post_reactions_total', agg: 'sum' },
+    trends: 'FB Reactions', maps: 'fb_reactions' },
+  { label: 'FB Shares',
+    summary: { data_view: '*fb_page_insights', field: 'page_posts_shares_total',        agg: 'sum' },
+    trends: 'FB Shares', maps: 'fb_shares' },
+  { label: 'IG Reactions',
+    summary: { data_view: '*ig_insights',      field: 'ig_media_total_likes',           agg: 'sum' },
+    trends: 'IG Reactions', maps: 'ig_reactions' },
+  { label: 'IG Shares',
+    summary: { data_view: '*ig_insights',      field: 'ig_media_total_shares',          agg: 'sum' },
+    trends: 'IG Shares', maps: 'ig_shares' },
+  { label: 'YT Reactions',
+    summary: { data_view: '*youtube_analytics', field: 'likes',    agg: 'sum' },
+    trends: 'YT Likes', maps: 'yt_reactions' },
+  { label: 'YT Shares',
+    summary: { data_view: '*youtube_analytics', field: 'shares',   agg: 'sum' },
+    trends: 'YT Shares', maps: 'yt_shares' },
+  { label: 'YT Comments',
+    summary: { data_view: '*youtube_analytics', field: 'comments', agg: 'sum' },
+    trends: 'Comments', maps: 'comments' },
+
+  // ── Follows ──────────────────────────────────────────────────────────────
+  { group: 'Follows / Installs' },
+  { label: 'FB Follows',
+    summary: { data_view: '*fb_page_insights', field: 'page_follows',            agg: 'sum' },
+    trends: 'Facebook Follows', maps: 'follows_facebook' },
+  { label: 'IG Follows',
+    summary: { data_view: '*ig_insights',      field: 'ig_user_followers_count', agg: 'sum' },
+    trends: 'Instagram Follows', maps: 'follows_instagram' },
+  { label: 'YT Subs',
+    summary: { data_view: '*youtube_analytics', field: 'subscribers_gained',     agg: 'sum' },
+    trends: 'YouTube Subs', maps: 'follows_youtube' },
+  { label: 'App Installs',
+    // extra_filters: restrict to geo records so summary matches the map.
+    // Campaign-level records also have app_installs (aggregated total), which would double-count.
+    summary: { data_view: '*google_ads', field: 'app_installs', agg: 'sum',
+               extra_filters: [{ field: 'record_type', op: 'match_phrase', value: 'geo' }] },
+    trends: 'App Installs', maps: 'google_ads_app_installs' },
+
+  // ── Messaging / Echo ─────────────────────────────────────────────────────
+  { group: 'Messaging (Echo)' },
+  { label: 'Messaging Contacts',
+    summary: { data_view: '*echo_conversations,-unknown_echo_conversations', field: 'client_id', agg: 'cardinality' },
+    trends: 'Messaging Contacts', maps: 'messaging_contacts' },
+  { label: 'Messages Received',
+    summary: { data_view: '*echo_conversations,-unknown_echo_conversations', field: 'incomingMessagesCount', agg: 'sum' },
+    trends: 'Messages Received', maps: 'messages', maps_use_summary: true },
+  { label: 'Messages Sent',
+    summary: { data_view: '*echo_conversations,-unknown_echo_conversations', field: 'outboundMessagesCount', agg: 'sum' },
+    trends: 'Messages Sent', maps: 'messages_sent', maps_use_summary: true },
+  { label: 'Spiritual Convos (Echo)',
+    summary: { data_view: '*echo_conversations,-unknown_echo_conversations', field: 'spiritual_conversation', agg: 'sum' },
+    trends: 'Spiritual Convos (Echo)', maps: 'spiritual_convos_echo', maps_use_summary: true },
+  { label: 'Spiritual Convos (DT)',
+    // field is text — use value_count on .keyword (counts docs where field has a value)
+    summary: { data_view: 'disciple-tools', field: 'meta.quick_button_contact_established.keyword', agg: 'count', dt: true },
+    trends: 'Spiritual Convos', trends_date_field: 'date_created_ms', maps: 'spiritual_conversations' },
+
+  // ── Disciple Tools Journey ────────────────────────────────────────────────
+  { group: 'Journey (Disciple Tools)' },
+  // DT trends use _ms date fields (epoch_millis, date-typed) + per-source date_field_filter
+  // to bypass the global kibana_date filter applied to non-DT sources.
+  { label: 'New Contacts',
+    summary: { data_view: 'disciple-tools', field: 'meta.first_contact_date', agg: 'query date', dt: true },
+    trends: 'New Contacts', trends_date_field: 'meta.first_contact_date_ms', maps: 'dt_contacts' },
+  { label: '1st Meetings',
+    summary: { data_view: 'disciple-tools', field: 'meta.seeker_path', agg: 'equals', equals_value: 'met', dt: true,
+               dt_date_field: 'meta.first_contact_date.keyword' },
+    trends: '1st Meetings', trends_date_field: 'meta.first_contact_date_ms', maps: 'first_meetings' },
+  { label: 'Baptisms',
+    // Use baptism_date (exists) to match the map query — avoids double-counting contacts
+    // that have both the milestone and a date set.
+    summary: { data_view: 'disciple-tools', field: 'meta.baptism_date', agg: 'exists', dt: true },
+    trends: 'Baptisms', trends_date_field: 'date_created_ms', maps: 'baptisms' },
+  { label: 'New Groups',
+    summary: { data_view: 'disciple-tools', field: 'meta.start_date', agg: 'query date', dt: true, dt_date_unix: true },
+    trends: 'New Groups', trends_date_field: 'meta.start_date_ms', maps: 'new_groups' },
+  { label: 'New Churches',
+    summary: { data_view: 'disciple-tools', field: 'meta.church_start_date', agg: 'query date', dt: true, dt_date_unix: true },
+    trends: 'New Churches', trends_date_field: 'meta.church_start_date_ms', maps: 'new_churches' },
+];
+
+function cmpToEpochStr(dateStr, addDay) {
+    var d = new Date(dateStr + 'T00:00:00Z');
+    if (addDay) d.setUTCDate(d.getUTCDate() + 1);
+    return String(Math.floor(d.getTime() / 1000));
+}
+
+// Returns epoch milliseconds — accepted by any ES date field regardless of stored format
+function cmpToEpochMs(dateStr, addDay) {
+    var d = new Date(dateStr + 'T00:00:00Z');
+    if (addDay) d.setUTCDate(d.getUTCDate() + 1);
+    return d.getTime();
+}
+
+function cmpFmtNum(v) {
+    if (v === null || v === undefined) return { txt: '—', cls: 'cmp-val-na' };
+    if (typeof v === 'string' && v.startsWith('ERR')) return { txt: v, cls: 'cmp-val-err' };
+    if (v === 0) return { txt: '0', cls: 'cmp-val-zero' };
+    if (v >= 1e6) return { txt: (v/1e6).toFixed(1)+'M', cls: 'cmp-val-ok' };
+    if (v >= 1e3) return { txt: (v/1e3).toFixed(1)+'K', cls: 'cmp-val-ok' };
+    return { txt: v.toLocaleString(undefined, {maximumFractionDigits: 2}), cls: 'cmp-val-ok' };
+}
+
+function cmpMismatch(a, b) {
+    if (a == null || b == null) return false;
+    if (a === 0 && b === 0) return false;
+    var denom = Math.max(Math.abs(a), Math.abs(b));
+    return Math.abs(a - b) / denom > 0.01;
+}
+
+async function cmpQuerySummary(stat, fromDate, toDate, org, team) {
+    var s = stat.summary;
+    var isDT = s.dt || (s.data_view || '').includes('disciple-tools');
+    var dateRange = null;
+
+    if (isDT) {
+        if (s.agg === 'query date') {
+            var dtField = s.field.endsWith('.keyword') ? s.field : s.field + '.keyword';
+            var from = s.dt_date_unix ? cmpToEpochStr(fromDate, false) : fromDate;
+            var to   = s.dt_date_unix ? cmpToEpochStr(toDate, true)    : toDate;
+            dateRange = { field: dtField, from: from, to: to };
+        } else {
+            // Allow per-stat override of the DT date field (e.g. 1st Meetings uses first_contact_date, not date_created).
+            var dtDateField = s.dt_date_field || 'date_created.keyword';
+            dateRange = { field: dtDateField, from: fromDate, to: toDate };
+        }
+    } else {
+        // Use epoch ms — accepted by any ES date field regardless of stored format
+        // (e.g. Echo kibana_date uses 'MMMM dd, yyyy HH:mm:ss UTC' and rejects ISO dates)
+        dateRange = { field: 'kibana_date', from: cmpToEpochMs(fromDate, false), to: cmpToEpochMs(toDate, true) };
+    }
+
+    var filters = [];
+    if (org)  filters.push({ field: 'organization_title', op: 'match_phrase', value: org });
+    if (team) filters.push({ field: 'team_title',         op: 'match_phrase', value: team });
+    // Allow per-stat extra filters (e.g. App Installs: restrict to geo records only to avoid double-counting).
+    if (s.extra_filters) filters = filters.concat(s.extra_filters);
+
+    var config = {
+        chart_type: 'metric',
+        data_view: s.data_view,
+        x_field: null,
+        x_field_type: null,
+        y_fields: s.field ? [s.field] : [],
+        aggregation: s.agg || 'sum',
+        equals_value: s.equals_value || null,
+        date_range: dateRange,
+        filters: filters,
+    };
+
+    try {
+        var r = await fetch(CMP_API_BASE + 'api/query', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config),
+        });
+        var d = await r.json();
+        if (d.error) return 'ERR: ' + d.error;
+        return d.value !== undefined ? d.value : null;
+    } catch (e) { return 'ERR: fetch'; }
+}
+
+async function cmpQueryTrends(fromDate, toDate, org, team) {
+    var sources = CMP_STATS.filter(function(s) { return s.label && s.trends; }).map(function(s) {
+        var isDT = s.summary.dt;
+        var tdf  = s.trends_date_field || (isDT ? 'date_created_ms' : 'kibana_date');
+
+        // DT sources use doc_count (field=null) — summing keyword/text fields always gives 0.
+        // Cardinality stats pass cardinality_field so the trends endpoint uses cardinality agg
+        // per month bucket (unique contacts per month), giving a meaningful trend over time.
+        // For 'equals' DT stats, add a query_filter so only matching docs are counted.
+        var isCardinality = !isDT && s.summary.agg === 'cardinality';
+        var field = isDT ? null : (isCardinality ? null : (s.summary.field || null));
+        var cardinalityField = isCardinality ? s.summary.field : null;
+        var queryFilter = null;
+        if (isDT && s.summary.agg === 'equals') {
+            var tf = {}; tf[s.summary.field] = s.summary.equals_value;
+            queryFilter = { term: tf };
+        } else if (isDT && (s.summary.agg === 'count' || s.summary.agg === 'exists')) {
+            // count/exists: docs where field has a value
+            queryFilter = { exists: { field: s.summary.field.replace(/\.keyword$/, '') } };
+        }
+        // Apply summary extra_filters as ES query clauses (e.g. App Installs: geo records only).
+        if (s.summary.extra_filters && s.summary.extra_filters.length > 0) {
+            var efClauses = s.summary.extra_filters.map(function(f) {
+                var c = {}; c[f.op] = {}; c[f.op][f.field] = f.value; return c;
+            });
+            var efQf = efClauses.length === 1 ? efClauses[0] : { bool: { must: efClauses } };
+            queryFilter = queryFilter ? { bool: { must: [queryFilter, efQf] } } : efQf;
+        }
+
+        return {
+            label:             s.trends,
+            data_view:         s.summary.data_view,
+            field:             field,
+            cardinality_field: cardinalityField,
+            date_field:        tdf,
+            // DT sources need their own date range filter (no kibana_date in DT index)
+            date_field_filter: isDT ? tdf : null,
+            query_filter:      queryFilter,
+        };
+    });
+
+    var filters = [];
+    if (org)  filters.push({ field: 'organization_title', op: 'match_phrase', value: org });
+    if (team) filters.push({ field: 'team_title',         op: 'match_phrase', value: team });
+
+    var body = {
+        sources: sources,
+        filters: filters,
+        // Epoch ms: avoids ES date-format parse errors (e.g. Echo's MMMM dd, yyyy format)
+        // 'month' interval: server hardcodes format 'yyyy-MM', so daily interval causes
+        // multiple buckets to share the same key_as_string, overwriting each other to 0.
+        date_range: { field: 'kibana_date', from: cmpToEpochMs(fromDate, false), to: cmpToEpochMs(toDate, true) },
+        date_interval: 'month',
+    };
+
+    try {
+        var r = await fetch(CMP_API_BASE + 'api/trend-line-data', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        });
+        var d = await r.json();
+        var totals = {};
+        (d.series || []).forEach(function(series) {
+            totals[series.name] = (series.data || []).reduce(function(s, v) { return s + (v || 0); }, 0);
+        });
+        return totals;
+    } catch (e) { return {}; }
+}
+
+async function cmpQueryMap(statKey, fromDate, toDate, org, team) {
+    // ES rounds lte: "YYYY-MM-DD" up to end-of-day (23:59:59.999Z) for date fields,
+    // so toDate can be passed directly without adding a day.
+    var params = new URLSearchParams({ statistic: statKey, date_from: fromDate, date_to: toDate });
+    if (org)  params.set('org', org);
+    if (team) params.set('team', team);
+    try {
+        var r = await fetch(CMP_API_BASE + 'api/map-data?' + params);
+        var resp = await r.json();
+        if (!resp.success) return null;
+        // Use countries only — cities are geographic subsets of the same contacts,
+        // so summing both would double-count any contact that has location data.
+        var all = resp.countries || [];
+        return all.reduce(function(s, p) { return s + (p.value || 0); }, 0);
+    } catch (e) { return null; }
+}
+
+function cmpBuildLoadingRows() {
+    var tbody = document.getElementById('cmp-tbody');
+    tbody.innerHTML = '';
+    CMP_STATS.forEach(function(s) {
+        var tr = document.createElement('tr');
+        if (s.group) {
+            tr.className = 'group-header';
+            tr.innerHTML = '<td colspan="4">' + s.group + '</td>';
+        } else {
+            tr.id = 'cmp-row-' + s.label.replace(/\s+/g, '_').replace(/[()]/g, '');
+            tr.innerHTML =
+                '<td>' + s.label + '</td>' +
+                '<td class="cmp-val cmp-val-load">…</td>' +
+                '<td class="cmp-val cmp-val-load">…</td>' +
+                '<td class="cmp-val cmp-val-load">…</td>';
+        }
+        tbody.appendChild(tr);
+    });
+}
+
+function cmpUpdateRow(label, summaryVal, trendsVal, mapsVal) {
+    var id = 'cmp-row-' + label.replace(/\s+/g, '_').replace(/[()]/g, '');
+    var tr = document.getElementById(id);
+    if (!tr) return;
+
+    var sv = cmpFmtNum(summaryVal);
+    var tv = cmpFmtNum(trendsVal);
+    var mv = cmpFmtNum(mapsVal);
+
+    var numSummary = typeof summaryVal === 'number' ? summaryVal : null;
+    var numTrends  = typeof trendsVal  === 'number' ? trendsVal  : null;
+
+    var rowMismatch = cmpMismatch(numSummary, numTrends);
+    if (rowMismatch) tr.classList.add('cmp-mismatch');
+
+    var tCell = (rowMismatch && numTrends  !== null) ? 'cmp-mismatch-cell' : '';
+    var sCell = (rowMismatch && numSummary !== null) ? 'cmp-mismatch-cell' : '';
+
+    tr.innerHTML =
+        '<td>' + label + '</td>' +
+        '<td class="cmp-val ' + sv.cls + ' ' + sCell + '">' + sv.txt + '</td>' +
+        '<td class="cmp-val ' + tv.cls + ' ' + tCell + '">' + tv.txt + '</td>' +
+        '<td class="cmp-val ' + mv.cls + '">' + mv.txt + '</td>';
+}
+
+async function cmpRefresh() {
+    var fromDate = document.getElementById('cmp-date-from').value;
+    var toDate   = document.getElementById('cmp-date-to').value;
+    if (!fromDate || !toDate) { alert('Please set both dates.'); return; }
+
+    var org  = document.getElementById('cmp-filter-org').value.trim();
+    var team = document.getElementById('cmp-filter-team').value.trim();
+
+    var btn = document.getElementById('cmp-refresh-btn');
+    btn.disabled = true;
+    btn.textContent = 'Loading…';
+
+    cmpBuildLoadingRows();
+    document.getElementById('cmp-status').textContent = 'Querying ' + fromDate + ' \u2192 ' + toDate + '\u2026';
+
+    var statRows = CMP_STATS.filter(function(s) { return s.label; });
+
+    var summaryPromises = statRows.map(function(s) { return cmpQuerySummary(s, fromDate, toDate, org, team); });
+    var trendsPromise   = cmpQueryTrends(fromDate, toDate, org, team);
+    var mapPromises     = statRows.map(function(s) {
+        return s.maps ? cmpQueryMap(s.maps, fromDate, toDate, org, team) : Promise.resolve(null);
+    });
+
+    var results = await Promise.all([
+        Promise.all(summaryPromises),
+        trendsPromise,
+        Promise.all(mapPromises),
+    ]);
+
+    var summaryResults = results[0];
+    var trendsData     = results[1];
+    var mapResults     = results[2];
+
+    statRows.forEach(function(s, i) {
+        var sv = summaryResults[i];
+        var tv = s.trends ? (trendsData[s.trends] !== undefined ? trendsData[s.trends] : null) : null;
+        // Cardinality metrics (unique counts) can't be summed across monthly buckets without
+        // overcounting — a contact active in 3 months is counted 3×. Use the Summary value
+        // as the Trends total since both measure the same global unique count for the period.
+        if (s.summary && s.summary.agg === 'cardinality' && typeof sv === 'number') tv = sv;
+        var mv = mapResults[i];
+        // Echo sum stats: country-map misses records without team_country, making the map
+        // total lower than the summary. Use the Summary value as the authoritative total.
+        if (s.maps_use_summary && typeof sv === 'number') mv = sv;
+        cmpUpdateRow(s.label, sv, tv, mv);
+    });
+
+    btn.disabled = false;
+    btn.textContent = 'Refresh';
+    document.getElementById('cmp-status').textContent = 'Last updated: ' + new Date().toLocaleTimeString();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Load Testing (Locust) — baseline-degradation report + charts
+// ═══════════════════════════════════════════════════════════════════════════
+var LT_RUN_URL           = '{{ url_for("api_testing_run_locust") }}';
+var LT_STOP_URL          = '{{ url_for("api_testing_stop_locust") }}';
+var LT_STATUS_URL        = '{{ url_for("api_testing_locust_status") }}';
+var LT_RESULTS_URL       = '{{ url_for("api_testing_locust_results") }}';
+var LT_REPORT_URL        = '{{ url_for("api_testing_load_report") }}';
+var LT_IMP_CANDIDATES_URL = '{{ url_for("api_testing_import_load_candidates") }}';
+var LT_IMP_RUN_URL        = '{{ url_for("api_testing_run_import_load") }}';
+var LT_IMP_STATUS_URL     = '{{ url_for("api_testing_import_load_status") }}';
+var LT_IMP_WORST_URL      = '{{ url_for("api_testing_import_load_worst_case") }}';
+
+var _locustPollTimer = null;
+var _locustCountdownTimer = null;
+var _locustEndTime = null;
+var _ltReportTimer = null;
+var _ltDegChart = null;
+var _ltResChart = null;
+var _LT_SETTINGS_KEY = 'lt_settings';
+
+// ── Toolbar ────────────────────────────────────────────────────────────────
+
+function ltProfileChanged() {
+    var steps = document.getElementById('lt-profile').value === 'steps';
+    document.querySelectorAll('.lt-steps-only').forEach(function(el) { el.style.display = steps ? '' : 'none'; });
+    document.querySelectorAll('.lt-classic-only').forEach(function(el) { el.style.display = steps ? 'none' : ''; });
+}
+
+function ltSaveSettings() {
+    try {
+        localStorage.setItem(_LT_SETTINGS_KEY, JSON.stringify({
+            profile: document.getElementById('lt-profile').value,
+            step_users: document.getElementById('lt-step-users').value,
+            step_seconds: document.getElementById('lt-step-seconds').value,
+            identity: document.getElementById('lt-identity').value,
+            include_unscoped: document.getElementById('lt-include-unscoped').checked,
+            users: document.getElementById('lt-users').value,
+            duration: document.getElementById('lt-duration').value,
+            spawn_rate: document.getElementById('lt-spawn-rate').value
+        }));
+    } catch(e) {}
+}
+
+function ltRestoreSettings() {
+    try {
+        var raw = localStorage.getItem(_LT_SETTINGS_KEY);
+        if (raw) {
+            var s = JSON.parse(raw);
+            [['lt-profile','profile'], ['lt-step-users','step_users'], ['lt-step-seconds','step_seconds'],
+             ['lt-identity','identity'], ['lt-users','users'], ['lt-duration','duration'],
+             ['lt-spawn-rate','spawn_rate']].forEach(function(pair) {
+                if (s[pair[1]]) document.getElementById(pair[0]).value = s[pair[1]];
+            });
+            document.getElementById('lt-include-unscoped').checked = !!s.include_unscoped;
+        }
+    } catch(e) {}
+    ltProfileChanged();
+}
+
+// Called from the tab button. Charts can only size themselves while the
+// panel is visible, so (re)draw on every open.
+var _ltTabOpenedOnce = false;
+function ltTabOpened() {
+    loadLocustResults();
+    ltLoadReport();
+    if (_ltDegChart) _ltDegChart.resize();
+    if (_ltResChart) _ltResChart.resize();
+    if (!_ltTabOpenedOnce) {
+        _ltTabOpenedOnce = true;
+        impInit();
+    }
+}
+
+function ltSetLog(text) {
+    _locustRawLog = text;
+    var pre = document.getElementById('lt-log-content');
+    pre.textContent = text;
+    highlightLogSearch();
+}
+
+function runLocust() {
+    var btn = document.getElementById('lt-run-btn');
+    var stopBtn = document.getElementById('lt-stop-btn');
+    var statusPill = document.getElementById('lt-status');
+
+    var profile = document.getElementById('lt-profile').value;
+    var identity = document.getElementById('lt-identity').value;
+    var body = { profile: profile, identity_mode: identity,
+                 include_unscoped: document.getElementById('lt-include-unscoped').checked };
+    if (profile === 'steps') {
+        body.step_users = document.getElementById('lt-step-users').value.trim();
+        body.step_seconds = parseInt(document.getElementById('lt-step-seconds').value) || 120;
+    } else {
+        body.users = parseInt(document.getElementById('lt-users').value) || 10;
+        body.duration = document.getElementById('lt-duration').value;
+        body.spawn_rate = parseInt(document.getElementById('lt-spawn-rate').value) || 2;
+    }
+    ltSaveSettings();
+
+    btn.disabled = true;
+    btn.textContent = '⏳ Starting…';
+    statusPill.style.display = '';
+    statusPill.textContent = '⏳ Running…';
+    statusPill.className = 'stat-pill stat-progress';
+    ltSetLog(profile === 'steps'
+        ? 'Starting stepped run: ' + body.step_users + ' users × ' + body.step_seconds + 's per step (identity: ' + identity + ')…'
+        : 'Starting Locust with ' + body.users + ' users for ' + body.duration + '…');
+
+    fetch(LT_RUN_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            btn.style.display = 'none';
+            stopBtn.style.display = '';
+            ltSetLog('Locust started (PID ' + data.pid + ')\n' +
+                'Target: ' + data.target_url + '\n' +
+                'Profile: ' + data.profile + ', identity: ' + data.identity_mode + '\n' +
+                (data.step_users
+                    ? 'Steps: ' + data.step_users.join(' → ') + ' users, total ' + data.total_seconds + 's'
+                    : 'Users: ' + data.users + ', duration ' + data.duration + ', spawn rate ' + data.spawn_rate + '/s') +
+                '\n\nWaiting for output…');
+            // Steps mode: server-computed wall-clock; classic: the requested duration.
+            startCountdown(data.total_seconds || parseInt(data.duration));
+            startLocustPolling();
+            startReportPolling();
+        } else {
+            btn.disabled = false;
+            btn.textContent = '▶ Run Load Test';
+            statusPill.textContent = '✗ Error';
+            statusPill.className = 'stat-pill stat-fail';
+            ltSetLog('Failed to start: ' + (data.error || 'unknown'));
+        }
+    })
+    .catch(function(e) {
+        btn.disabled = false;
+        btn.textContent = '▶ Run Load Test';
+        statusPill.textContent = '✗ Error';
+        statusPill.className = 'stat-pill stat-fail';
+        ltSetLog('Error: ' + e.message);
+    });
+}
+
+function stopLocust() {
+    var stopBtn = document.getElementById('lt-stop-btn');
+    stopBtn.disabled = true;
+    stopBtn.textContent = '■ Stopping…';
+    fetch(LT_STOP_URL, { method: 'POST' })
+    .then(function(r) { return r.json(); })
+    .then(function() {
+        // Polling will handle the UI reset when the process exits
+    })
+    .catch(function() {});
+}
+
+function startCountdown(seconds) {
+    _locustEndTime = Date.now() + (parseInt(seconds) * 1000);
+    var timerEl = document.getElementById('lt-timer');
+    timerEl.style.display = '';
+    updateCountdown();
+    if (_locustCountdownTimer) clearInterval(_locustCountdownTimer);
+    _locustCountdownTimer = setInterval(updateCountdown, 1000);
+}
+
+function updateCountdown() {
+    var timerEl = document.getElementById('lt-timer');
+    var remaining = Math.max(0, Math.ceil((_locustEndTime - Date.now()) / 1000));
+    var mins = Math.floor(remaining / 60);
+    var secs = remaining % 60;
+    timerEl.textContent = (mins > 0 ? mins + 'm ' : '') + secs + 's remaining';
+    if (remaining <= 0) {
+        clearInterval(_locustCountdownTimer);
+        _locustCountdownTimer = null;
+        timerEl.textContent = 'Finishing…';
+    }
+}
+
+function locustFinished(exitCode) {
+    var btn = document.getElementById('lt-run-btn');
+    var stopBtn = document.getElementById('lt-stop-btn');
+    var statusPill = document.getElementById('lt-status');
+    var timerEl = document.getElementById('lt-timer');
+
+    clearInterval(_locustPollTimer);
+    _locustPollTimer = null;
+    clearInterval(_locustCountdownTimer);
+    _locustCountdownTimer = null;
+    stopReportPolling();
+    ltLoadReport();  // final refresh so the charts show the completed run
+    document.getElementById('lt-users-now').style.display = 'none';
+
+    btn.style.display = '';
+    btn.disabled = false;
+    btn.textContent = '▶ Run Load Test';
+    stopBtn.style.display = 'none';
+    stopBtn.disabled = false;
+    stopBtn.textContent = '■ Stop';
+    timerEl.style.display = 'none';
+
+    if (exitCode === 0) {
+        statusPill.textContent = '✓ Complete';
+        statusPill.className = 'stat-pill stat-pass';
+    } else {
+        statusPill.textContent = '✗ Stopped';
+        statusPill.className = 'stat-pill stat-fail';
+    }
+}
+
+function startLocustPolling() {
+    if (_locustPollTimer) clearInterval(_locustPollTimer);
+    _locustPollTimer = setInterval(pollLocust, 3000);
+}
+
+function pollLocust() {
+    fetch(LT_STATUS_URL)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        loadLocustResults();
+        if (!data.running) {
+            locustFinished(data.exit_code);
+        }
+    })
+    .catch(function() {});
+}
+
+var _locustRawLog = '';
+
+function loadLocustResults() {
+    fetch(LT_RESULTS_URL)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        // Update log
+        var pre = document.getElementById('lt-log-content');
+        if (data.log) {
+            _locustRawLog = data.log;
+            pre.textContent = data.log;
+            pre.scrollTop = pre.scrollHeight;
+            highlightLogSearch();
+        }
+
+        // Parse and render stats CSV
+        if (data.stats_csv) {
+            renderLocustStats(data.stats_csv);
+        } else {
+            saveLocustState('');
+        }
+        renderLocustFailures(data.failures_csv);
+    })
+    .catch(function() {});
+}
+
+// Quote-aware CSV field split — locust failure errors contain commas
+// (e.g. "HTTPError('403 Client Error: FORBIDDEN for url: ...')").
+function ltCsvLine(line) {
+    var out = [], cur = '', inQ = false;
+    for (var i = 0; i < line.length; i++) {
+        var ch = line[i];
+        if (inQ) {
+            if (ch === '"') {
+                if (line[i + 1] === '"') { cur += '"'; i++; }
+                else inQ = false;
+            } else cur += ch;
+        } else if (ch === '"') inQ = true;
+        else if (ch === ',') { out.push(cur); cur = ''; }
+        else cur += ch;
+    }
+    out.push(cur);
+    return out;
+}
+
+function renderLocustFailures(csv) {
+    var wrap = document.getElementById('lt-failures-wrap');
+    var tbody = document.getElementById('lt-failures-body');
+    var lines = (csv || '').trim().split('\n');
+    if (lines.length < 2) { wrap.style.display = 'none'; return; }
+    wrap.style.display = '';
+    tbody.innerHTML = '';
+    for (var i = 1; i < lines.length; i++) {
+        var c = ltCsvLine(lines[i]);
+        if (c.length < 4 || !c[1]) continue;
+        var tr = document.createElement('tr');
+        tr.innerHTML =
+            '<td style="font-family:monospace;font-size:12px;">' + escHtml(c[0]) + '</td>' +
+            '<td>' + escHtml(c[1]) + '</td>' +
+            '<td style="font-size:12px;color:#721c24;word-break:break-word;">' + escHtml(c[2]) + '</td>' +
+            '<td>' + escHtml(c[3]) + '</td>';
+        tbody.appendChild(tr);
+    }
+}
+
+// ── Degradation report + charts ─────────────────────────────────
+
+function startReportPolling() {
+    if (_ltReportTimer) clearInterval(_ltReportTimer);
+    _ltReportTimer = setInterval(ltLoadReport, 5000);
+    ltLoadReport();
+}
+
+function stopReportPolling() {
+    if (_ltReportTimer) { clearInterval(_ltReportTimer); _ltReportTimer = null; }
+}
+
+function ltLoadReport() {
+    // Charts can't lay out inside a hidden tab (zero-size container); the
+    // next poll — or ltTabOpened() — renders once the tab is visible.
+    if (!document.getElementById('tab-loadtest').classList.contains('active')) return;
+    fetch(LT_REPORT_URL)
+    .then(function(r) { return r.json(); })
+    .then(function(rep) {
+        if (!rep.available) return;
+        ltRenderBaseline(rep);
+        ltRenderDegradation(rep);
+        ltRenderResources(rep);
+        ltUpdateUsersNow(rep);
+    })
+    .catch(function() {});
+}
+
+function ltMedian(values) {
+    if (!values.length) return null;
+    var sorted = values.slice().sort(function(a, b) { return a - b; });
+    var mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+// Server timestamps (import markers) are naive UTC from the container clock;
+// pin the zone so browser-local parsing doesn't shift them off the
+// epoch-based locust/sampler series.
+function ltTs(iso) {
+    if (!iso) return null;
+    return new Date(/[Zz]|[+-]\d\d:?\d\d$/.test(iso) ? iso : iso + 'Z').getTime();
+}
+
+function ltUpdateUsersNow(rep) {
+    var pill = document.getElementById('lt-users-now');
+    var agg = rep.aggregate || [];
+    var running = document.getElementById('lt-stop-btn').style.display !== 'none';
+    if (!agg.length || !running) { pill.style.display = 'none'; return; }
+    var users = agg[agg.length - 1].users;
+    pill.style.display = '';
+    pill.textContent = '👥 ' + users + (users === 1 ? ' user' : ' users');
+}
+
+// Bands shorter than this are spawn-ramp transitions (locust adds 4 users/s,
+// so a 10→25 step passes through 14/18/22 for a second or two each). They are
+// login-burst noise, not steady-state — shaded but never labeled or badged.
+var LT_DWELL_MIN_S = 15;
+
+function ltIsDwell(band) { return (band.to_t - band.from_t) >= LT_DWELL_MIN_S; }
+
+function ltRenderBaseline(rep) {
+    var card = document.getElementById('lt-baseline-card');
+    if (!rep.baseline) { card.style.display = 'none'; return; }
+    card.style.display = '';
+    document.getElementById('lt-baseline-vals').textContent =
+        'p50 ' + rep.baseline.p50_ms + ' ms · p95 ' + rep.baseline.p95_ms + ' ms (' + rep.baseline.samples + ' samples)';
+
+    // Per-step multipliers: median degradation of the probe within each
+    // DWELL band. Ramp bands are excluded — their 1-4 samples are dominated
+    // by the simultaneous-login burst and read as fake 3-5x badges.
+    var host = document.getElementById('lt-worst-steps');
+    host.innerHTML = '';
+    (rep.steps || []).forEach(function(band) {
+        if (band.users <= 1 || !ltIsDwell(band)) return;
+        var xs50 = [], xs95 = [];
+        (rep.degradation || []).forEach(function(p) {
+            if (p.t >= band.from_t && p.t <= band.to_t) {
+                if (p.x50 != null) xs50.push(p.x50);
+                if (p.x95 != null) xs95.push(p.x95);
+            }
+        });
+        var m50 = ltMedian(xs50), m95 = ltMedian(xs95);
+        if (m50 == null && m95 == null) return;
+        var worst = Math.max(m50 || 0, m95 || 0);
+        var cls = worst >= 3 ? 'lt-cell-bad' : (worst >= 1.5 ? 'lt-cell-warn' : '');
+        var span = document.createElement('span');
+        span.innerHTML = '<span class="' + cls + '" style="padding:2px 8px;border-radius:4px;">' +
+            band.users + ' users: ' +
+            (m50 != null ? m50.toFixed(2) : '—') + '× <span style="opacity:.6;">p50</span> / ' +
+            (m95 != null ? m95.toFixed(2) : '—') + '× <span style="opacity:.6;">p95</span></span>';
+        host.appendChild(span);
+    });
+}
+
+function ltChart(elId, existing) {
+    if (typeof echarts === 'undefined') return null;  // CDN blocked → cards stay data-only
+    if (existing) return existing;
+    var el = document.getElementById(elId);
+    if (!el || !el.offsetWidth) return null;  // hidden/zero-width container
+    return echarts.init(el);
+}
+
+function ltImportMarkLines(rep) {
+    // started_at is batch-level (all markers share it) — one start line,
+    // then a per-source completion line.
+    var lines = [];
+    var startsSeen = {};
+    (rep.imports || []).forEach(function(m) {
+        var start = ltTs(m.started_at), end = ltTs(m.completed_at);
+        if (start && !startsSeen[start]) {
+            startsSeen[start] = 1;
+            lines.push({ xAxis: start, lineStyle: { color: '#f59e0b', type: 'dashed' },
+                label: { formatter: 'imports ▶', fontSize: 10, color: '#b45309' } });
+        }
+        // a batch can hold same-source items; a short team-esid
+        // suffix keeps their completion lines tellable apart.
+        var markLabel = (m.source || 'import') + (m.team_ids ? '·' + String(m.team_ids).slice(0, 6) : '');
+        if (end) lines.push({ xAxis: end, lineStyle: { color: '#10b981', type: 'dashed' },
+            label: { formatter: markLabel + ' ■', fontSize: 10, color: '#047857' } });
+    });
+    return lines;
+}
+
+// Shared markArea bands for both charts: dwell bands get alternating blue
+// shading + a "N users" label; ramp bands get a faint grey wash, no label
+// (labeling 1-2s transitions is what made the band text overlap).
+function ltStepBands(rep) {
+    var dwellIdx = 0;
+    return (rep.steps || []).map(function(b) {
+        var dwell = ltIsDwell(b);
+        var start = { xAxis: b.from_t * 1000 };
+        if (dwell) {
+            start.itemStyle = { color: dwellIdx % 2 ? 'rgba(9,114,211,0.10)' : 'rgba(9,114,211,0.04)' };
+            start.label = { formatter: b.users + (b.users === 1 ? ' user' : ' users'),
+                            position: 'insideTop', color: '#475569', fontSize: 11 };
+            dwellIdx++;
+        } else {
+            start.itemStyle = { color: 'rgba(148,163,184,0.12)' };
+            start.label = { show: false };
+        }
+        return [start, { xAxis: b.to_t * 1000 }];
+    });
+}
+
+function ltRenderDegradation(rep) {
+    var card = document.getElementById('lt-degradation-card');
+    var deg = rep.degradation || [];
+    if (!deg.length) { card.style.display = 'none'; return; }
+    card.style.display = '';
+    _ltDegChart = ltChart('lt-degradation-chart', _ltDegChart);
+    if (!_ltDegChart) return;
+
+    var bands = ltStepBands(rep);
+
+    _ltDegChart.setOption({
+        animation: false,
+        grid: { left: 55, right: 25, top: 34, bottom: 28 },
+        tooltip: { trigger: 'axis',
+            valueFormatter: function(v) { return v == null ? '—' : v + '×'; } },
+        legend: { data: ['p50 × baseline', 'p95 × baseline'], top: 4 },
+        xAxis: { type: 'time' },
+        yAxis: { type: 'value', name: '× baseline', min: 0 },
+        series: [
+            {
+                name: 'p50 × baseline', type: 'line', showSymbol: false, connectNulls: true,
+                color: '#0972D3', lineStyle: { width: 2 },
+                data: deg.map(function(p) { return [p.t * 1000, p.x50]; }),
+                markArea: { silent: true, data: bands },
+                markLine: {
+                    silent: true, symbol: 'none',
+                    data: [{ yAxis: 1, lineStyle: { color: '#94a3b8', type: 'dashed' },
+                             label: { formatter: 'baseline', fontSize: 10 } }]
+                        .concat(ltImportMarkLines(rep))
+                }
+            },
+            {
+                name: 'p95 × baseline', type: 'line', showSymbol: false, connectNulls: true,
+                color: '#7c3aed', lineStyle: { width: 2, type: 'dashed' },
+                data: deg.map(function(p) { return [p.t * 1000, p.x95]; })
+            }
+        ]
+    });
+}
+
+function ltRenderResources(rep) {
+    var card = document.getElementById('lt-resource-card');
+    var res = rep.resources || [];
+    if (!res.length) { card.style.display = 'none'; return; }
+    card.style.display = '';
+    _ltResChart = ltChart('lt-resource-chart', _ltResChart);
+    if (!_ltResChart) return;
+
+    function col(name) { return res.map(function(p) { return [p.t * 1000, p[name] == null ? null : p[name]]; }); }
+
+    _ltResChart.setOption({
+        animation: false,
+        grid: { left: 55, right: 55, top: 34, bottom: 28 },
+        tooltip: { trigger: 'axis' },
+        legend: { top: 4, data: ['Host CPU', 'Container CPU', 'ES CPU', 'Locust CPU', 'Host mem', 'Container mem'] },
+        xAxis: { type: 'time' },
+        yAxis: [
+            { type: 'value', name: 'CPU %', min: 0, max: 100 },
+            { type: 'value', name: 'Mem %', min: 0, max: 100 }
+        ],
+        series: [
+            { name: 'Host CPU', type: 'line', showSymbol: false, connectNulls: true,
+              color: '#0972D3', data: col('host_cpu_pct'),
+              // Same user-count bands as the degradation chart, so a CPU
+              // spike can be read against the step it happened in: spikes at
+              // band boundaries = simultaneous-login bursts (password
+              // hashing); mid-band spikes = dashboard chart-query batches.
+              markArea: { silent: true, data: ltStepBands(rep) },
+              markLine: { silent: true, symbol: 'none', data: ltImportMarkLines(rep) } },
+            { name: 'Container CPU', type: 'line', showSymbol: false, connectNulls: true,
+              color: '#f59e0b', data: col('container_cpu_pct') },
+            { name: 'ES CPU', type: 'line', showSymbol: false, connectNulls: true,
+              color: '#10b981', data: col('es_process_cpu_pct') },
+            { name: 'Locust CPU', type: 'line', showSymbol: false, connectNulls: true,
+              color: '#94a3b8', lineStyle: { type: 'dashed' }, data: col('locust_cpu_pct') },
+            { name: 'Host mem', type: 'line', showSymbol: false, connectNulls: true, yAxisIndex: 1,
+              color: '#dc2626', data: col('host_mem_used_pct') },
+            { name: 'Container mem', type: 'line', showSymbol: false, connectNulls: true, yAxisIndex: 1,
+              color: '#db2777', lineStyle: { type: 'dotted' }, data: col('container_mem_pct') }
+        ]
+    });
+}
+
+window.addEventListener('resize', function() {
+    if (_ltDegChart) _ltDegChart.resize();
+    if (_ltResChart) _ltResChart.resize();
+});
+
+// ── Import capacity sub-panel ────────────────────────────
+
+var _impCandidates = [];
+var _impPollTimer = null;
+var IMP_MAX_CONCURRENT = 20;  // mirrors import_load_service.MAX_CONCURRENT_IMPORTS
+var _IMP_ID_KEY = 'lt_import_id';
+
+function impInit() {
+    impLoadCandidates();
+    // Resume marker polling for an in-flight (or just-finished) run.
+    var importId = sessionStorage.getItem(_IMP_ID_KEY);
+    if (importId) impStartPolling(importId);
+}
+
+function impMsg(text, isError) {
+    var el = document.getElementById('lt-imp-msg');
+    if (!text) { el.style.display = 'none'; return; }
+    el.style.display = '';
+    el.textContent = text;
+    el.style.color = isError ? '#721c24' : '#64748b';
+}
+
+function impLoadCandidates(andThen) {
+    var btn = document.getElementById('lt-imp-load-btn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Loading…';
+    fetch(LT_IMP_CANDIDATES_URL)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        btn.disabled = false;
+        btn.textContent = '⟳ Load candidates';
+        if (!data.success) {
+            impMsg('Failed to load candidates: ' + (data.error || 'unknown'), true);
+            return;
+        }
+        _impCandidates = data.candidates || [];
+        impRenderTable();
+        if (andThen && _impCandidates.length) andThen();
+    })
+    .catch(function(e) {
+        btn.disabled = false;
+        btn.textContent = '⟳ Load candidates';
+        impMsg('Request failed: ' + e.message, true);
+    });
+}
+
+function impRenderTable() {
+    var tbody = document.getElementById('lt-imp-body');
+    if (!_impCandidates.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No candidates — no per-team indices with data found.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = '';
+    _impCandidates.forEach(function(c, i) {
+        var tr = document.createElement('tr');
+        tr.id = 'imp-row-' + i;
+        tr.innerHTML =
+            '<td><input type="checkbox" id="imp-check-' + i + '" onchange="impSelectionChanged()"></td>' +
+            '<td><span style="font-family:monospace;font-size:12px;">' + escHtml(c.source) + '</span>' +
+                (c.light ? '<span class="light-badge">light</span>' : '') + '</td>' +
+            '<td>' + escHtml(c.team_title || c.team_esid) + '</td>' +
+            '<td class="duration">' + escHtml(c.last_data_date || '—') + '</td>' +
+            '<td style="white-space:nowrap;">' +
+                '<input type="date" class="imp-date" id="imp-start-' + i + '" value="' + escHtml(c.suggested_start || '') + '"> – ' +
+                '<input type="date" class="imp-date" id="imp-end-' + i + '" value="' + escHtml(c.suggested_end || '') + '"></td>' +
+            '<td><span class="lock-badge" id="imp-lock-' + i + '">' + escHtml(c.lock_group || 'none') + '</span></td>';
+        tbody.appendChild(tr);
+    });
+    impSelectionChanged();
+}
+
+// Mirrors groups_conflict in import_load_service: equal keys
+// conflict, and a connector-global key also excludes every scoped key of the
+// same connector. "" (unlocked) never conflicts.
+function impLockGroupsConflict(g1, g2) {
+    if (!g1 || !g2) return false;
+    if (g1 === g2) return true;
+    if (g1.split('::')[0] !== g2.split('::')[0]) return false;
+    return g1.indexOf('::') === -1 || g2.indexOf('::') === -1;
+}
+
+function impSelectedIndices() {
+    var out = [];
+    _impCandidates.forEach(function(_, i) {
+        var box = document.getElementById('imp-check-' + i);
+        if (box && box.checked) out.push(i);
+    });
+    return out;
+}
+
+function impSelectionChanged() {
+    var selected = impSelectedIndices();
+    var runBtn = document.getElementById('lt-imp-run-btn');
+    document.getElementById('lt-imp-count').textContent =
+        _impCandidates.length + ' candidates · ' + selected.length + ' / ' + IMP_MAX_CONCURRENT + ' selected';
+
+    // Conflicts the server would reject: conflicting non-empty lock groups
+    // (lock loser = silent no-op). group conflict is NOT plain
+    // equality: a connector-global group ("facebook") also excludes every
+    // scoped group of the same connector ("facebook::X"), mirroring
+    // groups_conflict in import_load_service. duplicate sources
+    // no longer conflict: status records key per batch item now.
+    var lockSeen = [], conflictRows = {};
+    selected.forEach(function(i) {
+        var c = _impCandidates[i];
+        if (c.lock_group) {
+            lockSeen.forEach(function(prior) {
+                if (impLockGroupsConflict(c.lock_group, prior.group)) { conflictRows[i] = 1; conflictRows[prior.i] = 1; }
+            });
+            lockSeen.push({ group: c.lock_group, i: i });
+        }
+    });
+
+    _impCandidates.forEach(function(_, i) {
+        var row = document.getElementById('imp-row-' + i);
+        var badge = document.getElementById('imp-lock-' + i);
+        if (!row) return;
+        row.classList.toggle('imp-conflict', !!conflictRows[i]);
+        if (badge) badge.classList.toggle('conflict', !!conflictRows[i]);
+    });
+
+    var conflictCount = Object.keys(conflictRows).length;
+    var overCap = selected.length > IMP_MAX_CONCURRENT;
+    runBtn.disabled = !selected.length || !!conflictCount || overCap;
+    runBtn.textContent = '▶ Run ' + selected.length + ' import' + (selected.length === 1 ? '' : 's');
+    if (conflictCount) {
+        impMsg('Highlighted selections have conflicting lock groups — they can’t run concurrently. Deselect one of each pair.', true);
+    } else if (overCap) {
+        impMsg('At most ' + IMP_MAX_CONCURRENT + ' concurrent imports.', true);
+    } else {
+        impMsg('');
+    }
+}
+
+// "Worst case: N": ask the server's greedy picker (single
+// implementation, unit-tested) for the N heaviest pairwise-non-conflicting
+// rows, then check those boxes. Run stays a separate, reviewable click.
+function impWorstCaseSelect() {
+    if (!_impCandidates.length) { impLoadCandidates(impWorstCaseSelect); return; }
+    var n = parseInt(document.getElementById('lt-imp-worst-n').value, 10);
+    if (!(n > 0)) { impMsg('Worst case: enter a count of at least 1.', true); return; }
+    var btn = document.getElementById('lt-imp-worst-btn');
+    btn.disabled = true;
+    fetch(LT_IMP_WORST_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ n: n, candidates: _impCandidates })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        btn.disabled = false;
+        if (!data.success) {
+            impMsg('Worst-case selection failed: ' + (data.error || 'unknown'), true);
+            return;
+        }
+        var indices = data.indices || [];
+        _impCandidates.forEach(function(_, i) {
+            var box = document.getElementById('imp-check-' + i);
+            if (box) box.checked = indices.indexOf(i) !== -1;
+        });
+        impSelectionChanged();
+        if (indices.length < n) {
+            impMsg('Worst case: only ' + indices.length + ' of ' + n + ' requested rows are mutually concurrent (lock groups / cap) — review and Run.');
+        } else {
+            impMsg('Worst case: selected the ' + indices.length + ' heaviest mutually-concurrent rows — review and Run.');
+        }
+    })
+    .catch(function(e) {
+        btn.disabled = false;
+        impMsg('Request failed: ' + e.message, true);
+    });
+}
+
+function impRunSelected() {
+    var selected = impSelectedIndices();
+    if (!selected.length) return;
+    var imports = selected.map(function(i) {
+        var c = _impCandidates[i];
+        return {
+            source: c.source,
+            team_ids: c.team_esid,
+            start_date: document.getElementById('imp-start-' + i).value,
+            end_date: document.getElementById('imp-end-' + i).value
+        };
+    });
+
+    var runBtn = document.getElementById('lt-imp-run-btn');
+    runBtn.disabled = true;
+    runBtn.textContent = '⏳ Starting…';
+    impMsg('');
+
+    fetch(LT_IMP_RUN_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imports: imports })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (!data.success) {
+            impMsg('Rejected: ' + (data.error || 'unknown'), true);
+            impSelectionChanged();
+            return;
+        }
+        impMsg('Import batch ' + data.import_id + ' started (' + imports.length + ' concurrent).');
+        try { sessionStorage.setItem(_IMP_ID_KEY, data.import_id); } catch(e) {}
+        impStartPolling(data.import_id);
+        impSelectionChanged();
+    })
+    .catch(function(e) {
+        impMsg('Request failed: ' + e.message, true);
+        impSelectionChanged();
+    });
+}
+
+function impStartPolling(importId) {
+    if (_impPollTimer) clearInterval(_impPollTimer);
+    function poll() {
+        fetch(LT_IMP_STATUS_URL + '?import_id=' + encodeURIComponent(importId))
+        .then(function(r) { return r.json(); })
+        .then(function(status) {
+            if (!status.success) { clearInterval(_impPollTimer); _impPollTimer = null; return; }
+            impRenderMarkers(status, importId);
+            if (status.completed) {
+                clearInterval(_impPollTimer);
+                _impPollTimer = null;
+            }
+        })
+        .catch(function() {});
+    }
+    _impPollTimer = setInterval(poll, 5000);
+    poll();
+}
+
+// markers carry team_ids so two same-source items are tellable
+// apart; prefer the loaded candidates' team title, fall back to the esid.
+function impTeamLabel(m) {
+    if (!m.team_ids) return '—';
+    for (var i = 0; i < _impCandidates.length; i++) {
+        if (_impCandidates[i].team_esid === m.team_ids) {
+            return _impCandidates[i].team_title || m.team_ids;
+        }
+    }
+    return m.team_ids;
+}
+
+function impRenderMarkers(status, importId) {
+    var host = document.getElementById('lt-imp-status');
+    host.style.display = '';
+    var markers = status.markers || [];
+    var html = '<div style="padding:10px 16px;font-size:12px;color:#475569;">' +
+        '<strong>Batch ' + escHtml(importId || '') + ':</strong> ' +
+        (status.completed ? 'completed' : '<span class="spinner"></span> running…') + '</div>';
+    if (markers.length) {
+        html += '<table class="results-table"><thead><tr>' +
+            '<th>Source</th><th>Team</th><th>Duration</th><th>Result</th></tr></thead><tbody>';
+        markers.forEach(function(m) {
+            var result;
+            if (m.skipped) result = '<span class="status-badge status-warn">⊘ skipped</span>';
+            else if (!m.completed_at) result = '<span class="status-badge status-running"><span class="spinner"></span> running</span>';
+            else if (m.success) result = '<span class="status-badge status-pass">✓ success</span>';
+            else result = '<span class="status-badge status-fail">✗ failed</span>';
+            if (m.suspiciously_fast) {
+                result += ' <span class="status-badge status-warn" title="Finished suspiciously fast for the range — likely a lock loss or skip, not real work.">⚠ suspiciously fast</span>';
+            }
+            html += '<tr>' +
+                '<td style="font-family:monospace;font-size:12px;">' + escHtml(m.source || '') + '</td>' +
+                '<td>' + escHtml(impTeamLabel(m)) + '</td>' +
+                '<td class="duration">' + (m.duration_s != null ? m.duration_s + 's' : '—') + '</td>' +
+                '<td>' + result + '</td></tr>';
+        });
+        html += '</tbody></table>';
+    }
+    host.innerHTML = html;
+}
+
+function highlightLogSearch() {
+    var pre = document.getElementById('lt-log-content');
+    var input = document.getElementById('lt-log-search');
+    var countEl = document.getElementById('lt-search-count');
+    var query = input.value.trim();
+
+    if (!query || !_locustRawLog) {
+        pre.textContent = _locustRawLog || pre.textContent;
+        countEl.textContent = '';
+        return;
+    }
+
+    var escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    var re = new RegExp('(' + escaped + ')', 'gi');
+    var matches = _locustRawLog.match(re);
+    countEl.textContent = matches ? matches.length + ' match' + (matches.length !== 1 ? 'es' : '') : 'no matches';
+
+    // Use innerHTML with highlighted spans (escaping the log first)
+    var safeLog = escHtml(_locustRawLog);
+    var safeQuery = escHtml(query).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    var highlightRe = new RegExp('(' + safeQuery + ')', 'gi');
+    pre.innerHTML = safeLog.replace(highlightRe, '<mark style="background:#fbbf24;color:#0f172a;border-radius:2px;">$1</mark>');
+}
+
+function ltThreshold(val, warnAt, badAt) {
+    if (isNaN(val) || val === 0) return '';
+    if (val >= badAt) return 'bad';
+    if (val >= warnAt) return 'warn';
+    return '';
+}
+
+function ltCell(text, level) {
+    if (!level) return '<td>' + text + '</td>';
+    var cls = level === 'bad' ? 'lt-cell-bad' : 'lt-cell-warn';
+    return '<td><span class="' + cls + '">' + text + '</span></td>';
+}
+
+function renderLocustStats(csv) {
+    // Trimmed to median + p95 (a teammate 2026-07-05: the ms-column spread was
+    // noise — baseline comparison above is the headline; this is reference).
+    var tbody = document.getElementById('lt-stats-body');
+    var lines = csv.trim().split('\n');
+    if (lines.length < 2) return;
+
+    var headers = lines[0].split(',');
+
+    // Find column indices
+    var nameIdx = 1;     // "Name"
+    var reqIdx = headers.indexOf('Request Count');
+    var failIdx = headers.indexOf('Failure Count');
+    var medIdx = headers.indexOf('Median Response Time');
+    var p95Idx = headers.indexOf('95%');
+    var rpsIdx = headers.indexOf('Requests/s');
+
+    tbody.innerHTML = '';
+    for (var i = 1; i < lines.length; i++) {
+        var cols = lines[i].split(',');
+        if (!cols[nameIdx]) continue;
+
+        var name = cols[nameIdx].replace(/^"|"$/g, '');
+        var reqs = cols[reqIdx] || '0';
+        var fails = cols[failIdx] || '0';
+        var med = cols[medIdx] ? parseFloat(cols[medIdx]).toFixed(0) : '—';
+        var p95 = cols[p95Idx] || '—';
+        var rps = cols[rpsIdx] ? parseFloat(cols[rpsIdx]).toFixed(1) : '—';
+
+        var isAgg = name === 'Aggregated';
+        var rowStyle = isAgg ? 'font-weight:700;background:#f1f5f9;' : '';
+
+        var tr = document.createElement('tr');
+        tr.setAttribute('style', rowStyle);
+        tr.innerHTML =
+            '<td>' + escHtml(name) + '</td>' +
+            '<td>' + reqs + '</td>' +
+            ltCell(fails, parseInt(fails) > 0 ? 'bad' : '') +
+            ltCell(med, ltThreshold(parseFloat(med), 100, 500)) +
+            ltCell(p95, ltThreshold(parseFloat(p95), 500, 1000)) +
+            '<td>' + rps + '</td>';
+        tbody.appendChild(tr);
+    }
+    // Save state after rendering
+    saveLocustState(csv);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// State persistence (survives page navigation)
+// ═══════════════════════════════════════════════════════════════════════════
+var _LT_STORAGE_KEY = 'lt_state';
+
+function saveLocustState(csv) {
+    try {
+        var state = {
+            log: _locustRawLog,
+            stats_csv: csv || '',
+            status: document.getElementById('lt-status').textContent,
+            statusClass: document.getElementById('lt-status').className,
+            statusVisible: document.getElementById('lt-status').style.display !== 'none',
+            endTime: _locustEndTime,
+            timestamp: Date.now()
+        };
+        sessionStorage.setItem(_LT_STORAGE_KEY, JSON.stringify(state));
+    } catch(e) {}
+}
+
+function restoreLocustState() {
+    var state = null;
+    try {
+        var raw = sessionStorage.getItem(_LT_STORAGE_KEY);
+        // Don't restore stale state (>1 hour)
+        if (raw) {
+            state = JSON.parse(raw);
+            if (Date.now() - state.timestamp > 3600000) state = null;
+        }
+    } catch(e) { state = null; }
+
+    if (state) {
+        if (state.log) {
+            _locustRawLog = state.log;
+            document.getElementById('lt-log-content').textContent = state.log;
+        }
+        if (state.stats_csv) {
+            renderLocustStats(state.stats_csv);
+        }
+        if (state.statusVisible) {
+            var pill = document.getElementById('lt-status');
+            pill.style.display = '';
+            pill.textContent = state.status;
+            pill.className = state.statusClass;
+        }
+    }
+
+    // Also check if a test is still running
+    fetch(LT_STATUS_URL)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.running) {
+            var btn = document.getElementById('lt-run-btn');
+            var stopBtn = document.getElementById('lt-stop-btn');
+            btn.style.display = 'none';
+            stopBtn.style.display = '';
+            document.getElementById('lt-status').style.display = '';
+            document.getElementById('lt-status').textContent = '⏳ Running…';
+            document.getElementById('lt-status').className = 'stat-pill stat-progress';
+            // Restore countdown if we have an end time
+            if (state && state.endTime && state.endTime > Date.now()) {
+                _locustEndTime = state.endTime;
+                var timerEl = document.getElementById('lt-timer');
+                timerEl.style.display = '';
+                updateCountdown();
+                _locustCountdownTimer = setInterval(updateCountdown, 1000);
+            }
+            startLocustPolling();
+            startReportPolling();
+        } else if (data.ever_ran) {
+            loadLocustResults();
+            ltLoadReport();
+        }
+    })
+    .catch(function() {});
+}
+
+// Restore settings + state when the page loads
+window.addEventListener('DOMContentLoaded', function() {
+    ltRestoreSettings();
+    restoreLocustState();
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Security Dashboard
+// ═══════════════════════════════════════════════════════════════════════════
+
+var _secInited = false;
+
+function secInit() {
+    if (_secInited) return;
+    _secInited = true;
+    secLoadCiStatus();
+    secLoadReleasePlans();
+}
+
+// ── CI Pipeline Status ───────────────────────────────────────────────────
+
+function secLoadCiStatus() {
+    document.getElementById('sec-ci-status').textContent = 'Loading…';
+    fetch('{{ url_for("api_testing_ci_scan_status") }}')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var tbody = document.getElementById('sec-ci-body');
+            if (!data.success) {
+                document.getElementById('sec-ci-status').textContent = '';
+                tbody.innerHTML = '<tr><td colspan="5" class="empty-state" style="color:#94a3b8;">' +
+                    escHtml(data.error || 'Failed to load') +
+                    (data.error && data.error.includes('GITHUB_TOKEN')
+                        ? '<br><span style="font-size:11px;">Set GITHUB_TOKEN env var on the server for CI visibility.</span>'
+                        : '') +
+                    '</td></tr>';
+                return;
+            }
+            document.getElementById('sec-ci-status').textContent = '';
+            tbody.innerHTML = '';
+            data.workflows.forEach(function(wf) {
+                var tr = document.createElement('tr');
+                var statusHtml = '';
+                if (wf.status === 'no_runs') {
+                    statusHtml = '<span style="color:#94a3b8;">No runs</span>';
+                } else if (wf.conclusion === 'success') {
+                    statusHtml = '<span class="sec-ci-pass">✓ Passed</span>';
+                } else if (wf.conclusion === 'failure') {
+                    statusHtml = '<span class="sec-ci-fail">✗ Failed</span>';
+                } else if (wf.status === 'in_progress') {
+                    statusHtml = '<span class="sec-ci-pending"><span class="spinner"></span> Running</span>';
+                } else if (wf.conclusion === 'cancelled') {
+                    statusHtml = '<span style="color:#94a3b8;">Canceled</span>';
+                } else if (wf.error) {
+                    statusHtml = '<span style="color:#94a3b8;">' + escHtml(wf.error) + '</span>';
+                } else {
+                    statusHtml = '<span style="color:#94a3b8;">' + escHtml(wf.status || 'Unknown') + '</span>';
+                }
+
+                var dateStr = '';
+                if (wf.created_at) {
+                    var d = new Date(wf.created_at);
+                    dateStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+                }
+
+                var linkHtml = wf.html_url
+                    ? '<a href="' + escHtml(wf.html_url) + '" target="_blank" style="font-size:12px;color:var(--cs-btn-primary-bg, #0972D3);">View →</a>'
+                    : '';
+
+                tr.innerHTML =
+                    '<td style="font-weight:600;">' + escHtml(wf.name) + '</td>' +
+                    '<td class="duration">' + escHtml(dateStr) + '</td>' +
+                    '<td>' + statusHtml + '</td>' +
+                    '<td style="text-align:center;color:#64748b;">' + (wf.run_number || '') + '</td>' +
+                    '<td>' + linkHtml + '</td>';
+                tbody.appendChild(tr);
+            });
+        })
+        .catch(function(e) {
+            document.getElementById('sec-ci-status').textContent = '';
+            document.getElementById('sec-ci-body').innerHTML =
+                '<tr><td colspan="5" class="empty-state" style="color:#721c24;">Error: ' + escHtml(e.message) + '</td></tr>';
+        });
+}
+
+// ── Security Regression Tests + Release-plan runner ───────────
+
+// Populate the "Release plan" dropdown from the catalog endpoint.
+// Idempotent: safe to call repeatedly. Adds an option per discovered plan,
+// preserving the "All security tests" default.
+function secLoadReleasePlans() {
+    var sel = document.getElementById('sec-release-plan');
+    if (!sel) return;
+    fetch('{{ url_for("api_testing_release_plans") }}')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var existing = new Set(Array.from(sel.options).map(function(o) { return o.value; }));
+            (data.plans || []).forEach(function(p) {
+                if (existing.has(p.name)) return;
+                var opt = document.createElement('option');
+                opt.value = p.name;
+                opt.textContent = p.name + ' (' + (p.test_ids || []).length + ' tests)';
+                sel.appendChild(opt);
+            });
+        })
+        .catch(function() { /* leave the static "All security tests" option */ });
+}
+
+// Render a row for either the legacy /run-security-tests payload (PASSED/FAILED
+// strings) or the new /run-release-plan payload (passed/failed/skipped lower).
+// `source` is optional and shows a small badge when present.
+function secRowFor(name, status, source) {
+    var s = String(status || '').toLowerCase();
+    var cls, icon;
+    if (s === 'passed') { cls = 'sec-test-row sec-pass'; icon = '✓'; }
+    else if (s === 'skipped') { cls = 'sec-test-row sec-skip'; icon = '⊘'; }
+    else { cls = 'sec-test-row sec-fail'; icon = '✗'; }
+    var sourceBadge = '';
+    if (source) {
+        var badgeColor = source === 'playwright' ? '#7c3aed' : '#0284c7';
+        sourceBadge = '<span style="font-size:10px;font-weight:600;color:#fff;background:' + badgeColor +
+            ';padding:1px 6px;border-radius:3px;margin-right:8px;">' + escHtml(source) + '</span>';
+    }
+    return '<div class="' + cls + '">' +
+        '<span class="sec-icon">' + icon + '</span>' +
+        '<span class="sec-name">' + sourceBadge + escHtml(name) + '</span>' +
+        '<span style="font-size:11px;color:#64748b;width:80px;text-align:right;">' + escHtml(status) + '</span>' +
+        '</div>';
+}
+
+function secRunTests() {
+    var btn = document.getElementById('sec-btn-run');
+    var planSelect = document.getElementById('sec-release-plan');
+    var releasePlan = planSelect ? planSelect.value : '';
+    btn.disabled = true;
+    btn.textContent = '⏳ Running…';
+    document.getElementById('sec-stat-pass').style.display = 'none';
+    document.getElementById('sec-stat-fail').style.display = 'none';
+    var skipPill = document.getElementById('sec-stat-skip');
+    if (skipPill) skipPill.style.display = 'none';
+    var stalenessEl = document.getElementById('sec-playwright-staleness');
+    if (stalenessEl) stalenessEl.style.display = 'none';
+    var runningLabel = releasePlan
+        ? 'Running ' + escHtml(releasePlan) + ' release plan…'
+        : 'Running security tests…';
+    document.getElementById('sec-test-results').innerHTML = '<div style="padding:16px;color:#94a3b8;text-align:center;">' + runningLabel + '</div>';
+    document.getElementById('sec-test-log-wrap').style.display = 'none';
+
+    if (releasePlan) {
+        secRunReleasePlan(releasePlan, btn);
+    } else {
+        secRunSecuritySuite(btn);
+    }
+}
+
+// Branch: legacy "all security tests" path.
+function secRunSecuritySuite(btn) {
+    fetch('{{ url_for("api_testing_run_security_tests") }}', { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            btn.disabled = false;
+            btn.textContent = '▶ Run Security Tests';
+            if (!data.success) {
+                document.getElementById('sec-test-results').innerHTML =
+                    '<div style="padding:16px;color:#721c24;">Error: ' + escHtml(data.error) + '</div>';
+                return;
+            }
+            var passPill = document.getElementById('sec-stat-pass');
+            var failPill = document.getElementById('sec-stat-fail');
+            var skipPill = document.getElementById('sec-stat-skip');
+            passPill.textContent = '✓ ' + data.pass_count + ' passed';
+            passPill.style.display = '';
+            if (data.fail_count > 0) {
+                failPill.textContent = '✗ ' + data.fail_count + ' failed';
+                failPill.style.display = '';
+            }
+            if (skipPill && data.skip_count > 0) {
+                skipPill.textContent = '⊘ ' + data.skip_count + ' skipped';
+                skipPill.style.display = '';
+            }
+            var html = '';
+            (data.tests || []).forEach(function(t) { html += secRowFor(t.name, t.status); });
+            document.getElementById('sec-test-results').innerHTML =
+                html || '<div style="padding:16px;color:#94a3b8;">No test results parsed.</div>';
+
+            fetch('{{ url_for("api_testing_security_test_log") }}')
+                .then(function(r) { return r.json(); })
+                .then(function(logData) {
+                    if (logData.exists && logData.content) {
+                        document.getElementById('sec-test-log').textContent = logData.content;
+                        document.getElementById('sec-test-log-wrap').style.display = '';
+                    }
+                });
+        })
+        .catch(function(e) {
+            btn.disabled = false;
+            btn.textContent = '▶ Run Security Tests';
+            document.getElementById('sec-test-results').innerHTML =
+                '<div style="padding:16px;color:#721c24;">Request failed: ' + escHtml(e.message) + '</div>';
+        });
+}
+
+// Branch: release-plan path. Live pytest + most-recent Playwright JSON.
+function secRunReleasePlan(plan, btn) {
+    fetch('{{ url_for("api_testing_run_release_plan") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan: plan })
+    })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            btn.disabled = false;
+            btn.textContent = '▶ Run Security Tests';
+            if (!data.success) {
+                document.getElementById('sec-test-results').innerHTML =
+                    '<div style="padding:16px;color:#721c24;">Error: ' + escHtml(data.error || 'unknown') + '</div>';
+                return;
+            }
+
+            var rows = data.results || [];
+            var pass = 0, fail = 0, skip = 0;
+            rows.forEach(function(r) {
+                if (r.outcome === 'passed') pass++;
+                else if (r.outcome === 'skipped') skip++;
+                else fail++;
+            });
+
+            var passPill = document.getElementById('sec-stat-pass');
+            var failPill = document.getElementById('sec-stat-fail');
+            var skipPill = document.getElementById('sec-stat-skip');
+            passPill.textContent = '✓ ' + pass + ' passed';
+            passPill.style.display = '';
+            if (fail > 0) {
+                failPill.textContent = '✗ ' + fail + ' failed';
+                failPill.style.display = '';
+            }
+            if (skipPill && skip > 0) {
+                skipPill.textContent = '⊘ ' + skip + ' skipped';
+                skipPill.style.display = '';
+            }
+
+            // Playwright staleness indicator.
+            var stalenessEl = document.getElementById('sec-playwright-staleness');
+            if (stalenessEl) {
+                if (data.playwright_run_at) {
+                    var prefix = data.playwright_stale ? '⚠️ Playwright stale: ' : 'Playwright run: ';
+                    stalenessEl.textContent = prefix + new Date(data.playwright_run_at).toLocaleString();
+                    stalenessEl.style.color = data.playwright_stale ? '#b91c1c' : '#94a3b8';
+                    stalenessEl.style.display = '';
+                } else {
+                    stalenessEl.textContent = 'No Playwright results yet (run via CI or local npx)';
+                    stalenessEl.style.color = '#94a3b8';
+                    stalenessEl.style.display = '';
+                }
+            }
+
+            var html = '';
+            rows.forEach(function(r) {
+                html += secRowFor(r.test_id, r.outcome, r.source);
+            });
+            document.getElementById('sec-test-results').innerHTML =
+                html || '<div style="padding:16px;color:#94a3b8;">No results for ' + escHtml(plan) + '.</div>';
+        })
+        .catch(function(e) {
+            btn.disabled = false;
+            btn.textContent = '▶ Run Security Tests';
+            document.getElementById('sec-test-results').innerHTML =
+                '<div style="padding:16px;color:#721c24;">Request failed: ' + escHtml(e.message) + '</div>';
+        });
+}
+
+// ── Dependency Audit ─────────────────────────────────────────────────────
+
+function secRunAudit() {
+    var btn = document.getElementById('sec-btn-audit');
+    btn.disabled = true;
+    btn.textContent = '⏳ Scanning…';
+    document.getElementById('sec-audit-status').textContent = '';
+    document.getElementById('sec-audit-results').innerHTML =
+        '<div style="padding:16px;color:#94a3b8;text-align:center;">Scanning Python dependencies…</div>';
+
+    fetch('{{ url_for("api_testing_run_pip_audit") }}', { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            btn.disabled = false;
+            btn.textContent = '▶ Run pip-audit';
+
+            if (!data.success) {
+                document.getElementById('sec-audit-results').innerHTML =
+                    '<div style="padding:16px;color:#721c24;">Error: ' + escHtml(data.error) + '</div>';
+                return;
+            }
+
+            if (data.clean) {
+                document.getElementById('sec-audit-status').innerHTML =
+                    '<span class="status-badge status-pass">✓ Clean</span>';
+                document.getElementById('sec-audit-results').innerHTML =
+                    '<div style="padding:20px;text-align:center;color:#155724;font-weight:600;background:#d4edda;border-radius:4px;margin:8px 16px;">No known vulnerabilities found in Python dependencies.</div>';
+                return;
+            }
+
+            document.getElementById('sec-audit-status').innerHTML =
+                '<span class="status-badge status-fail">✗ ' + data.vulnerabilities.length + ' found</span>';
+
+            var html = '<table class="results-table"><thead><tr>' +
+                '<th>Package</th><th>Version</th><th>CVE / Advisory</th><th>Fix</th><th>Description</th>' +
+                '</tr></thead><tbody>';
+            data.vulnerabilities.forEach(function(v) {
+                html += '<tr>' +
+                    '<td style="font-weight:600;">' + escHtml(v.package) + '</td>' +
+                    '<td style="font-family:monospace;">' + escHtml(v.version) + '</td>' +
+                    '<td style="font-family:monospace;color:#721c24;">' + escHtml(v.vuln_id) + '</td>' +
+                    '<td style="font-family:monospace;color:#155724;">' + escHtml((v.fix_versions || []).join(', ') || '—') + '</td>' +
+                    '<td style="font-size:12px;color:#64748b;max-width:300px;">' + escHtml(v.description || '—') + '</td>' +
+                    '</tr>';
+            });
+            html += '</tbody></table>';
+            document.getElementById('sec-audit-results').innerHTML = html;
+        })
+        .catch(function(e) {
+            btn.disabled = false;
+            btn.textContent = '▶ Run pip-audit';
+            document.getElementById('sec-audit-results').innerHTML =
+                '<div style="padding:16px;color:#721c24;">Request failed: ' + escHtml(e.message) + '</div>';
+        });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Visual Regression — Flythrough sub-tab
+// ═══════════════════════════════════════════════════════════════════════════
+
+var _ftInited = false;
+var _ftObserver = null;
+
+// URL builder for the ECharts dashboard viewer iframe. Mirrors
+// `buildEchartsViewerUrl` in dashboards.html: same base + same filter
+// query params, so the rendered iframe shows exactly what a user with
+// that scope would see on /dashboards.
+var FT_VIEWER_BASE = (function() {
+    // Build /dashboard-builder/view/ relative to the current app's
+    // /assets prefix. The dashboard-builder blueprint lives under the
+    // asset_management web app, so the viewer URL has the /assets prefix
+    // when nginx is fronting Flask.
+    var p = window.location.pathname;
+    // Strip everything after /assets/... or fall back to "" prefix.
+    var prefix = p.indexOf('/assets/') === 0 ? '/assets' : '';
+    return prefix + '/dashboard-builder/view/';
+})();
+
+var FT_LIST_API = '{{ url_for("dashboard_builder.list_dashboards") }}';
+var FT_FILTER_OPTIONS_API = '{{ url_for("get_dashboard_filter_options") }}';
+
+function ftInit() {
+    if (_ftInited) return;
+    _ftInited = true;
+
+    // Populate org dropdown from filter-options. The endpoint is already
+    // scope-aware (admins see all; non-admin users see only their orgs).
+    fetch(FT_FILTER_OPTIONS_API)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var orgSel = document.getElementById('ft-org-filter');
+            (data.organizations || []).forEach(function(o) {
+                var opt = document.createElement('option');
+                opt.value = o.title || o;
+                opt.textContent = o.title || o;
+                orgSel.appendChild(opt);
+            });
+
+            // Restore persisted selection.
+            var savedOrg = localStorage.getItem('ftOrgFilter') || '';
+            var savedTeam = localStorage.getItem('ftTeamFilter') || '';
+            if (savedOrg) {
+                orgSel.value = savedOrg;
+                ftLoadTeams(savedOrg, savedTeam);
+            }
+        })
+        .catch(function() { /* leave dropdown with the default option */ });
+
+    // Re-load teams whenever the org changes; persist both selections.
+    var orgSel = document.getElementById('ft-org-filter');
+    var teamSel = document.getElementById('ft-team-filter');
+    if (orgSel) {
+        orgSel.addEventListener('change', function() {
+            localStorage.setItem('ftOrgFilter', orgSel.value || '');
+            localStorage.setItem('ftTeamFilter', '');
+            ftLoadTeams(orgSel.value, '');
+        });
+    }
+    if (teamSel) {
+        teamSel.addEventListener('change', function() {
+            localStorage.setItem('ftTeamFilter', teamSel.value || '');
+        });
+    }
+}
+
+function ftLoadTeams(org, preselectTeam) {
+    var teamSel = document.getElementById('ft-team-filter');
+    // Reset and disable while loading.
+    teamSel.innerHTML = '<option value="">All teams</option>';
+    if (!org) return;
+    var url = FT_FILTER_OPTIONS_API + '?org=' + encodeURIComponent(org);
+    fetch(url)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            (data.teams || []).forEach(function(t) {
+                var opt = document.createElement('option');
+                opt.value = t.title || t;
+                opt.textContent = t.title || t;
+                teamSel.appendChild(opt);
+            });
+            if (preselectTeam) {
+                teamSel.value = preselectTeam;
+            }
+        })
+        .catch(function() { /* leave the All-teams option */ });
+}
+
+function ftBuildViewerUrl(dashboardId) {
+    var orgSel = document.getElementById('ft-org-filter');
+    var teamSel = document.getElementById('ft-team-filter');
+    var params = [];
+    if (orgSel && orgSel.value) params.push('org_filter=' + encodeURIComponent(orgSel.value));
+    if (teamSel && teamSel.value) params.push('team_filter=' + encodeURIComponent(teamSel.value));
+    var url = FT_VIEWER_BASE + encodeURIComponent(dashboardId);
+    if (params.length) url += '?' + params.join('&');
+    return url;
+}
+
+function ftLoadDashboards() {
+    var btn = document.getElementById('ft-btn-load');
+    var listEl = document.getElementById('ft-list');
+    var emptyEl = document.getElementById('ft-empty');
+    var countEl = document.getElementById('ft-count');
+    btn.disabled = true;
+    btn.textContent = '⏳ Loading…';
+    listEl.innerHTML = '';
+    emptyEl.style.display = 'none';
+    countEl.textContent = '';
+
+    // Tear down any previous IntersectionObserver.
+    if (_ftObserver) { _ftObserver.disconnect(); _ftObserver = null; }
+
+    fetch(FT_LIST_API)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            btn.disabled = false;
+            btn.textContent = '▶ Load Dashboards';
+            if (!data.success) {
+                listEl.innerHTML = '<div style="padding:16px;color:#721c24;">Error: ' +
+                    escHtml(data.error || 'Failed to load') + '</div>';
+                return;
+            }
+            var dashboards = (data.dashboards || []).filter(function(d) {
+                return d.visibility_mode !== 'hide';
+            });
+            if (dashboards.length === 0) {
+                listEl.innerHTML = '<div style="padding:24px;text-align:center;color:#94a3b8;">' +
+                    'No dashboards visible to your account for this scope.</div>';
+                return;
+            }
+            countEl.textContent = dashboards.length + ' dashboards';
+
+            // Render each dashboard as a placeholder card. Iframes are
+            // attached only when the card scrolls near the viewport
+            // (IntersectionObserver). Avoids hammering the Kibana proxy
+            // when an org has 50+ dashboards.
+            dashboards.forEach(function(d) {
+                var card = document.createElement('div');
+                card.className = 'ft-card';
+                card.dataset.dashboardId = d.id;
+                card.style.cssText = 'border:1px solid #e2e8f0;border-radius:6px;background:#fff;overflow:hidden;';
+                card.innerHTML =
+                    '<div style="padding:10px 14px;border-bottom:1px solid #f1f5f9;font-size:13px;font-weight:600;color:#1e293b;display:flex;align-items:center;justify-content:space-between;">' +
+                        '<span>' + escHtml(d.title || d.id) + '</span>' +
+                        '<span style="font-size:11px;color:#94a3b8;font-weight:400;">' + escHtml(d.id) + '</span>' +
+                    '</div>' +
+                    '<div class="ft-iframe-host" style="height:720px;background:#f8fafc;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:12px;">' +
+                        'Scroll to load…' +
+                    '</div>';
+                listEl.appendChild(card);
+            });
+
+            // IntersectionObserver: attach iframe when card is within
+            // 300px of the viewport. rootMargin gives a head start so
+            // testers don't see the placeholder text flicker.
+            _ftObserver = new IntersectionObserver(function(entries) {
+                entries.forEach(function(entry) {
+                    if (!entry.isIntersecting) return;
+                    var card = entry.target;
+                    var host = card.querySelector('.ft-iframe-host');
+                    if (host && !host.dataset.loaded) {
+                        host.dataset.loaded = '1';
+                        host.innerHTML = '';
+                        var iframe = document.createElement('iframe');
+                        iframe.src = ftBuildViewerUrl(card.dataset.dashboardId);
+                        iframe.style.cssText = 'width:100%;height:100%;border:none;';
+                        iframe.loading = 'lazy';
+                        iframe.title = card.dataset.dashboardId;
+                        host.appendChild(iframe);
+                        _ftObserver.unobserve(card);
+                    }
+                });
+            }, { rootMargin: '300px 0px' });
+
+            document.querySelectorAll('#ft-list .ft-card').forEach(function(card) {
+                _ftObserver.observe(card);
+            });
+        })
+        .catch(function(e) {
+            btn.disabled = false;
+            btn.textContent = '▶ Load Dashboards';
+            listEl.innerHTML = '<div style="padding:16px;color:#721c24;">Request failed: ' +
+                escHtml(e.message) + '</div>';
+        });
+}
+</script>
+{% endblock %}

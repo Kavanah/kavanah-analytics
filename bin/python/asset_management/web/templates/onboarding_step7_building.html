@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Building your dashboard · Kavanah Analytics</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/cloudscape.css') }}">
+    <style>
+        body {
+            background: var(--cs-bg-page);
+            min-height: 100vh;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+        .building-shell {
+            width: 100%;
+            max-width: 480px;
+            background: var(--cs-bg-surface);
+            border: 1px solid var(--cs-border);
+            border-radius: 12px;
+            padding: 40px 36px;
+            text-align: center;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+        }
+        .building-spinner {
+            width: 56px;
+            height: 56px;
+            margin: 0 auto 24px;
+            border: 4px solid var(--cs-border);
+            border-top-color: var(--cs-accent, #0972d3);
+            border-radius: 50%;
+            animation: fl-spin 1s linear infinite;
+        }
+        @keyframes fl-spin { to { transform: rotate(360deg); } }
+        .building-title {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--cs-text-primary);
+            margin: 0 0 8px;
+        }
+        .building-subline {
+            font-size: 14px;
+            color: var(--cs-text-secondary);
+            margin: 0 0 24px;
+        }
+        .building-progress {
+            font-variant-numeric: tabular-nums;
+            font-size: 13px;
+            color: var(--cs-text-secondary);
+            margin: 0;
+        }
+        /* org-owner end-of-wizard invite prompt. Renders
+           above the spinner; when visible the JS auto-redirect is
+           suppressed (the user owns the redirect via the two CTAs). */
+        .step7-invite-prompt {
+            background: #f3f7fc;
+            border: 1px solid #c9dcef;
+            border-radius: 10px;
+            padding: 20px 24px;
+            margin-bottom: 24px;
+            text-align: left;
+        }
+        .step7-invite-prompt-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--cs-text-primary);
+            margin: 0 0 6px;
+        }
+        .step7-invite-prompt-body {
+            font-size: 13px;
+            color: var(--cs-text-secondary);
+            margin: 0 0 16px;
+            line-height: 1.5;
+        }
+        .step7-invite-prompt-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .step7-invite-prompt-btn {
+            display: inline-block;
+            padding: 8px 18px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            text-decoration: none;
+            line-height: 1.4;
+            cursor: pointer;
+            border: 1px solid transparent;
+        }
+        .step7-invite-prompt-btn-primary {
+            background: var(--cs-accent, #0972d3);
+            color: #fff;
+            border-color: var(--cs-accent, #0972d3);
+        }
+        .step7-invite-prompt-btn-secondary {
+            background: #fff;
+            color: var(--cs-text-primary);
+            border-color: var(--cs-border);
+        }
+    </style>
+</head>
+<body>
+    <main class="building-shell" role="main">
+        {% if show_email_verify_prompt %}
+        {#
+           follow-up — deferred step-7 soft block.
+          Email verification fires async at signup; this surface nudges
+          the user to confirm before landing on the dashboard, without
+          blocking them entirely ("I'll verify later" CTA keeps the
+          flow moving). Same auto-redirect suppression as so
+          the user can actually read the prompt.
+
+          Visual reuses the .step7-invite-prompt classes (same yellow-
+          accent card) to keep the surface visually consistent. The
+          data-testid hooks are distinct so tests can target each
+          prompt independently.
+        #}
+        <section class="step7-invite-prompt" id="step7-email-verify-prompt" data-testid="step7-email-verify-prompt" role="region" aria-label="Verify your email">
+            <h2 class="step7-invite-prompt-title">Verify your email</h2>
+            <p class="step7-invite-prompt-body">
+                {% if user_email %}
+                We sent a verification link to <strong>{{ user_email }}</strong>. Check your inbox and click it to confirm your address before you start using your dashboards.
+                {% else %}
+                We sent a verification link to your email. Check your inbox and click it to confirm your address before you start using your dashboards.
+                {% endif %}
+            </p>
+            <div class="step7-invite-prompt-actions">
+                <a class="step7-invite-prompt-btn step7-invite-prompt-btn-secondary"
+                   id="step7-email-verify-later-btn"
+                   data-testid="step7-email-verify-later-btn"
+                   href="{{ next_url }}">I'll verify later</a>
+            </div>
+        </section>
+        {% endif %}
+
+        {% if show_invite_prompt %}
+        {#
+          org-owner-only inline prompt. Both CTAs are
+          server-resolved anchors so the prompt works under a session-
+          only auth model and survives any CSP block on inline scripts.
+          The auto-redirect script tag is omitted entirely under this
+          branch so the user is never yanked off the page mid-decision.
+        #}
+        <section class="step7-invite-prompt" id="step7-invite-prompt" data-testid="step7-invite-prompt" role="region" aria-label="Invite teammates">
+            <h2 class="step7-invite-prompt-title">Invite your teammates?</h2>
+            <p class="step7-invite-prompt-body">
+                Your dashboard is almost ready. Want to bring teammates in now, or do it later from the checklist?
+            </p>
+            <div class="step7-invite-prompt-actions">
+                <a class="step7-invite-prompt-btn step7-invite-prompt-btn-primary"
+                   id="step7-invite-now-btn"
+                   data-testid="step7-invite-now-btn"
+                   href="{{ invite_now_url }}">Invite now</a>
+                <a class="step7-invite-prompt-btn step7-invite-prompt-btn-secondary"
+                   id="step7-invite-later-btn"
+                   data-testid="step7-invite-later-btn"
+                   href="{{ invite_later_url }}">Later</a>
+            </div>
+        </section>
+        {% endif %}
+
+        <div class="building-spinner" aria-hidden="true"></div>
+        <h1 class="building-title">Building {{ connector_name }}</h1>
+        <p class="building-subline">
+            {% if asset_count > 0 %}
+                Connecting {{ asset_count }} account{{ '' if asset_count == 1 else 's' }} · we’ll send you to your dashboard the moment data starts landing.
+            {% else %}
+                We’ll send you to your dashboard the moment data starts landing.
+            {% endif %}
+        </p>
+        <p class="building-progress" id="step7-building-progress" aria-live="polite">
+            Preparing…
+        </p>
+    </main>
+
+    {% if not show_invite_prompt and not show_email_verify_prompt %}
+    {#
+      building-screen poller. Polls /onboarding/api/backfill-progress
+      every 1 second and redirects to ``next_url`` as soon as ``days_fetched
+      >= 1`` OR after the hard ``ceiling_ms`` timeout, whichever fires first.
+
+       follow-up — also suppressed when show_email_verify_prompt
+      fires so the user has time to read the verify-email card and
+      click through or check their inbox.
+      The DOM hook ``id="step7-building-poll"`` is pinned by BUILDING-001.
+
+      gated behind {% if not show_invite_prompt %} so the
+      org-owner prompt above is never auto-redirected away from while
+      the user is reading it.
+    #}
+    <script id="step7-building-poll"
+            type="application/json"
+            data-next="{{ next_url }}"
+            data-poll-url="/onboarding/api/backfill-progress"
+            data-poll-interval-ms="1000"
+            data-ceiling-ms="15000">{}</script>
+
+    <script nonce="{{ csp_nonce }}">
+        (function () {
+            var hook = document.getElementById('step7-building-poll');
+            if (!hook) { return; }
+            var nextUrl     = hook.dataset.next || '/dashboard';
+            var pollUrl     = hook.dataset.pollUrl || '/onboarding/api/backfill-progress';
+            var pollInterval = parseInt(hook.dataset.pollIntervalMs || '1000', 10);
+            var ceilingMs   = parseInt(hook.dataset.ceilingMs || '15000', 10);
+            var progressEl  = document.getElementById('step7-building-progress');
+            var startedAt   = Date.now();
+            var redirected  = false;
+
+            function redirectOnce() {
+                if (redirected) { return; }
+                redirected = true;
+                window.location.href = nextUrl;
+            }
+
+            // Hard ceiling. If the importer is slow, redirect anyway so
+            // the user doesn't sit on a blank-looking spinner for minutes.
+            setTimeout(redirectOnce, ceilingMs);
+
+            function tick() {
+                fetch(pollUrl, { credentials: 'same-origin', cache: 'no-store' })
+                    .then(function (r) {
+                        if (r.status === 200) {
+                            return r.json().then(function (data) {
+                                if (progressEl) {
+                                    var pct = (typeof data.percent === 'number') ? data.percent : 0;
+                                    progressEl.textContent = pct > 0
+                                        ? ('Backfill ' + pct + '%')
+                                        : 'Starting backfill…';
+                                }
+                                if (data && data.days_fetched >= 1) {
+                                    redirectOnce();
+                                }
+                            });
+                        }
+                        // 404 = no progress doc yet (importer hasn't
+                        // written one). Keep polling — the ceiling
+                        // is the safety net.
+                    })
+                    .catch(function () {
+                        // Network error → keep polling. Ceiling
+                        // handles permanent failures.
+                    })
+                    .finally(function () {
+                        if (!redirected && (Date.now() - startedAt) < ceilingMs) {
+                            setTimeout(tick, pollInterval);
+                        }
+                    });
+            }
+
+            tick();
+        })();
+    </script>
+    {% endif %}
+</body>
+</html>

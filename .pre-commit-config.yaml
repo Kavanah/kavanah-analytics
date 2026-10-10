@@ -1,0 +1,43 @@
+repos:
+  - repo: https://github.com/psf/black
+    rev: 24.10.0
+    hooks:
+      - id: black
+        language_version: python3
+        files: ^bin/python/
+
+  - repo: https://github.com/PyCQA/flake8
+    rev: 7.1.1
+    hooks:
+      - id: flake8
+        files: ^bin/python/
+        args: [--config=setup.cfg]
+
+  - repo: local
+    hooks:
+      - id: eslint
+        name: ESLint
+        language: node
+        entry: eslint
+        types: [javascript]
+        files: ^bin/python/asset_management/web/static/.*\.js$
+        exclude: John_Alienware
+        additional_dependencies: ['eslint@8.57.1']
+
+      - id: gitleaks
+        name: Gitleaks (secrets scan)
+        language: system
+        entry: gitleaks protect --staged --redact --config=.gitleaks.toml --verbose
+        pass_filenames: false
+        # Mirror of .github/workflows/gitleaks.yml so we still get a secrets
+        # gate while the self-hosted ubuntu-1 runner is offline. Requires
+        # gitleaks on PATH (winget install Gitleaks.Gitleaks on Windows,
+        # brew install gitleaks on Mac/Linux). See docs/local-ci-hooks.md.
+
+      - id: debug-pattern-scan
+        name: Debug-statement / secret-suspicion scan
+        language: system
+        entry: bash bin/scripts/pre-commit/scan-staged-debug-patterns.sh
+        pass_filenames: false
+        # Mirrors the manual grep recommended in the private docs
+        # Catches debug prints + .env mentions left in a staged diff.

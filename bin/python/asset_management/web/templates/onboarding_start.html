@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Your Account - Kavanah Analytics</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/cloudscape.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/password-toggle.css') }}?v=20260504b">
+    <script src="{{ url_for('static', filename='js/password-toggle.js') }}?v=20260504a" defer></script>
+    <style>
+        body {
+            background: var(--cs-bg-page);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            padding: 12px;
+        }
+
+        .login-topbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 56px;
+            background: var(--cs-nav-bg);
+            display: flex;
+            align-items: center;
+            padding: 0 24px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+            z-index: 10;
+        }
+        .login-topbar-logo { height: 24px; width: auto; margin-right: 12px; }
+        .login-topbar-title { font-size: 17px; font-weight: 700; color: #FFFFFF; }
+
+        .register-container { width: 100%; max-width: 420px; margin-top: 64px; }
+
+        .register-card {
+            background: var(--cs-bg-primary);
+            border: 1px solid var(--cs-border-default);
+            border-radius: var(--cs-radius-l);
+            box-shadow: var(--cs-shadow-m);
+            padding: 18px 28px 14px;
+        }
+
+        .register-header { text-align: center; margin-bottom: 10px; }
+        .register-header h1 { font-size: 18px; font-weight: 700; color: var(--cs-text-heading); margin: 0; }
+
+
+        .alert {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 12px 14px;
+            margin-bottom: 20px;
+            border-radius: var(--cs-radius-m);
+            border: 1px solid;
+            font-size: var(--cs-font-size-m);
+            line-height: 1.5;
+        }
+        .alert-error { background: var(--cs-error-bg); border-color: var(--cs-error); color: var(--cs-text-primary); }
+        .alert-error ul { margin: 5px 0 0 20px; padding: 0; }
+
+        /* invited-flow banner — green-tinted note on signup
+           arrivals that carry a valid invite token (see the
+           invite_banner conditional block below for the copy shape). */
+        .invite-banner {
+            background: var(--cs-success-bg, #f1f8f0);
+            border-color: var(--cs-success, #1f8a3c);
+            color: var(--cs-text-primary);
+        }
+        .invite-banner-icon {
+            flex: 0 0 18px;
+            margin-top: 2px;
+            color: var(--cs-success, #1f8a3c);
+        }
+        .invite-banner-body strong { font-weight: 700; }
+        .invite-banner-body em { font-style: italic; }
+
+        .form-group { margin-bottom: 8px; }
+        .form-group label {
+            display: block;
+            margin-bottom: 4px;
+            font-weight: 700;
+            color: var(--cs-text-label);
+            font-size: var(--cs-font-size-m);
+        }
+
+        .register-input {
+            width: 100%;
+            height: 36px;
+            padding: 0 12px;
+            border: 1px solid var(--cs-border-input);
+            border-radius: var(--cs-radius-s);
+            font-size: var(--cs-font-size-m);
+            font-family: var(--cs-font);
+            color: var(--cs-text-primary);
+            background: var(--cs-bg-primary);
+            transition: border-color 90ms ease-out, box-shadow 90ms ease-out;
+        }
+        .register-input:hover { border-color: var(--cs-text-secondary); }
+        .register-input:focus {
+            outline: none;
+            border-color: var(--cs-border-input-focus);
+            box-shadow: 0 0 0 2px rgba(9, 114, 211, 0.25);
+        }
+
+        .password-requirements { margin-top: 4px; font-size: 11px; color: var(--cs-text-secondary); line-height: 1.3; }
+        .password-requirements .req { display: flex; align-items: center; gap: 6px; margin: 0; transition: color 0.2s; }
+        .password-requirements .req.met { color: var(--cs-success); }
+        .password-requirements .req .icon { width: 14px; text-align: center; font-weight: 700; }
+        .username-hint { margin-top: 4px; font-size: 11px; color: var(--cs-text-secondary); line-height: 1.3; }
+
+        .register-btn {
+            display: block;
+            width: 100%;
+            height: 38px;
+            background: var(--cs-btn-primary-bg);
+            color: #FFFFFF;
+            border: none;
+            border-radius: var(--cs-radius-s);
+            font-size: var(--cs-font-size-l);
+            font-weight: 700;
+            font-family: var(--cs-font);
+            cursor: pointer;
+            transition: background 90ms ease-out;
+            margin-top: 6px;
+        }
+        .register-btn:hover { background: var(--cs-btn-primary-bg-hover); }
+        .register-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px #FFFFFF, 0 0 0 4px var(--cs-btn-primary-bg); }
+        .register-btn:active { background: #022D5E; }
+        .register-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        .register-footer {
+            margin-top: 10px;
+            padding-top: 8px;
+            border-top: 1px solid var(--cs-border-divider);
+            text-align: center;
+        }
+        .register-footer p { color: var(--cs-text-secondary); font-size: var(--cs-font-size-s); margin: 2px 0; }
+        .register-footer a { color: var(--cs-text-link); text-decoration: none; font-weight: 500; }
+        .register-footer a:hover { text-decoration: underline; color: var(--cs-text-link-hover); }
+
+
+        /* "Continue with Google" —. "Continue with Microsoft"
+           (.sso-btn-microsoft) —. Same outer shell, only the
+           logo differs. */
+        .sso-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            width: 100%;
+            height: 36px;
+            background: #FFFFFF;
+            color: #1F1F1F;
+            border: 1px solid var(--cs-border-input);
+            border-radius: var(--cs-radius-s);
+            font-size: var(--cs-font-size-m);
+            font-weight: 500;
+            font-family: var(--cs-font);
+            cursor: pointer;
+            text-decoration: none;
+            transition: background 90ms ease-out, border-color 90ms ease-out;
+        }
+        .sso-btn:hover { background: #F5F5F5; border-color: var(--cs-text-secondary); }
+        .sso-btn:focus-visible {
+            outline: none;
+            box-shadow: 0 0 0 2px #FFFFFF, 0 0 0 4px var(--cs-btn-primary-bg);
+        }
+        .sso-btn svg { width: 18px; height: 18px; flex-shrink: 0; }
+
+        .sso-divider {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 10px 0;
+            color: var(--cs-text-secondary);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .sso-divider::before, .sso-divider::after {
+            content: "";
+            flex: 1;
+            height: 1px;
+            background: var(--cs-border-divider);
+        }
+
+        @media (max-width: 480px) {
+            .register-card { padding: 32px 24px 24px; }
+            .register-header h1 { font-size: 20px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-topbar">
+        <img src="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5" alt="" class="login-topbar-logo">
+        <span class="login-topbar-title">Kavanah Analytics</span>
+    </div>
+
+    <div class="register-container">
+        <div class="register-card">
+            {# follow-up — the stale 'Account / Profile / Workspace'
+               3-dot indicator + 'Step 1 of 3' subtitle were removed here.
+               The sign-up screen is intentionally outside the wizard's
+               6-step progress rail (see WizardProgressService.TOTAL_STEPS:
+               the dots tuple is total_steps - 1 = 5 for steps 2-6 only).
+               The wizard's visible progress starts on step 2. #}
+            <div class="register-header">
+                <h1>Create your account</h1>
+            </div>
+
+            {# invited-flow banner. Mirrors the v2 prototype's
+               "Sarah Reyes invited you to Acme Corp." note. Surfaces only
+               when ?invite=<jwt> stashed a pending_invite on the session.
+               The route resolves org_esid/team_esid to titles via ES; on
+               lookup failure those fields fall back to empty strings and
+               the banner downgrades gracefully (e.g. "Sarah invited you
+               to your team."). All four fields conditional so the
+               banner never renders a sentence fragment. #}
+            {% if invite_banner %}
+            <div class="alert invite-banner" role="status">
+                <svg class="invite-banner-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                <div class="invite-banner-body">
+                    <strong>
+                        {%- if invite_banner.inviter_display %}{{ invite_banner.inviter_display }}{% else %}You{% endif -%}
+                        {%- if invite_banner.inviter_display %} invited you{% else %}'ve been invited{% endif -%}
+                        {%- if invite_banner.org_title %} to {{ invite_banner.org_title }}{% endif -%}.
+                    </strong>
+                    {% if invite_banner.team_title or invite_banner.role_display %}
+                    <br>
+                    You're joining
+                    {%- if invite_banner.team_title %} the <em>{{ invite_banner.team_title }}</em> team{% endif -%}
+                    {%- if invite_banner.role_display %} as {{ invite_banner.role_display }}{% endif -%}.
+                    Sign in or create an account to continue &mdash; we'll skip workspace setup.
+                    {% else %}
+                    <br>
+                    Sign in or create an account to continue &mdash; we'll skip workspace setup.
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+
+            {# a personal signup link: this person sets up their OWN
+               workspace while public signup is closed. The link is bound to
+               one email, so the page says which. #}
+            {% if signup_grant_email %}
+            <div class="alert invite-banner" role="status" id="signup-grant-banner">
+                <svg class="invite-banner-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                <div class="invite-banner-body">
+                    <strong>You've been invited to set up your own Kavanah Analytics workspace.</strong>
+                    <br>
+                    This link is for <em>{{ signup_grant_email }}</em>. Create your account with that address, or continue with Google or Microsoft using it.
+                </div>
+            </div>
+            {% endif %}
+
+            {% if errors %}
+            <div class="alert alert-error">
+                <ul>
+                {% for error in errors %}
+                    <li>
+                        {{ error }}
+                        {# when the duplicate-email check fires, the
+                           route stashes the existing user's username on the
+                           render context. Surface a "Sign in instead" link
+                           that pre-fills the login form so the user lands one
+                           click + one password away from signing in. #}
+                        {% if existing_username %}
+                        {# the route only passes a truthy
+                           existing_username on the duplicate-email
+                           branch (via OnboardingSignupService's
+                           code='email_taken' result), so a generic
+                           error path leaves this falsy and the link is
+                           absent. The data shape is the load-bearing
+                           guard. follow-up: pre-fill the login
+                           form with the original email the user typed
+                           (form_data.email) — login_post resolves it
+                           to the ES username at auth time. ?email= is
+                           the literal AC's prefill param. #}
+                        <a href="{{ url_for('analytics.login_page', email=form_data.email) }}" id="signin-instead-link">Sign in instead</a>.
+                        {% endif %}
+                    </li>
+                {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
+            {% if google_sso_enabled %}
+            <a href="{{ url_for('analytics.onboarding_google_start') }}" class="sso-btn" id="google-sso-btn">
+                <svg viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/>
+                    <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A9 9 0 0 0 9 18z"/>
+                    <path fill="#FBBC05" d="M3.964 10.706A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.706V4.962H.957A9 9 0 0 0 0 9c0 1.452.348 2.827.957 4.038l3.007-2.332z"/>
+                    <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A9 9 0 0 0 .957 4.962L3.964 7.294C4.672 5.167 6.656 3.58 9 3.58z"/>
+                </svg>
+                Continue with Google
+            </a>
+            {% endif %}
+
+            {% if microsoft_sso_enabled %}
+            {# "Continue with Microsoft" —. Official 4-square logo. #}
+            <a href="{{ url_for('analytics.onboarding_microsoft_start') }}" class="sso-btn sso-btn-microsoft" id="microsoft-sso-btn"{% if google_sso_enabled %} style="margin-top: 8px;"{% endif %}>
+                <svg viewBox="0 0 21 21" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <rect x="1" y="1" width="9" height="9" fill="#F25022"/>
+                    <rect x="1" y="11" width="9" height="9" fill="#00A4EF"/>
+                    <rect x="11" y="1" width="9" height="9" fill="#7FBA00"/>
+                    <rect x="11" y="11" width="9" height="9" fill="#FFB900"/>
+                </svg>
+                Continue with Microsoft
+            </a>
+            {% endif %}
+
+            {% if google_sso_enabled or microsoft_sso_enabled %}
+            <div class="sso-divider"><span>or</span></div>
+            {% endif %}
+
+            <form method="POST" action="{{ url_for('analytics.onboarding_start_post') }}" id="onboarding-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                {# browser-detected IANA time zone, stamped onto the
+                   new user's metadata.time_zone at account creation. Filled
+                   by the script below; server validates + drops if invalid. #}
+                <input type="hidden" name="detected_time_zone" id="detected_time_zone" value="">
+
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" class="register-input" required autofocus
+                        placeholder="Choose a username" autocomplete="username"
+                        value="{{ form_data.username or '' }}" minlength="3" maxlength="30" pattern="[a-zA-Z0-9_.\-]+"
+                        title="3–30 characters: letters, numbers, dot, underscore, or hyphen. No spaces."
+                        oninvalid="this.setCustomValidity(this.validity.patternMismatch ? 'Username can only contain letters, numbers, dot (.), underscore (_), or hyphen (-). No spaces.' : this.validity.tooShort ? 'Username must be at least 3 characters.' : this.validity.valueMissing ? 'Please choose a username.' : '')"
+                        oninput="this.setCustomValidity('')">
+                    <div class="username-hint" id="username-hint">3–30 characters: letters, numbers, dot (.), underscore (_), or hyphen (-). No spaces.</div>
+                </div>
+
+                <div class="form-group">
+                    <label for="full_name">Full Name</label>
+                    <input type="text" id="full_name" name="full_name" class="register-input"
+                        placeholder="Your full name (optional)" autocomplete="name"
+                        maxlength="100"
+                        value="{{ form_data.full_name or '' }}">
+                </div>
+
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" class="register-input" required
+                        placeholder="your@email.com" autocomplete="email"
+                        maxlength="254"
+                        value="{{ form_data.email or '' }}">
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <div class="pw-wrap">
+                        <input type="password" id="password" name="password" class="register-input pw-input" required
+                            placeholder="Create a strong password" autocomplete="new-password" minlength="12" maxlength="128">
+                        {% with pw_target="password" %}{% include "_pw_toggle.html" %}{% endwith %}
+                    </div>
+                    <div class="password-requirements" id="pw-reqs">
+                        <div class="req" data-req="length"><span class="icon">-</span> At least 12 characters</div>
+                        <div class="req" data-req="upper"><span class="icon">-</span> One uppercase letter</div>
+                        <div class="req" data-req="lower"><span class="icon">-</span> One lowercase letter</div>
+                        <div class="req" data-req="digit"><span class="icon">-</span> One number</div>
+                        <div class="req" data-req="special"><span class="icon">-</span> One special character</div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="confirm_password">Confirm Password</label>
+                    <div class="pw-wrap">
+                        <input type="password" id="confirm_password" name="confirm_password" class="register-input pw-input" required
+                            placeholder="Re-enter your password" autocomplete="new-password" maxlength="128">
+                        {% with pw_target="confirm_password" %}{% include "_pw_toggle.html" %}{% endwith %}
+                    </div>
+                </div>
+
+                <button type="submit" class="register-btn" id="submit-btn">Continue</button>
+            </form>
+
+            <div class="register-footer">
+                <p>Already have an account? <a href="/login">Sign in</a> &middot; <a href="/reset-password/">Forgot your password?</a></p>
+            </div>
+        </div>
+    </div>
+
+    <script nonce="{{ csp_nonce }}">
+    (function() {
+        // capture the browser's IANA time zone so the new user's
+        // per-user time_zone is set at account creation. Best-effort — an
+        // unreadable / unsupported Intl leaves the field empty and the
+        // server falls back to the UTC default.
+        try {
+            var tzField = document.getElementById('detected_time_zone');
+            var tz = (Intl.DateTimeFormat().resolvedOptions().timeZone || '').trim();
+            if (tzField && tz) { tzField.value = tz; }
+        } catch (e) { /* ignore — leave empty, server defaults to UTC */ }
+
+        var pw = document.getElementById('password');
+        var reqs = {
+            length:  function(v) { return v.length >= 12; },
+            upper:   function(v) { return /[A-Z]/.test(v); },
+            lower:   function(v) { return /[a-z]/.test(v); },
+            digit:   function(v) { return /[0-9]/.test(v); },
+            special: function(v) { return /[^A-Za-z0-9]/.test(v); }
+        };
+        pw.addEventListener('input', function() {
+            var val = pw.value;
+            for (var key in reqs) {
+                var el = document.querySelector('[data-req="' + key + '"]');
+                var icon = el.querySelector('.icon');
+                if (reqs[key](val)) { el.classList.add('met'); icon.textContent = '✓'; }
+                else { el.classList.remove('met'); icon.textContent = '-'; }
+            }
+        });
+        document.getElementById('onboarding-form').addEventListener('submit', function(e) {
+            var btn = document.getElementById('submit-btn');
+            if (btn.disabled) { e.preventDefault(); return; }
+            btn.disabled = true;
+            btn.textContent = 'Creating account...';
+        });
+    })();
+    </script>
+</body>
+</html>

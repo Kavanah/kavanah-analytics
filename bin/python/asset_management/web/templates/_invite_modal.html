@@ -1,0 +1,617 @@
+{# Invite teammates modal.
+
+   Sender-side surface that consumes the `?invite=open` query
+   flag and the `invite_teammate` checklist row. Rendered
+   unconditionally on the dashboard so the JS can pop it open for any
+   authenticated user; visibility is controlled by `.invite-modal.is-open`.
+
+   Inline state blocks (one visible at a time, JS toggles via
+   `data-state` on the modal root):
+
+   * form              — initial form (default)
+   * sending           — submit in flight (button disabled, spinner)
+   * sent              — success after a fresh send
+   * resent            — success after a Resend on an existing pending
+   * pending-prompt    — server says pending exists, show Resend/Cancel
+   * already-member    — server says email is in the workspace
+   * error             — generic / network / SMTP failure
+
+   Role options match the workspace roles the inviter can grant. Until
+    wires `Permission.USER_INVITE` enforcement, the dropdown
+   surfaces the four system roles the checklist already mentions in
+   copy ("Editor" default per the AC). When lands, this list
+   becomes a server-rendered slice of grantable roles for the inviter.
+#}
+<style>
+.invite-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.55);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 9000;
+    padding: 20px;
+}
+.invite-modal-overlay.is-open { display: flex; }
+
+.invite-modal {
+    background: #ffffff;
+    width: 100%;
+    max-width: 480px;
+    border-radius: 10px;
+    box-shadow: 0 18px 48px rgba(15, 23, 42, 0.28);
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        Helvetica, Arial, sans-serif;
+    color: #000716;
+}
+.invite-modal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 20px 12px;
+    border-bottom: 1px solid #e9ebed;
+}
+.invite-modal-head h2 {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 700;
+}
+.invite-modal-close {
+    background: none;
+    border: 0;
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+    color: #5F6B7A;
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+.invite-modal-close:hover { background: rgba(0, 0, 0, 0.05); }
+
+.invite-modal-body { padding: 18px 20px 20px; }
+.invite-modal-row { margin-bottom: 14px; }
+.invite-modal-row label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: #000716;
+}
+.invite-modal-row input[type="email"],
+.invite-modal-row select,
+.invite-modal-row textarea {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid #D5DBDB;
+    border-radius: 6px;
+    padding: 9px 11px;
+    font-size: 14px;
+    font-family: inherit;
+    color: #000716;
+    background: #ffffff;
+}
+.invite-modal-row textarea { min-height: 64px; resize: vertical; }
+.invite-modal-row input:focus,
+.invite-modal-row select:focus,
+.invite-modal-row textarea:focus {
+    outline: none;
+    border-color: #0972D3;
+    box-shadow: 0 0 0 2px rgba(9, 114, 211, 0.18);
+}
+.invite-modal-help {
+    font-size: 12px;
+    color: #5F6B7A;
+    margin-top: 4px;
+}
+.invite-modal-counter {
+    font-size: 11px;
+    color: #5F6B7A;
+    text-align: right;
+    margin-top: 2px;
+}
+.invite-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 6px;
+}
+/* state-screen action rows sit a little lower than the form's.
+   Two-class selector so it beats `.invite-modal-actions` regardless of
+   stylesheet source order (replaces a per-row inline margin-top). */
+.invite-modal-actions.is-spaced { margin-top: 14px; }
+.invite-modal-btn {
+    border: 0;
+    border-radius: 6px;
+    padding: 9px 18px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+}
+.invite-modal-btn-primary {
+    background: #0972D3;
+    color: #ffffff;
+}
+.invite-modal-btn-primary:hover:not(:disabled) { background: #0A66BA; }
+.invite-modal-btn-primary:disabled {
+    background: #9BA7B0;
+    cursor: not-allowed;
+}
+.invite-modal-btn-secondary {
+    background: #ffffff;
+    color: #000716;
+    border: 1px solid #D5DBDB;
+}
+.invite-modal-btn-secondary:hover { background: #F4F5F6; }
+
+.invite-modal-state { display: none; }
+.invite-modal[data-state="form"] .invite-modal-state-form,
+.invite-modal[data-state="sending"] .invite-modal-state-form,
+.invite-modal[data-state="sent"] .invite-modal-state-sent,
+.invite-modal[data-state="resent"] .invite-modal-state-resent,
+.invite-modal[data-state="pending-prompt"] .invite-modal-state-pending,
+.invite-modal[data-state="already-member"] .invite-modal-state-already-member,
+.invite-modal[data-state="error"] .invite-modal-state-error {
+    display: block;
+}
+
+.invite-modal-success {
+    background: #F0F7E9;
+    border: 1px solid #C5E0A6;
+    border-radius: 6px;
+    padding: 14px 16px;
+    color: #1F5400;
+    font-size: 14px;
+}
+.invite-modal-warning {
+    background: #FFF7E6;
+    border: 1px solid #FCD9A0;
+    border-radius: 6px;
+    padding: 14px 16px;
+    color: #5C3D00;
+    font-size: 14px;
+}
+.invite-modal-error-msg {
+    background: #FDECEE;
+    border: 1px solid #F5C2C6;
+    border-radius: 6px;
+    padding: 12px 14px;
+    color: #6A1A23;
+    font-size: 14px;
+    margin-bottom: 12px;
+}
+.invite-modal-field-error {
+    color: #6A1A23;
+    font-size: 12px;
+    margin-top: 4px;
+    display: none;
+}
+.invite-modal-field-error.is-visible { display: block; }
+</style>
+
+<div class="invite-modal-overlay"
+     id="invite-modal-overlay"
+     data-testid="invite-modal-overlay"
+     role="dialog"
+     aria-modal="true"
+     aria-labelledby="invite-modal-title"
+     aria-hidden="true">
+    <div class="invite-modal"
+         id="invite-modal"
+         data-testid="invite-modal"
+         data-state="form">
+        <div class="invite-modal-head">
+            <h2 id="invite-modal-title">Invite a teammate</h2>
+            <button type="button"
+                    class="invite-modal-close"
+                    data-testid="invite-modal-close"
+                    aria-label="Close invite teammates"
+                    onclick="closeInviteModal()">&#10005;</button>
+        </div>
+        <div class="invite-modal-body">
+
+            {# ── Form state ──────────────────────────────────── #}
+            <div class="invite-modal-state invite-modal-state-form">
+                <div class="invite-modal-error-msg cs-hidden"
+                     id="invite-modal-inline-error"
+                     data-testid="invite-modal-inline-error"></div>
+                <form id="invite-modal-form"
+                      data-testid="invite-modal-form"
+                      onsubmit="submitInviteModal(event)">
+                    <div class="invite-modal-row">
+                        <label for="invite-modal-email">Email address</label>
+                        <input type="email"
+                               id="invite-modal-email"
+                               name="email"
+                               data-testid="invite-modal-email"
+                               required
+                               maxlength="254"
+                               autocomplete="email"
+                               placeholder="alice@example.com">
+                        <div class="invite-modal-field-error"
+                             id="invite-modal-email-error"
+                             data-testid="invite-modal-email-error">Enter a valid email address.</div>
+                    </div>
+                    <div class="invite-modal-row">
+                        <label for="invite-modal-role">Role</label>
+                        <select id="invite-modal-role"
+                                name="role_esid"
+                                data-testid="invite-modal-role">
+                            <option value="editor" selected>Editor</option>
+                            <option value="viewer">Viewer</option>
+                            <option value="org_admin">Org admin</option>
+                            <option value="workspace_admin">Workspace admin</option>
+                        </select>
+                        <div class="invite-modal-help">Editor is the default for collaborators. Admin roles can invite further teammates.</div>
+                    </div>
+                    {# Team picker. Hidden until /api/invites/teams
+                       returns ≥1 team. When the workspace has zero teams the
+                       row stays hidden and the receiver auto-creates "General"
+                       on consume. #}
+                    <div class="invite-modal-row cs-hidden"
+                         id="invite-modal-team-row"
+                         data-testid="invite-modal-team-row">
+                        <label for="invite-modal-team">Team <span class="u-text-secondary u-fw-normal">(optional)</span></label>
+                        <select id="invite-modal-team"
+                                name="team_esid"
+                                data-testid="invite-modal-team">
+                            <option value="" selected>Any team (let them pick)</option>
+                        </select>
+                        <div class="invite-modal-help">Pick a team if you want this invite scoped to one. Leaving "Any team" lets the invitee choose or starts them in a new "General" team.</div>
+                    </div>
+                    <div class="invite-modal-row">
+                        <label for="invite-modal-note">Personal note <span class="u-text-secondary u-fw-normal">(optional)</span></label>
+                        <textarea id="invite-modal-note"
+                                  name="note"
+                                  data-testid="invite-modal-note"
+                                  maxlength="{{ invite_note_max | default(280) }}"
+                                  placeholder="Hey — joining you on the Q3 dashboards…"></textarea>
+                        <div class="invite-modal-counter"
+                             data-testid="invite-modal-note-counter">
+                            <span id="invite-modal-note-count">0</span> / {{ invite_note_max | default(280) }}
+                        </div>
+                    </div>
+                    <div class="invite-modal-actions">
+                        <button type="button"
+                                class="invite-modal-btn invite-modal-btn-secondary"
+                                onclick="closeInviteModal()">Cancel</button>
+                        <button type="submit"
+                                class="invite-modal-btn invite-modal-btn-primary"
+                                id="invite-modal-submit"
+                                data-testid="invite-modal-submit"
+                                disabled>Send invite</button>
+                    </div>
+                </form>
+            </div>
+
+            {# ── Sent state ──────────────────────────────────── #}
+            <div class="invite-modal-state invite-modal-state-sent">
+                <div class="invite-modal-success" data-testid="invite-modal-sent-success">
+                    Invite sent to <strong id="invite-modal-sent-email"></strong>. They'll get an email with a link to join.
+                </div>
+                <div class="invite-modal-actions is-spaced">
+                    <button type="button"
+                            class="invite-modal-btn invite-modal-btn-secondary"
+                            data-testid="invite-modal-sent-close"
+                            onclick="closeInviteModal()">Done</button>
+                    <button type="button"
+                            class="invite-modal-btn invite-modal-btn-primary"
+                            data-testid="invite-modal-invite-another"
+                            onclick="resetInviteModalForm()">Invite another</button>
+                </div>
+            </div>
+
+            {# ── Resent state ────────────────────────────────── #}
+            <div class="invite-modal-state invite-modal-state-resent">
+                <div class="invite-modal-success" data-testid="invite-modal-resent-success">
+                    Invite re-sent to <strong id="invite-modal-resent-email"></strong>.
+                </div>
+                <div class="invite-modal-actions is-spaced">
+                    <button type="button"
+                            class="invite-modal-btn invite-modal-btn-secondary"
+                            onclick="closeInviteModal()">Done</button>
+                    <button type="button"
+                            class="invite-modal-btn invite-modal-btn-primary"
+                            data-testid="invite-modal-resent-another"
+                            onclick="resetInviteModalForm()">Invite another</button>
+                </div>
+            </div>
+
+            {# ── Pending-prompt state ────────────────────────── #}
+            <div class="invite-modal-state invite-modal-state-pending">
+                <div class="invite-modal-warning" data-testid="invite-modal-pending-warning">
+                    There's already a pending invite for
+                    <strong id="invite-modal-pending-email"></strong>
+                    (sent <span id="invite-modal-pending-sent-at"></span>).
+                </div>
+                <div class="invite-modal-actions is-spaced">
+                    <button type="button"
+                            class="invite-modal-btn invite-modal-btn-secondary"
+                            onclick="resetInviteModalForm()">Cancel</button>
+                    <button type="button"
+                            class="invite-modal-btn invite-modal-btn-primary"
+                            id="invite-modal-resend"
+                            data-testid="invite-modal-resend"
+                            onclick="confirmInviteResend()">Resend invite</button>
+                </div>
+            </div>
+
+            {# ── Already-member state ────────────────────────── #}
+            <div class="invite-modal-state invite-modal-state-already-member">
+                <div class="invite-modal-warning" data-testid="invite-modal-already-member-warning">
+                    <strong id="invite-modal-already-email"></strong> is already a member of this workspace.
+                </div>
+                <div class="invite-modal-actions is-spaced">
+                    <button type="button"
+                            class="invite-modal-btn invite-modal-btn-primary"
+                            onclick="resetInviteModalForm()">Try another email</button>
+                </div>
+            </div>
+
+            {# ── Error state ─────────────────────────────────── #}
+            <div class="invite-modal-state invite-modal-state-error">
+                <div class="invite-modal-error-msg" data-testid="invite-modal-error">
+                    Couldn't send the invite. <span id="invite-modal-error-detail"></span>
+                </div>
+                <div class="invite-modal-actions is-spaced">
+                    <button type="button"
+                            class="invite-modal-btn invite-modal-btn-secondary"
+                            onclick="closeInviteModal()">Close</button>
+                    <button type="button"
+                            class="invite-modal-btn invite-modal-btn-primary"
+                            data-testid="invite-modal-error-retry"
+                            onclick="resetInviteModalForm()">Try again</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script nonce="{{ csp_nonce }}">
+(function() {
+    var CSRF_TOKEN = "{{ csrf_token if csrf_token is defined else '' }}";
+    var NOTE_MAX = {{ invite_note_max | default(280) }};
+    var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    // pending source resolution. Cached for the `Resend` follow-up
+    // so we POST against the same workspace-scoped email even after the
+    // form is reset between attempts.
+    var lastPendingEmail = null;
+    var lastPendingRole = null;
+    var lastPendingNote = '';
+
+    function $(id) { return document.getElementById(id); }
+    function setState(state) {
+        var modal = $('invite-modal');
+        if (modal) modal.setAttribute('data-state', state);
+    }
+    function openModal(source) {
+        var overlay = $('invite-modal-overlay');
+        if (!overlay) return;
+        overlay.classList.add('is-open');
+        overlay.setAttribute('aria-hidden', 'false');
+        // Fire the opened audit event (and surface any existing pending
+        // invite as a side effect). Source is one of wizard / checklist
+        // / header / direct so marketing can slice the funnel.
+        fetch('{{ invite_pending_api if invite_pending_api is defined else url_for("analytics.get_invite_pending") }}?source=' + encodeURIComponent(source || 'direct'),
+              { credentials: 'same-origin' }).catch(function() {});
+        // populate the team picker. Hidden by default; we
+        // reveal it iff the workspace returns ≥1 team. A workspace with
+        // 0 teams (the common state for fresh signups) leaves the row
+        // collapsed and the invitee falls into the auto-create-General
+        // branch on consume.
+        loadTeamPicker();
+        var emailInput = $('invite-modal-email');
+        if (emailInput) {
+            setTimeout(function() { emailInput.focus(); }, 30);
+        }
+    }
+    function loadTeamPicker() {
+        var row = $('invite-modal-team-row');
+        var sel = $('invite-modal-team');
+        if (!row || !sel) return;
+        // Default-hidden + reset between opens so a previous open's
+        // team list doesn't bleed into this one (the inviter may have
+        // created or deleted teams since). toggle via the
+        // .cs-hidden class (not inline display) so no inline style is needed.
+        row.classList.add('cs-hidden');
+        // Preserve the "Any team" sentinel option in slot 0.
+        sel.innerHTML = '<option value="">Any team (let them pick)</option>';
+        fetch('{{ invite_teams_api if invite_teams_api is defined else url_for("analytics.get_invite_teams") }}', { credentials: 'same-origin' })
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(body) {
+                if (!body || body.status !== 'ok') return;
+                var teams = body.teams || [];
+                if (!teams.length) return;
+                teams.forEach(function(t) {
+                    var opt = document.createElement('option');
+                    opt.value = t.team_esid || '';
+                    opt.textContent = t.team_title || t.team_esid || '';
+                    sel.appendChild(opt);
+                });
+                row.classList.remove('cs-hidden');
+            })
+            .catch(function() {});
+    }
+    window.openInviteModal = function(source) {
+        resetInviteModalForm();
+        openModal(source);
+    };
+    window.closeInviteModal = function() {
+        var overlay = $('invite-modal-overlay');
+        if (overlay) {
+            overlay.classList.remove('is-open');
+            overlay.setAttribute('aria-hidden', 'true');
+        }
+    };
+    window.resetInviteModalForm = function() {
+        setState('form');
+        var inlineErr = $('invite-modal-inline-error');
+        if (inlineErr) { inlineErr.classList.add('cs-hidden'); inlineErr.textContent = ''; }
+        var fieldErr = $('invite-modal-email-error');
+        if (fieldErr) fieldErr.classList.remove('is-visible');
+        var submit = $('invite-modal-submit');
+        if (submit) { submit.disabled = true; submit.textContent = 'Send invite'; }
+    };
+
+    function _bindCounter() {
+        var note = $('invite-modal-note');
+        var count = $('invite-modal-note-count');
+        if (!note || !count) return;
+        function update() { count.textContent = (note.value || '').length; }
+        note.addEventListener('input', update);
+        update();
+    }
+    function _bindEmailValidation() {
+        var email = $('invite-modal-email');
+        var submit = $('invite-modal-submit');
+        if (!email || !submit) return;
+        function update() {
+            var v = (email.value || '').trim();
+            submit.disabled = !EMAIL_RE.test(v);
+        }
+        email.addEventListener('input', update);
+    }
+    document.addEventListener('DOMContentLoaded', function() {
+        _bindCounter();
+        _bindEmailValidation();
+
+        // open-on-?invite=open. Drop the
+        // query param via history.replaceState so a refresh doesn't
+        // re-trigger the modal. Source=wizard so the audit funnel
+        // attributes this open to the end-of-wizard prompt.
+        //
+        // follow-up — also consume ?prefill_email=<addr>, set
+        // by the expired-invite inviter-notify email's "Resend invite"
+        // CTA. Both params are scrubbed in the same replaceState pass
+        // so the URL never carries the dead invitee email after open.
+        var params = new URLSearchParams(window.location.search);
+        if (params.get('invite') === 'open') {
+            var prefillEmail = params.get('prefill_email') || '';
+            params.delete('invite');
+            params.delete('prefill_email');
+            var newQs = params.toString();
+            var newUrl = window.location.pathname + (newQs ? '?' + newQs : '') + window.location.hash;
+            window.history.replaceState({}, '', newUrl);
+            window.openInviteModal('wizard');
+            if (prefillEmail) {
+                var emailInput = $('invite-modal-email');
+                if (emailInput) {
+                    emailInput.value = prefillEmail;
+                    // Fire the input event so the email-validation
+                    // listener enables the submit button immediately
+                    // (without it, the user would have to click into
+                    // the field and out again to clear the disabled
+                    // state on the Send button).
+                    emailInput.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+            }
+        }
+
+        // checklist row click. The invite_teammate
+        // row's action_url is `#invite-modal`; intercept the navigation
+        // and open the modal locally so the user never leaves /dashboard.
+        document.body.addEventListener('click', function(ev) {
+            var anchor = ev.target.closest('a[href="#invite-modal"]');
+            if (!anchor) return;
+            ev.preventDefault();
+            window.openInviteModal('checklist');
+        });
+    });
+
+    window.submitInviteModal = function(ev) {
+        if (ev && ev.preventDefault) ev.preventDefault();
+        var email = ($('invite-modal-email') || {}).value || '';
+        var role = ($('invite-modal-role') || {}).value || 'editor';
+        var note = ($('invite-modal-note') || {}).value || '';
+        // optional team scope. Empty string falls through to
+        // the receiver auto-create-General / picker branch.
+        var teamSel = $('invite-modal-team');
+        var teamEsid = teamSel ? (teamSel.value || '') : '';
+        email = (email || '').trim();
+        if (!EMAIL_RE.test(email)) {
+            var fieldErr = $('invite-modal-email-error');
+            if (fieldErr) fieldErr.classList.add('is-visible');
+            return;
+        }
+        if ((note || '').length > NOTE_MAX) {
+            var inlineErr = $('invite-modal-inline-error');
+            if (inlineErr) {
+                inlineErr.textContent = 'Note must be ' + NOTE_MAX + ' characters or less.';
+                inlineErr.classList.remove('cs-hidden');
+            }
+            return;
+        }
+        // Cache for the resend path before mutating state.
+        lastPendingEmail = email;
+        lastPendingRole = role;
+        lastPendingNote = note;
+
+        var submit = $('invite-modal-submit');
+        if (submit) { submit.disabled = true; submit.textContent = 'Sending…'; }
+        setState('sending');
+        fetch('{{ invite_api_base if invite_api_base is defined else url_for("analytics.post_invite") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': CSRF_TOKEN
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify({ email: email, role_esid: role, note: note, team_esid: teamEsid })
+        }).then(function(r) {
+            return r.json().then(function(body) { return { ok: r.ok, status: r.status, body: body }; });
+        }).then(function(res) {
+            var body = res.body || {};
+            var status = body.status;
+            if (status === 'sent') {
+                var s = $('invite-modal-sent-email');
+                if (s) s.textContent = body.email || email;
+                setState('sent');
+                return;
+            }
+            if (status === 'resent') {
+                var r2 = $('invite-modal-resent-email');
+                if (r2) r2.textContent = body.email || email;
+                setState('resent');
+                return;
+            }
+            if (status === 'already_member') {
+                var a = $('invite-modal-already-email');
+                if (a) a.textContent = email;
+                setState('already-member');
+                return;
+            }
+            if (status === 'invalid') {
+                var ie = $('invite-modal-inline-error');
+                if (ie) {
+                    ie.textContent = 'That invite couldn\'t be sent (' + (body.reason || 'invalid') + ').';
+                    ie.classList.remove('cs-hidden');
+                }
+                setState('form');
+                if (submit) { submit.disabled = false; submit.textContent = 'Send invite'; }
+                return;
+            }
+            // send_failed / es_unavailable / anything else
+            var ed = $('invite-modal-error-detail');
+            if (ed) ed.textContent = body.error || 'Try again in a moment.';
+            setState('error');
+        }).catch(function() {
+            var ed = $('invite-modal-error-detail');
+            if (ed) ed.textContent = 'Network error. Try again.';
+            setState('error');
+        });
+    };
+
+    window.confirmInviteResend = function() {
+        if (!lastPendingEmail) { setState('form'); return; }
+        // Drive the same POST endpoint — the server detects the existing
+        // pending row by doc-id and routes to the resend branch.
+        ($('invite-modal-email') || {}).value = lastPendingEmail;
+        ($('invite-modal-role') || {}).value = lastPendingRole || 'editor';
+        ($('invite-modal-note') || {}).value = lastPendingNote || '';
+        window.submitInviteModal(null);
+    };
+})();
+</script>

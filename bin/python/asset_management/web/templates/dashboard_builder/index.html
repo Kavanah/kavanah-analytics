@@ -1,0 +1,945 @@
+{% extends 'base_v2.html' %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js" integrity="sha384-eeLEhtwdMwD3X9y+8P3Cn7Idl/M+w8H4uZqkgD/2eJVkWIN1yKzEj6XegJ9dL3q0" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js" integrity="sha384-pPi0zxBAoDu6+JXW/C68UZLvBUUtU+7zonhif43rqj7pxsGyqyqzcian2Rj37Rss" crossorigin="anonymous"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='dashboard_builder/builder.css') }}?v=20260926a">
+{% endblock %}
+
+{% block page_content %}
+{% block content %}
+
+{# Expose server-rendered UTC "today" to builder.js so the custom-range
+   date picker caps the upper bound on the same reference the server uses
+   for date math (e.g. ``now`` / ``now-90d/d``). Mirrors fix on
+   the dashboards page. #}
+<script nonce="{{ csp_nonce }}">window.SERVER_TODAY = "{{ today_utc or '' }}";</script>
+
+{# visibility-dropdown defaults for new dashboards. builder.js'
+   newDashboard()/duplicateDashboard() seed DASHBOARD_STATE from this so a
+   non-workspace user's new dashboard opens on "Show Teams" with their own
+   org/team pre-selected instead of the workspace-wide "Show All". #}
+<script nonce="{{ csp_nonce }}">window.BUILDER_VISIBILITY_DEFAULTS = {{ visibility_defaults | tojson }};</script>
+{# the selectable workspaces + default selection for the topbar
+   workspace selector; builder.js reads these to scope the org/team dropdowns
+   and stamp the new-dashboard workspace. #}
+<script nonce="{{ csp_nonce }}">
+  window.BUILDER_WORKSPACES = {{ builder_workspaces | tojson }};
+  window.BUILDER_DEFAULT_WORKSPACE = {{ builder_default_workspace | tojson }};
+</script>
+
+<div class="db-page">
+
+  <!-- ═══ TOP BAR ═══════════════════════════════════════════════════════ -->
+  <div class="db-topbar">
+    <span class="db-topbar-title">Dashboard Builder</span>
+    <div class="db-topbar-controls">
+      {# KAN-N/A toolbar regroup: one row, three clusters in visual
+         order — creation buttons (.db-topbar-left) | context filters
+         (.db-topbar-filters) | Save actions (.db-topbar-actions-right,
+         pushed right via margin-left:auto). Flat source order matches
+         the visual + tab order; no flex `order` reshuffling. #}
+      <div class="db-topbar-left">
+        <button class="db-btn db-btn-add" onclick="newDashboard()" title="Create a new dashboard">+ New</button>
+        <button class="db-btn" id="btn-duplicate" onclick="duplicateDashboard()" disabled
+                title="Create a copy of the open dashboard">Duplicate</button>
+      </div>
+      <div class="db-topbar-filters">
+        {# workspace selector. A multi-workspace user (or bare
+           superuser, who resolves to all workspaces) picks the workspace they
+           are working in; the org/team dropdowns below filter to it and a new
+           dashboard is stamped with it — so a superuser can't accidentally
+           write into the wrong workspace. A single-workspace user sees a
+           read-only label (nothing to choose). Hidden entirely when the user
+           has no selectable workspace. builder.js reads
+           window.BUILDER_WORKSPACES / BUILDER_DEFAULT_WORKSPACE. #}
+        {% if builder_workspaces and builder_workspaces|length > 1 %}
+        <label for="builder-workspace-select" class="db-label">Workspace:</label>
+        <select id="builder-workspace-select">
+          {% for ws in builder_workspaces %}
+          <option value="{{ ws.esid }}" {% if ws.esid == builder_default_workspace %}selected{% endif %}>{{ ws.title }}</option>
+          {% endfor %}
+        </select>
+        <span class="db-topbar-divider"></span>
+        {% elif builder_workspaces and builder_workspaces|length == 1 %}
+        <span class="db-label">Workspace:</span>
+        <span class="db-topbar-workspace-label" id="builder-workspace-label" data-esid="{{ builder_workspaces[0].esid }}">{{ builder_workspaces[0].title }}</span>
+        <span class="db-topbar-divider"></span>
+        {% endif %}
+        {# follow-up (smoke 2026-05-25): hide the Builder's
+           topbar org+team dropdowns for users whose resolvable scope
+           is at most one of each (mirrors the /dashboards visibility
+           rule). filter_visibility is computed by the server via
+           RoleFilterService.get_filter_visibility — see the index
+           route. #}
+        {% if filter_visibility and filter_visibility.show_org_filter %}
+        <label for="builder-org-filter" class="db-label">Org:</label>
+        <select id="builder-org-filter">
+          <option value="">All Organizations</option>
+        </select>
+        {% endif %}
+        {% if filter_visibility and filter_visibility.show_team_filter %}
+        <label for="builder-team-filter" class="db-label">Team:</label>
+        <select id="builder-team-filter">
+          <option value="">All Teams</option>
+        </select>
+        {% endif %}
+        <span class="db-topbar-divider db-topbar-divider-time"></span>
+        <label for="builder-time-preset" class="db-label">Time range:</label>
+        {# keep this option set in sync with TIME_PRESETS in
+           time_preset_service.py — the cal:* values are
+           sentinels builder.js converts to explicit ISO from/to windows. #}
+        <select id="builder-time-preset">
+          <option value="">All time</option>
+          <option value="now-7d/d">Last 7 days</option>
+          <option value="now-30d/d">Last 30 days</option>
+          <option value="now-90d/d" selected>Last 90 days</option>
+          <option value="now-6M/d">Last 6 months</option>
+          <option value="now-1y/d">Last 12 months</option>
+          <option value="cal:this_month">This Month</option>
+          <option value="cal:last_month">Last Month</option>
+          <option value="cal:this_quarter">This Quarter</option>
+          <option value="cal:last_quarter">Last Quarter</option>
+          <option value="custom">Custom range&hellip;</option>
+        </select>
+        <div id="builder-custom-date-range" style="display:none; align-items:center; gap:6px;">
+          <input type="date" id="builder-time-from">
+          <span class="db-label">to</span>
+          <input type="date" id="builder-time-to">
+          <button class="cs-btn cs-btn-primary cs-btn-sm" id="builder-time-apply">Apply</button>
+        </div>
+      </div>
+      <div class="db-topbar-actions-right">
+        <button class="db-btn db-btn-primary" id="btn-save" onclick="saveDashboard().then(() => { Object.keys(DASHBOARD_STATE.charts).forEach(id => { if (typeof queryAndRender === 'function') queryAndRender(id); }); })" disabled
+                title="Save the dashboard and re-run every chart's query">Save &amp; Refresh</button>
+        {# #1 (was workspace-admin gate): Save as template
+           is now superuser-only — templates are global so a workspace_admin
+           shouldn't be able to mint platform-wide curation. Server-side
+           gate is _freeze_template_authz_or_abort. #}
+        {% if is_superuser %}
+        <button class="db-btn db-btn-secondary" id="btn-save-as-template" onclick="showSaveAsTemplateModal()" disabled title="Promote this dashboard into the template registry">Save as template</button>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ MAIN LAYOUT ═══════════════════════════════════════════════════ -->
+  <div class="db-layout">
+
+    <!-- LEFT PANEL ────────────────────────────────────────────────────── -->
+    <aside class="db-panel-left" id="db-panel-left">
+
+      <button type="button" class="db-panel-left-toggle" id="db-panel-left-toggle" onclick="toggleLeftPanel()" aria-label="Collapse sidebar" aria-expanded="true" title="Collapse sidebar">
+        <span class="db-panel-left-toggle-chevron" aria-hidden="true">‹</span>
+      </button>
+
+      <div class="db-panel-left-body">
+
+      <div class="db-section-label">Add Chart</div>
+      <div class="db-add-chart-row">
+        <select id="add-chart-type-select">
+          <option value="bar">Bar Chart</option>
+          <option value="line">Line Chart</option>
+          <option value="pie">Pie Chart</option>
+          <option value="donut">Donut Chart</option>
+          <option value="table">Table</option>
+          <option value="metric">Metric / KPI</option>
+          <option value="grouped_table">Grouped Table</option>
+          <option value="leaflet_map">Geographic Map</option>
+          <option value="profile">Profile</option>
+          <option value="posts_table">FB Page Posts</option>
+        </select>
+        <button class="db-btn db-btn-add db-btn-sm" onclick="addChartToCanvas(document.getElementById('add-chart-type-select').value)"
+                title="Add the selected chart type to the dashboard">+</button>
+      </div>
+      {# Canvas Builder entry. Open to every builder user
+          (the interim superuser gate is gone). Opens
+         the Create New Dashboard dialog first so the page's name and menu
+         are chosen up front (menu prefilled from the open dashboard, when
+         one is open), then hands both to the canvas editor as
+         ?title= / ?menu=. #}
+      <button class="db-btn db-btn-block" id="btn-canvas" onclick="openCanvasCreate()"
+              title="Create a free-form canvas page — name it and pick its menu first">+ Canvas page</button>
+      <button class="db-btn db-btn-block" onclick="showTemplateModal()"
+              title="Create a dashboard from a pre-built template">Templates</button>
+
+      <label class="db-show-hidden-toggle" title="Hidden dashboards are not shown on the user-facing /dashboards page">
+        <input type="checkbox" id="db-show-hidden-checkbox">
+        <span>Show hidden dashboards</span>
+      </label>
+
+      <div class="db-dashboards-header" style="margin-top:16px;">
+        <div class="db-section-label">Dashboards</div>
+        {% if is_workspace_admin %}
+        {# "+ Menu", not "+ Add Menu": the full DASHBOARDS label and the button
+           share a 172px row — the longer text truncated the label at any
+           readable font size. The DASHBOARDS context + tooltip carry "Add". #}
+        <button class="db-btn db-btn-sm db-btn-add-menu" onclick="showAddMenuModal()" title="Add a new menu">+ Menu</button>
+        {% endif %}
+      </div>
+      <div class="db-dashboard-explorer" id="dashboard-explorer" data-is-workspace-admin="{{ 'true' if is_workspace_admin else 'false' }}">
+        <div class="db-explorer-loading">Loading...</div>
+      </div>
+
+      </div><!-- /.db-panel-left-body -->
+
+    </aside>
+
+    <!-- CANVAS ────────────────────────────────────────────────────────── -->
+    <main class="db-canvas" id="db-canvas">
+      <div class="db-canvas-empty" id="canvas-empty-state">
+        <p>Select a chart type from the left panel, or click <strong>+ Add Chart</strong> below.</p>
+      </div>
+      <!-- dashboard-level filter strip. Hidden when no filters are configured.
+           Populated from DASHBOARD_STATE.filters by renderDashboardFilterStrip(). -->
+      <div class="db-filter-strip" id="dashboard-filter-strip" style="display:none;"></div>
+      <div class="db-chart-grid" id="chart-grid"></div>
+      <div class="db-canvas-footer">
+        <button class="db-btn db-btn-add" onclick="showAddChartModal()">+ Add Chart</button>
+      </div>
+    </main>
+
+    <!-- RIGHT PANEL ───────────────────────────────────────────────────── -->
+    <aside class="db-panel-right" id="db-panel-right">
+      <div class="db-panel-right-placeholder">
+        <p>Click a chart to configure it.</p>
+      </div>
+
+      <!-- Dashboard properties panel (shown when clicking a dashboard in the explorer).
+            Phase 20 follow-up: dashboard-level filter editor moved to a
+           dedicated modal (#dashboard-filters-modal) so chart Edit doesn't compete
+           with filter editing for the right panel. -->
+      <div class="db-config-panel" id="dashboard-props-panel" style="display:none;">
+        <div class="db-section-label">Dashboard Properties</div>
+        <div class="db-form-group">
+          <label for="prop-title">Title</label>
+          <input type="text" id="prop-title" maxlength="200">
+        </div>
+        <div class="db-form-group">
+          <label for="prop-menu">Menu</label>
+          <select id="prop-menu"></select>
+        </div>
+        {# teams-only visibility. The Visibility dropdown (Show All /
+           Show Teams / Hidden) and the Organizations checkbox list are removed.
+           Visibility always hinges on the Teams checkboxes: ticked teams can
+           see the dashboard; unticking all teams hides it from everyone. An
+           org editor only sees checkboxes for teams they own (server-scoped).
+           The "Visibility" label is kept as the section header. #}
+        <div class="db-form-group">
+          <label>Visibility</label>
+          <p class="db-field-hint" id="prop-visibility-hint">Choose which teams can see this dashboard. Unselect all to hide it from everyone.</p>
+        </div>
+        <div id="prop-team-fields">
+          <div class="db-form-group">
+            <div class="db-teams-toolbar">
+              <label for="prop-teams-filter">Teams</label>
+              <div class="db-teams-toolbar-actions">
+                <button type="button" class="db-btn db-btn-link" id="prop-teams-select-all" onclick="propTeamsSelectAll(true)">Select All</button>
+                <button type="button" class="db-btn db-btn-link" id="prop-teams-unselect-all" onclick="propTeamsSelectAll(false)">Unselect All</button>
+              </div>
+            </div>
+            <input type="text" id="prop-teams-filter" class="db-checkbox-filter" placeholder="Filter teams…" oninput="filterCheckboxList('prop-teams-list', this.value)">
+            <div class="db-checkbox-list" id="prop-teams-list"></div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:16px;">
+          <button class="db-btn db-btn-primary" id="prop-save-btn" onclick="saveDashboardProperties()">Save Properties</button>
+          {# follow-up: shown only when the selected doc is a canvas
+             page (the editor is open to every builder user). #}
+          <button class="db-btn" id="prop-open-canvas" style="display:none;" onclick="openCanvasEditorForCurrent()">Open in Canvas Editor</button>
+        </div>
+      </div>
+
+      <!-- Standard chart config panel -->
+      <div class="db-config-panel db-config-panel--mode-edit" id="config-panel" style="display:none;">
+
+        <div class="db-mode-tabs" role="tablist">
+          <button type="button" class="db-mode-tab is-active" data-mode="edit" onclick="setConfigPanelMode('edit')" role="tab">Edit</button>
+          <button type="button" class="db-mode-tab" data-mode="properties" onclick="setConfigPanelMode('properties')" role="tab">Properties</button>
+        </div>
+
+        <div class="db-section-label" data-mode="properties">Chart Info</div>
+        <div class="db-form-group" data-mode="properties">
+          <label>Title</label>
+          <input type="text" id="cfg-title" maxlength="200" oninput="updateChartConfig('title', this.value)">
+        </div>
+        <div class="db-form-group" data-mode="properties" id="cfg-type-group">
+          <label>Type</label>
+          <select id="cfg-type" onchange="updateChartConfig('chart_type', this.value); requeryChart()">
+            <option value="bar">Bar Chart</option>
+            <option value="line">Line Chart</option>
+            <option value="pie">Pie Chart</option>
+            <option value="donut">Donut Chart</option>
+            <option value="table">Table</option>
+            <option value="metric">Metric / KPI</option>
+          </select>
+        </div>
+        {# totals-row controls extracted to a shared partial so the
+           Canvas Editor embeds the same table config UI (no markup fork). #}
+        {% include "dashboard_builder/_table_totals_controls.html" %}
+
+        <!-- Standard chart data & field selectors (shown for bar/line/pie/metric) -->
+        <div id="standard-field-section" data-mode="edit" style="display:none;">
+          <div class="db-section-label">Data &amp; Fields</div>
+          <div class="db-form-group">
+            <label>Data View</label>
+            <select id="cfg-std-data-view" onchange="onStandardDataViewChange(this.value)">
+              <option value="">— Select data view —</option>
+            </select>
+          </div>
+          <div class="db-form-group" id="std-x-field-group">
+            <label>X Field</label>
+            <select id="cfg-std-x-field" onchange="onStandardXFieldChange(this.value, this.options[this.selectedIndex].dataset.fieldType)">
+              <option value="">— Select field —</option>
+            </select>
+          </div>
+          <!-- date-bucket granularity for bar/line charts whose X axis
+               is a date. Writes config.calendar_interval, which the query builder
+               already honors in the date_histogram. Hidden unless x_field_type is
+               'date' and the chart is bar/line (toggled by onStandardXFieldChange
+               + populateConfigPanel). -->
+          <div class="db-form-group" id="std-interval-group" style="display:none;">
+            <label>Interval</label>
+            <select id="cfg-std-interval" onchange="updateChartConfig('calendar_interval', this.value); requeryChart()">
+              <option value="day">Day</option>
+              <option value="week">Week</option>
+              <option value="month">Month</option>
+            </select>
+          </div>
+          <!-- "Data Format" dropdown for bar/line charts over a date
+               X axis. Options populated at init from DATE_FORMAT_OPTIONS (the
+               same list table date columns use); shown only when
+               x_field_type === 'date' (toggled by onStandardXFieldChange +
+               populateConfigPanel). NOTE: this MUST live inside
+               #standard-field-section — the table's #cfg-date-format-group lives
+               inside #table-field-section, which is display:none for bar/line,
+               so a single shared element could never be visible for both. -->
+          <div class="db-form-group" id="std-date-format-group" style="display:none;">
+            <label>Data Format</label>
+            <select id="cfg-std-date-format" onchange="updateChartConfig('date_format', this.value); requeryChart()"></select>
+          </div>
+          <div class="db-form-group" id="std-y-fields-group">
+            <label>Y Fields</label>
+            <div id="cfg-std-y-fields-list" style="margin-bottom:4px;"></div>
+            <div style="display:flex;gap:4px;">
+              <select id="cfg-std-y-field-add" style="flex:1;">
+                <option value="">— Add Y field —</option>
+              </select>
+              <button class="db-btn db-btn-sm db-btn-add" onclick="addStandardYField()">+</button>
+            </div>
+          </div>
+          <div class="db-form-group" id="std-breakdown-group">
+            <label id="std-breakdown-label">Breakdown <span style="color:#888;font-size:11px;">(optional)</span></label>
+            <div style="display:flex;gap:4px;align-items:center;">
+              <select id="cfg-std-breakdown" style="flex:1;" onchange="onStandardBreakdownChange(this.value)">
+                <option value="">— None —</option>
+              </select>
+              <button type="button" class="db-btn db-btn-sm" id="cfg-std-breakdown-clear"
+                      onclick="clearStandardBreakdown()" title="Clear breakdown">✕</button>
+            </div>
+          </div>
+          <div id="std-metric-layout-group" style="display:none;">
+            <div class="db-form-group">
+              <label>Max Columns</label>
+              <input type="number" id="cfg-std-max-columns" min="1" max="10" value="1" onchange="onMetricLayoutChange('max_columns', this.value)">
+            </div>
+            <div class="db-form-group">
+              <label>Max Values to Display</label>
+              <input type="number" id="cfg-std-max-rows" min="1" max="10" value="1" onchange="onMetricLayoutChange('max_rows', this.value)">
+            </div>
+            <div class="db-form-group db-form-group--checkbox">
+              <label>
+                <input type="checkbox" id="cfg-std-other-bucket" onchange="onMetricLayoutChange('other_bucket', this.checked)">
+                Combine hidden fields into Other
+              </label>
+            </div>
+            <!-- Per-tile label overrides: rename individual breakdown tiles
+                 whose raw bucket value is unhelpful (e.g. a bare number).
+                 Populated by _renderMetricBreakdownLabelsEditor from the
+                 chart's last query response. -->
+            <div class="db-form-group" id="std-metric-tile-labels-group" style="display:none;">
+              <label>Tile Titles <span style="color:#888;font-size:11px;">(optional)</span></label>
+              <div id="cfg-std-metric-tile-labels"></div>
+            </div>
+          </div>
+          <!-- Time-range date field. Which date field the global
+               time-range dropdown filters this chart on. Default kibana_date
+               (created-date for Echo); override e.g. to closed_at so an Echo
+               chart counts conversations resolved in the window, matching
+               Echo's own dashboard. Populated with the data view's
+               date-typed fields by populateConfigPanel. -->
+          <div class="db-form-group" id="std-time-range-field-group">
+            <label>Time-range Date Field <span style="color:#888;font-size:11px;">(optional)</span></label>
+            <select id="cfg-std-time-range-field" onchange="updateChartConfig('time_range_field', this.value); requeryChart()">
+              <option value="">Default (kibana_date)</option>
+            </select>
+          </div>
+        </div>
+
+        {# table Edit section extracted to a shared partial (Canvas Editor embeds it too). #}
+        {% include "dashboard_builder/_table_field_section.html" %}
+
+        <div class="db-section-label" data-mode="edit">Aggregation</div>
+        <div class="db-form-group" id="cfg-aggregation-group" data-mode="edit">
+          <label>Aggregation</label>
+          <select id="cfg-aggregation" onchange="updateChartConfig('aggregation', this.value); requeryChart()">
+            <option value="sum">Sum</option>
+            <option value="avg">Average</option>
+            <option value="min">Min</option>
+            <option value="max">Max</option>
+            <option value="count">Count</option>
+            <option value="cardinality">Unique</option>
+          </select>
+        </div>
+        <div class="db-section-label" data-mode="properties">Display</div>
+        <div class="db-form-group db-form-group--checkbox" data-mode="properties">
+          <label>
+            <input type="checkbox" id="cfg-hide-title" onchange="updateChartConfig('hide_title', this.checked); applyHideTitleToSlot(SELECTED_CHART_ID)">
+            Hide chart title
+          </label>
+        </div>
+        {# table display props extracted to a shared partial (Canvas Editor embeds it too). #}
+        {% include "dashboard_builder/_table_display_controls.html" %}
+        <!-- Date Format dropdown moved to the Edit tab (under
+             Row Labels Field). Discoverability bug surfaced 2026-05-25:
+             users picked a date field on Edit and never found the Properties
+             tab's Date Format selector. Old location removed. -->
+
+        <div class="db-form-group" id="cfg-scale-group" data-mode="properties" style="display:none;">
+          <label>Y Axis Scale</label>
+          <div class="db-scale-row">
+            <input type="number" id="cfg-y-min" placeholder="Min (auto)" step="any"
+                   oninput="updateChartConfig('y_min', this.value); requeryChart()">
+            <input type="number" id="cfg-y-max" placeholder="Max (auto)" step="any"
+                   oninput="updateChartConfig('y_max', this.value); requeryChart()">
+          </div>
+        </div>
+
+        <!-- per-chart filters. Re-homed here moved
+             filter editing to the dashboard-level modal and orphaned this
+             editor (it rendered into #filters-list, which no longer existed).
+             Scopes THIS chart only (e.g. a table where platform == iOS) —
+             distinct from the dashboard-level filter strip, which applies to
+             every chart. populateConfigPanel calls renderFilterRows() for the
+             table / posts_table / profile / generic branches (all keep
+             #config-panel visible); the rows themselves live in filters.js. -->
+        <div class="db-section-label" data-mode="edit" data-default-collapsed="true">Filters</div>
+        <div class="db-form-group" data-mode="edit">
+          <p class="db-form-help" style="font-size:11px;color:var(--db-text-muted,#666);margin:0 0 6px;">Limit this chart to rows matching these conditions. Applies to this chart only.</p>
+          <!-- breakdown-record opt-in. Google Ads / YouTube write
+               per-country / per-video breakdown docs ALONGSIDE the campaign /
+               channel totals; including them double-counts a metric sum. This
+               checkbox is rendered (by filters.js) only for those data views;
+               default off = breakdown records excluded (the correct default). -->
+          <div class="db-form-group" id="breakdown-records-group" data-mode="edit" style="display:none;margin:0 0 8px;">
+            <label style="display:flex;align-items:flex-start;gap:6px;font-size:11px;font-weight:400;text-transform:none;letter-spacing:normal;color:var(--db-text-muted,#666);cursor:pointer;">
+              <input type="checkbox" id="include-breakdown-records" onchange="onIncludeBreakdownRecordsChange(this.checked)" style="margin-top:2px;">
+              <span style="font-weight:400;text-transform:none;letter-spacing:normal;">Include per-country / breakdown records
+                <span class="db-form-help" style="display:block;font-size:11px;font-weight:400;text-transform:none;letter-spacing:normal;color:var(--db-text-muted,#666);">Off by default. Turning this on sums breakdown documents alongside the campaign/channel totals and may double-count metrics.</span>
+              </span>
+            </label>
+          </div>
+          <div class="db-filters-list" id="filters-list"></div>
+          <button class="db-btn db-btn-sm db-btn-add" onclick="addFilterRow()" style="margin-top:6px;">+ Add Filter</button>
+        </div>
+
+
+      </div>
+
+      <!-- Leaflet Map config panel -->
+      <div class="db-config-panel" id="leaflet-map-config" style="display:none;">
+
+        <div class="db-section-label">Statistic</div>
+        <div class="db-form-group">
+          <label>Display Metric</label>
+          <select id="cfg-map-statistic" onchange="onMapStatisticChange(this.value)">
+            <!-- populated dynamically from config.map_statistics -->
+          </select>
+        </div>
+
+        <div class="db-section-label">Field Configuration</div>
+        <div class="db-form-group">
+          <label>Label</label>
+          <input type="text" id="cfg-map-field-label" placeholder="e.g. Reach" maxlength="200" oninput="updateMapFieldProp('label', this.value)">
+        </div>
+        <div class="db-form-group">
+          <label>Data View</label>
+          <select id="cfg-map-field-dv" onchange="onMapFieldDvChange(this.value)">
+            <option value="">— Select data view —</option>
+          </select>
+        </div>
+        <div class="db-form-group">
+          <label>Field</label>
+          <select id="cfg-map-field-field" onchange="updateMapFieldProp('field', this.value)">
+            <option value="">— Select field —</option>
+          </select>
+        </div>
+        <div class="db-form-group">
+          <label>Aggregation</label>
+          <select id="cfg-map-field-agg" onchange="updateMapFieldProp('aggregation', this.value)">
+            <option value="sum">sum</option>
+            <option value="avg">avg</option>
+            <option value="min">min</option>
+            <option value="max">max</option>
+            <option value="count">count</option>
+            <option value="cardinality">unique</option>
+          </select>
+        </div>
+        <div class="db-form-group" style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="db-btn db-btn-sm" onclick="addMapField()">+ Add Field</button>
+          <button class="db-btn db-btn-sm" style="color:#c0392b;border-color:#c0392b;" onclick="removeMapField()">− Remove Field</button>
+        </div>
+
+      </div>
+
+      <!-- Grouped Table config panel -->
+      <div class="db-config-panel" id="grouped-table-config" style="display:none;">
+
+        <div class="db-section-label">Table Info</div>
+        <div class="db-form-group">
+          <label>Table Title</label>
+          <input type="text" id="cfg-gt-table-title" placeholder="e.g. How many people saw our content?" maxlength="200" oninput="updateGroupedTableProp('table_title', this.value)">
+        </div>
+
+        <div class="db-section-label">Header Colors</div>
+        <div class="db-form-group db-color-row">
+          <label>Title Row</label>
+          <input type="color" id="cfg-gt-title-color" value="#2c6da0" oninput="updateGroupedTableProp('title_bg_color', this.value)">
+        </div>
+        <div class="db-form-group db-color-row">
+          <label>Group Header</label>
+          <input type="color" id="cfg-gt-group-color" value="#5a9cc5" oninput="updateGroupedTableProp('group_header_bg_color', this.value)">
+        </div>
+        <div class="db-form-group db-color-row">
+          <label>Column Header</label>
+          <input type="color" id="cfg-gt-col-color" value="#2c6da0" oninput="updateGroupedTableProp('col_header_bg_color', this.value)">
+        </div>
+        <div class="db-form-group db-color-row">
+          <label>Title Text</label>
+          <input type="color" id="cfg-gt-text-color" value="#ffffff" oninput="updateGroupedTableProp('header_text_color', this.value)">
+        </div>
+
+        <div class="db-section-label" style="margin-top:8px;">Text Styles</div>
+        <div class="db-form-group db-text-style-row">
+          <label>Group Header</label>
+          <input type="color" id="cfg-gt-group-text-color" value="#ffffff" oninput="updateGroupedTableProp('group_text_color', this.value)" title="Text color">
+          <input type="number" id="cfg-gt-group-font-size" class="db-font-size-input" value="12" min="8" max="32" placeholder="px" oninput="updateGroupedTableProp('group_font_size', this.value)" title="Font size (px)">
+          <span class="db-font-size-label">px</span>
+          <label class="db-bold-toggle" title="Bold"><input type="checkbox" id="cfg-gt-group-bold" checked onchange="updateGroupedTableProp('group_bold', this.checked)"> B</label>
+        </div>
+        <div class="db-form-group db-text-style-row">
+          <label>Column Header</label>
+          <input type="color" id="cfg-gt-col-text-color" value="#ffffff" oninput="updateGroupedTableProp('col_text_color', this.value)" title="Text color">
+          <input type="number" id="cfg-gt-col-font-size" class="db-font-size-input" value="12" min="8" max="32" placeholder="px" oninput="updateGroupedTableProp('col_font_size', this.value)" title="Font size (px)">
+          <span class="db-font-size-label">px</span>
+          <label class="db-bold-toggle" title="Bold"><input type="checkbox" id="cfg-gt-col-bold" checked onchange="updateGroupedTableProp('col_bold', this.checked)"> B</label>
+        </div>
+
+        <div class="db-section-label" style="margin-top:12px;">Groups &amp; Columns</div>
+        <div id="gt-groups-editor"></div>
+        <button class="db-btn db-btn-sm db-btn-add" onclick="addGroupedTableGroup()" style="margin-top:6px;">+ Add Group</button>
+        <button class="db-btn db-btn-primary db-btn-sm" onclick="requeryChart(); saveDashboard()" style="margin-top:6px;">↻ Refresh &amp; Save</button>
+
+      </div>
+
+      <div class="db-config-panel" id="canva-config" style="display:none;">
+        <div class="db-section-label">Canva Report</div>
+
+        <div class="db-section-label" style="margin-top:10px;">Metrics</div>
+        <div id="canva-metrics-editor"></div>
+
+        <button class="db-btn db-btn-primary db-btn-sm" onclick="requeryChart()" style="margin-top:10px;">↻ Refresh</button>
+      </div>
+
+      <div class="db-config-panel" id="report-config" style="display:none;">
+        <div class="db-section-label">Impact Report</div>
+        <div class="db-form-group">
+          <label>Organization Name</label>
+          <input type="text" id="cfg-rpt-org-name" placeholder="e.g. Global Impact Ministries" maxlength="200" oninput="updateReportProp('org_name', this.value)">
+        </div>
+
+        <div class="db-section-label" style="margin-top:10px;">Display Options</div>
+        <div class="db-form-group db-form-group--checkbox">
+          <input type="checkbox" id="cfg-rpt-show-geo-list" onchange="updateReportProp('show_geo_list', this.checked)">
+          <label for="cfg-rpt-show-geo-list">Show location names on geographic reach</label>
+        </div>
+
+        <div class="db-section-label" style="margin-top:10px;">Metrics</div>
+        <div id="report-metrics-editor"></div>
+
+        <button class="db-btn db-btn-primary db-btn-sm" onclick="requeryChart()" style="margin-top:10px;">↻ Refresh</button>
+      </div>
+
+    </aside>
+
+  </div><!-- /.db-layout -->
+
+</div><!-- /.db-page -->
+
+<!-- ═══ ADD CHART MODAL ═══════════════════════════════════════════════ -->
+<div class="db-modal-overlay" id="add-chart-modal" style="display:none;">
+  <div class="db-modal">
+    <div class="db-modal-header">
+      <h3>Add Chart</h3>
+      <button class="db-modal-close" onclick="hideAddChartModal()">✕</button>
+    </div>
+    <div class="db-modal-body">
+      <p>Select a chart type to add to the canvas:</p>
+      <div class="db-chart-types db-chart-types-modal">
+        <div class="chart-type-tile chart-type-tile--templates" onclick="hideAddChartModal(); showTemplateModal()">
+          <div class="chart-type-icon">📋</div>
+          <div class="chart-type-label">Templates</div>
+        </div>
+        <div class="chart-type-tile" onclick="addChartToCanvas('bar'); hideAddChartModal()">
+          <div class="chart-type-icon">▬</div>
+          <div class="chart-type-label">Bar Chart</div>
+        </div>
+        <div class="chart-type-tile" onclick="addChartToCanvas('line'); hideAddChartModal()">
+          <div class="chart-type-icon">📈</div>
+          <div class="chart-type-label">Line Chart</div>
+        </div>
+        <div class="chart-type-tile" onclick="addChartToCanvas('pie'); hideAddChartModal()">
+          <div class="chart-type-icon">◕</div>
+          <div class="chart-type-label">Pie Chart</div>
+        </div>
+        <div class="chart-type-tile" onclick="addChartToCanvas('donut'); hideAddChartModal()">
+          <div class="chart-type-icon">◎</div>
+          <div class="chart-type-label">Donut Chart</div>
+        </div>
+        <div class="chart-type-tile" onclick="addChartToCanvas('table'); hideAddChartModal()">
+          <div class="chart-type-icon">⊞</div>
+          <div class="chart-type-label">Table</div>
+        </div>
+        <div class="chart-type-tile" onclick="addChartToCanvas('metric'); hideAddChartModal()">
+          <div class="chart-type-icon">123</div>
+          <div class="chart-type-label">Metric / KPI</div>
+        </div>
+        <div class="chart-type-tile" onclick="addChartToCanvas('grouped_table'); hideAddChartModal()">
+          <div class="chart-type-icon">⊟</div>
+          <div class="chart-type-label">Grouped Table</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ TEMPLATE BROWSER MODAL ══════════════════════════════════
+     Uniform list of templates (hardcoded reports + de_dashboard_templates
+     registry entries). Filter chips group by connector_id. Icons / per-
+     template schematic previews dropped in favor of a clean name +
+     description list (a teammate's spec 2026-05-22).
+     ───────────────────────────────────────────────────────────────────── -->
+<div class="db-modal-overlay" id="template-modal" style="display:none;">
+  <div class="db-modal" style="width:620px;max-height:80vh;display:flex;flex-direction:column;">
+    <div class="db-modal-header">
+      <h3>Choose a Template</h3>
+      <button class="db-modal-close" onclick="hideTemplateModal()">✕</button>
+    </div>
+    {# #3 — Edit + Delete superuser-only toolbar. Sits above
+       the body so it's visible without scrolling. Buttons drive the
+       picker into a "select to delete" / "select to edit" mode that
+       reuses the existing template list rendering. #}
+    {% if is_superuser %}
+    <div class="db-modal-toolbar" id="template-modal-toolbar" style="display:flex;gap:8px;justify-content:flex-end;padding:8px 16px;border-bottom:1px solid #eee;">
+      <button class="db-btn db-btn-secondary" id="btn-template-edit" onclick="startTemplateEditPick()">Edit template</button>
+      <button class="db-btn db-btn-secondary" id="btn-template-delete" onclick="startTemplateDeletePick()" style="color:#c0392b;border-color:#e2b4ad;">Delete template</button>
+    </div>
+    {% endif %}
+    <div class="db-modal-body" style="overflow-y:auto;">
+      <p style="margin-bottom:12px;" id="template-modal-prompt">Select a report template to add to the canvas:</p>
+      <div id="template-filter-chips" class="template-filter-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">
+        <!-- Populated by _renderTemplateModal() in builder.js. Chip
+             values are connector_id; the "All" chip uses "*" -->
+      </div>
+      <div id="template-list" class="template-list">
+        <!-- Populated by _renderTemplateModal(). Each row is a
+             .template-row with data-connector-id + data-template-id
+             + data-is-available; click invokes _onTemplateRowClick(). -->
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ #3 — DELETE TEMPLATE CONFIRMATION MODAL ════════════════════
+     Two-step confirm: user picked a template to delete from the Choose
+     Template dialog; this modal makes them type the name to confirm. ── -->
+<div class="db-modal-overlay" id="template-delete-modal" style="display:none;">
+  <div class="db-modal" style="width:460px;">
+    <div class="db-modal-header">
+      <h3>Delete template</h3>
+      <button class="db-modal-close" onclick="closeTemplateDeleteModal()">✕</button>
+    </div>
+    <div class="db-modal-body">
+      <p style="margin-bottom:14px;">This permanently deletes the template <strong id="template-delete-name"></strong> from the registry. Dashboards already cloned from this template are unaffected.</p>
+      <div class="db-form-group">
+        <label for="template-delete-confirm-input">Type the template name to confirm:</label>
+        <input type="text" id="template-delete-confirm-input" autocomplete="off" placeholder="">
+        <div class="db-form-error" id="template-delete-error" style="display:none;color:#c0392b;font-size:12px;margin-top:6px;"></div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px;">
+        <button class="db-btn" onclick="closeTemplateDeleteModal()">Cancel</button>
+        <button class="db-btn" id="template-delete-confirm-btn" onclick="confirmTemplateDelete()" style="background:#c0392b;color:#fff;">Delete</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ NEW DASHBOARD NAME MODAL ═════════════════════════════════════════ -->
+<div class="db-modal-overlay" id="new-dash-modal" style="display:none;">
+  <div class="db-modal" style="width:420px;">
+    <div class="db-modal-header">
+      <h3>Create New Dashboard</h3>
+      <button class="db-modal-close" onclick="hideNewDashModal()">✕</button>
+    </div>
+    <div class="db-modal-body">
+      <div class="db-form-group">
+        <label for="new-dash-name-input">Dashboard name</label>
+        <input type="text" id="new-dash-name-input" placeholder="e.g. Q2 Facebook Campaign" autocomplete="off" maxlength="200">
+      </div>
+      <div class="db-form-group">
+        <label for="new-dash-menu-select">Menu</label>
+        <select id="new-dash-menu-select"></select>
+      </div>
+      <!-- built-in theme picker; shown only when creating a
+           canvas page ("+ Canvas"), hidden for every other caller. -->
+      <div class="db-form-group" id="new-dash-theme-group" style="display:none;">
+        <label>Theme</label>
+        <div class="db-theme-picker" id="new-dash-theme-row"></div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+        <button class="db-btn" onclick="hideNewDashModal()">Cancel</button>
+        <button class="db-btn db-btn-primary" id="new-dash-confirm">Create</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ NEW MENU MODAL ═════════════════════════════════════════ -->
+<!-- Opens from the "+ Add Menu" button next to the Dashboards section
+     header in the left panel. Only the title is collected — the menu
+     appends at position N (bottom) on save. Uniqueness is enforced by
+     the server; the inline error span shows the response message. -->
+<div class="db-modal-overlay" id="new-menu-modal" style="display:none;">
+  <div class="db-modal" style="width:420px;">
+    <div class="db-modal-header">
+      <h3>Add Menu</h3>
+      <button class="db-modal-close" onclick="hideAddMenuModal()">✕</button>
+    </div>
+    <div class="db-modal-body">
+      <div class="db-form-group">
+        <label for="new-menu-name-input">Menu name</label>
+        <input type="text" id="new-menu-name-input" placeholder="e.g. Quarterly Review" autocomplete="off" maxlength="200">
+        <div class="db-form-error" id="new-menu-error" style="display:none;"></div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+        <button class="db-btn" onclick="hideAddMenuModal()">Cancel</button>
+        <button class="db-btn db-btn-primary" id="new-menu-confirm">Add Menu</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ DELETE DASHBOARD MODAL ═══════════════════════════════════════════ -->
+<div class="db-modal-overlay" id="delete-dash-modal" style="display:none;">
+  <div class="db-modal" style="width:380px;">
+    <div class="db-modal-header">
+      <h3>Delete Dashboard</h3>
+      <button class="db-modal-close" onclick="document.getElementById('delete-dash-modal').style.display='none'">&#10005;</button>
+    </div>
+    <div class="db-modal-body">
+      <p style="margin-bottom:18px;">Are you sure you want to delete "<strong id="delete-dash-name"></strong>"? This cannot be undone.</p>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="db-btn" onclick="document.getElementById('delete-dash-modal').style.display='none'">Cancel</button>
+        <button class="db-btn" id="delete-dash-confirm" style="background:#e53e3e;color:#fff;">Delete</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ TEMPLATE TEAM-PICKER MODAL ═════════════════════════════ -->
+<!-- Shown when a team-less privileged user (e.g. a superuser) installs a
+     template: a template binds to a team's connected data-source accounts,
+     so the user picks which team to install it into. The list is the same
+     workspace-scoped set the properties-panel team picker uses. -->
+<div class="db-modal-overlay" id="template-team-modal" style="display:none;">
+  <div class="db-modal" style="width:420px;">
+    <div class="db-modal-header">
+      <h3>Choose a team</h3>
+      <button class="db-modal-close" onclick="document.getElementById('template-team-modal').style.display='none'">&#10005;</button>
+    </div>
+    <div class="db-modal-body">
+      <p class="db-field-hint" style="margin-bottom:12px;">This template uses a team's connected data sources. Pick the team to install it into.</p>
+      <div class="db-form-group">
+        <select id="template-team-select"></select>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+        <button class="db-btn" onclick="document.getElementById('template-team-modal').style.display='none'">Cancel</button>
+        <button class="db-btn db-btn-primary" id="template-team-confirm">Install</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ DASHBOARD FILTERS MODAL ════════════════════════════════ -->
+<!-- Add / remove / rename dashboard-level filters. Opens from the canvas
+     filter-strip "+ Filters" button, leaving the right-side panel
+     untouched so the user can keep editing a chart while configuring
+     dashboard filters. Value pickers (the popovers on the strip
+     buttons) live with the buttons themselves, not in this modal. -->
+<div class="db-modal-overlay" id="dashboard-filters-modal" style="display:none;">
+  <div class="db-modal" style="width:520px;">
+    <div class="db-modal-header">
+      <h3>Dashboard Filters</h3>
+      <button class="db-modal-close" onclick="closeDashboardFiltersModal()">&#10005;</button>
+    </div>
+    <div class="db-modal-body">
+      <p style="font-size:12px;color:#666;margin-bottom:12px;">
+        Filters appear at the top of the dashboard and apply to every chart
+        whose data view matches. Pick values from the strip buttons.
+      </p>
+      <div id="dashboard-filters-list"></div>
+      <!-- + Add Filter button moved into the action row inside
+           dashboard-filters-list (next to the move ↑ ↓ and remove −
+           buttons), mirroring the table-columns editor. -->
+
+      <!-- author-curated Date basis choices. When one or more rows
+           exist, the dashboard VIEWER gets a "Date basis" dropdown that
+           re-scopes the global time range on the chosen Echo date field
+           (e.g. Created vs Closed). The first row is the default. Empty -> no
+           viewer selector. Rendered by renderDateBasisChoicesEditor. -->
+      <div style="border-top:1px solid #e2e2e2;margin-top:16px;padding-top:12px;">
+        <div style="font-weight:600;font-size:13px;margin-bottom:4px;">Date basis choices <span style="color:#888;font-weight:400;font-size:11px;">(viewer-selectable)</span></div>
+        <p style="font-size:12px;color:#666;margin-bottom:8px;">
+          Let viewers switch which date field the time range filters on
+          (Echo, e.g. Created vs Closed). Add a row per choice; the first is the
+          default. Leave empty to keep the fixed per-chart setting.
+        </p>
+        <div id="date-basis-choices-list"></div>
+        <button class="db-btn db-btn-sm db-btn-add" onclick="addDateBasisChoice()" style="margin-top:6px;">+ Add date-basis choice</button>
+      </div>
+
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+        <button class="db-btn db-btn-primary" onclick="closeDashboardFiltersModal()">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ UNSAVED CHANGES MODAL ════════════════════════════════════════════ -->
+<div class="db-modal-overlay" id="unsaved-modal" style="display:none;">
+  <div class="db-modal" style="width:380px;">
+    <div class="db-modal-header">
+      <h3>Unsaved Changes</h3>
+    </div>
+    <div class="db-modal-body">
+      <p style="margin-bottom:18px;">You have unsaved changes to "<strong id="unsaved-dash-name"></strong>". What would you like to do?</p>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="db-btn" id="unsaved-cancel">Cancel</button>
+        <button class="db-btn" id="unsaved-discard">Discard</button>
+        <button class="db-btn db-btn-primary" id="unsaved-save">Save First</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ SAVE AS TEMPLATE MODAL ════════════════════════════════════
+     Promotes the current dashboard into the de_dashboard_templates registry.
+     Wired by showSaveAsTemplateModal() in builder.js. ════════════════════════ -->
+<div class="db-modal-overlay" id="save-as-template-modal" style="display:none;">
+  <div class="db-modal" style="width:520px;max-height:80vh;overflow-y:auto;">
+    <div class="db-modal-header">
+      <h3>Save as template</h3>
+    </div>
+    <div class="db-modal-body">
+      <p style="margin-bottom:12px;color:var(--db-text-muted,#666);">
+        Freeze this dashboard into the template library. New workspaces and
+        wizard signups can install it; their connected accounts replace your
+        placeholder fields at install time.
+      </p>
+
+      <div class="db-form-group">
+        <label for="sat-name">Display name</label>
+        <input type="text" id="sat-name" maxlength="200" placeholder="e.g. Meta — Spend & ROAS, weekly">
+      </div>
+
+      <div class="db-form-group">
+        <label for="sat-template-id">Template id (slug)</label>
+        <input type="text" id="sat-template-id" maxlength="80" placeholder="e.g. meta_spend_roas_v1" pattern="[a-z0-9_]+">
+        <p class="db-form-help" style="font-size:11px;color:var(--db-text-muted,#666);margin-top:2px;">Lowercase, underscores only. Used as the registry primary key.</p>
+      </div>
+
+      <div class="db-form-group">
+        <label for="sat-description">Description</label>
+        <textarea id="sat-description" rows="2" maxlength="500" placeholder="One-sentence description shown in the picker."></textarea>
+      </div>
+
+      <div class="db-form-row" style="display:flex;gap:12px;">
+        <div class="db-form-group" style="flex:1;">
+          <label for="sat-connector-id">Connector id</label>
+          <select id="sat-connector-id">
+            <option value="meta_ads">meta_ads (Facebook Ads)</option>
+            <option value="instagram">instagram</option>
+            <option value="google_ads">google_ads</option>
+            <option value="google_analytics_4">google_analytics_4</option>
+            <option value="echo">echo</option>
+            <option value="chatwoot">chatwoot</option>
+            <option value="youtube">youtube</option>
+            <option value="disciple_tools">disciple_tools</option>
+          </select>
+        </div>
+        <div class="db-form-group" style="flex:1;">
+          <label for="sat-pack-id">Pack id</label>
+          <input type="text" id="sat-pack-id" maxlength="40" placeholder="e.g. meta" pattern="[a-z0-9_]+">
+          <p class="db-form-help" style="font-size:11px;color:var(--db-text-muted,#666);margin-top:2px;">Groups templates the wizard installs together.</p>
+        </div>
+      </div>
+
+      <div class="db-form-row" style="display:flex;gap:12px;">
+        <div class="db-form-group" style="flex:1;">
+          <label for="sat-menu-title">Menu title</label>
+          <input type="text" id="sat-menu-title" maxlength="60" placeholder="e.g. Meta">
+          <p class="db-form-help" style="font-size:11px;color:var(--db-text-muted,#666);margin-top:2px;">Workspace menu the cloned dashboard lands under.</p>
+        </div>
+        <div class="db-form-group" style="width:120px;">
+          <label for="sat-menu-position">Menu position</label>
+          <input type="number" id="sat-menu-position" value="0" min="0" max="99">
+        </div>
+      </div>
+
+      <div class="db-form-group">
+        <label>Placeholder fields</label>
+        <p class="db-form-help" style="font-size:11px;color:var(--db-text-muted,#666);margin:0 0 6px;">Filter fields whose values will be swapped at install time for the consumer's connected asset ids. Pre-checked = recognized asset-bound field.</p>
+        <div id="sat-placeholder-fields" class="db-checkbox-list" style="max-height:120px;">
+          <p style="color:var(--db-text-muted,#666);padding:8px;">No filter fields detected — the template will instantiate as-is.</p>
+        </div>
+      </div>
+
+      <div id="sat-error" style="display:none;color:#b00020;background:#fff5f5;border:1px solid #ffd6d6;padding:8px 12px;border-radius:4px;margin-top:8px;font-size:13px;"></div>
+
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px;">
+        <button class="db-btn" onclick="closeSaveAsTemplateModal()">Cancel</button>
+        <button class="db-btn db-btn-primary" id="sat-submit" onclick="submitSaveAsTemplate()">Save template</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Inject API base URL (handles /assets/ nginx prefix correctly) -->
+<script nonce="{{ csp_nonce }}">
+  const DASHBOARD_BASE = "{{ url_for('dashboard_builder.index') }}";
+  // #3 — Edit + Delete affordances in the Choose Template
+  // dialog are superuser-only. Server-side gating is in
+  // _superuser_required_or_abort; this flag governs UI disclosure.
+  const IS_SUPERUSER = {{ is_superuser | tojson }};
+</script>
+<script src="{{ url_for('static', filename='dashboard_builder/builder.js') }}?v=20261007a"></script>
+<script src="{{ url_for('static', filename='dashboard_builder/drag.js') }}?v=20260414a"></script>
+<script src="{{ url_for('static', filename='dashboard_builder/charts.js') }}?v=20261007a"></script>
+<script src="{{ url_for('static', filename='dashboard_builder/filters.js') }}?v=20260626d"></script>
+<!-- dashboard-level filter controls (distinct from per-chart filters.js). -->
+<script src="{{ url_for('static', filename='dashboard_builder/dashboard_filters.js') }}?v=20260713a"></script>
+
+{% endblock %}
+{% endblock %}

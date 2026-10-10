@@ -1,0 +1,186 @@
+{% extends "base_v2.html" %}
+
+{% block title %}Import Logs - Kavanah Analytics Management Console{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Cloudscape overrides for base.html classes */
+.card { background:var(--cs-bg-primary); border:1px solid var(--cs-border-default); border-radius:var(--cs-radius-m); box-shadow:var(--cs-shadow-xs); padding:var(--cs-space-xl); max-width:900px; }
+.card h2 { font-size:var(--cs-font-size-xl); font-weight:var(--cs-font-weight-bold); color:var(--cs-text-heading); margin:0 0 var(--cs-space-xs); }
+.help-text { font-size:var(--cs-font-size-s); color:var(--cs-text-secondary); margin-bottom:var(--cs-space-m); }
+.btn { display:inline-flex; align-items:center; height:32px; padding:0 14px; font-family:var(--cs-font); font-size:var(--cs-font-size-m); font-weight:var(--cs-font-weight-medium); border-radius:var(--cs-radius-s); border:1px solid var(--cs-btn-normal-border); background:var(--cs-btn-normal-bg); color:var(--cs-btn-normal-text); cursor:pointer; text-decoration:none; transition:all var(--cs-transition-fast); }
+.btn:hover { background:var(--cs-btn-normal-hover-bg); border-color:var(--cs-text-secondary); text-decoration:none; }
+.btn-sm { height:28px; padding:0 10px; font-size:var(--cs-font-size-xs); }
+.btn-secondary { background:var(--cs-btn-normal-bg); color:var(--cs-btn-normal-text); border-color:var(--cs-btn-normal-border); }
+.btn-secondary:hover { background:var(--cs-btn-normal-hover-bg); }
+.btn-danger { border-color:var(--cs-error); color:var(--cs-error); background:var(--cs-bg-primary); }
+.btn-danger:hover { background:var(--cs-error-bg); }
+.actions { display:flex; gap:6px; }
+table { width:100%; border-collapse:collapse; font-size:var(--cs-font-size-m); }
+th { text-align:left; font-weight:var(--cs-font-weight-bold); color:var(--cs-text-secondary); font-size:var(--cs-font-size-xs); text-transform:uppercase; letter-spacing:0.04em; padding:10px var(--cs-space-m); border-bottom:1px solid var(--cs-border-default); background:var(--cs-bg-secondary); }
+td { padding:10px var(--cs-space-m); border-bottom:1px solid var(--cs-border-divider); color:var(--cs-text-primary); }
+tbody tr { transition:background var(--cs-transition-fast); }
+tbody tr:hover { background:var(--cs-bg-hover); }
+tbody tr:last-child td { border-bottom:none; }
+.empty-state { text-align:center; padding:var(--cs-space-xxxl) var(--cs-space-l); color:var(--cs-text-secondary); }
+.empty-state-icon { font-size:40px; margin-bottom:var(--cs-space-m); }
+.empty-state h3 { color:var(--cs-text-heading); margin-bottom:var(--cs-space-xs); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Import Logs</h2>
+    <p class="help-text">View and manage import log files from the data import processes.</p>
+
+    <div style="margin: 20px 0;">
+        <input type="text"
+               id="log-search"
+               placeholder="Search log files by name..."
+               style="max-width: 400px;">
+    </div>
+
+    {% if logs %}
+    <table id="logs-table">
+        <thead>
+            <tr>
+                <th>Filename</th>
+                <th>Size</th>
+                <th>Modified</th>
+                <th style="width: 240px;">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for log in logs %}
+            <tr class="log-row" data-filename="{{ log.name }}">
+                <td>
+                    <a href="{{ url_for('view_log', filename=log.name) }}"
+                       class="log-link">
+                        {{ log.name }}
+                    </a>
+                </td>
+                <td>{{ log.size }}</td>
+                <td>{{ log.modified }}</td>
+                <td>
+                    <div class="actions">
+                        <a href="{{ url_for('view_log', filename=log.name) }}"
+                           class="btn btn-sm">View</a>
+                        <button onclick="saveLog('{{ log.name }}', '{{ url_for('download_log', filename=log.name) }}')"
+                                class="btn btn-sm btn-secondary">Save As</button>
+                        <button onclick="deleteLog('{{ log.name }}')"
+                                class="btn btn-sm btn-danger">Delete</button>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-state-icon">📄</div>
+        <p>No log files found.</p>
+    </div>
+    {% endif %}
+</div>
+
+<script nonce="{{ csp_nonce }}">
+// Search functionality
+document.getElementById('log-search').addEventListener('input', function(e) {
+    const searchTerm = e.target.value.toLowerCase();
+    const rows = document.querySelectorAll('.log-row');
+
+    rows.forEach(row => {
+        const filename = row.getAttribute('data-filename').toLowerCase();
+        if (filename.includes(searchTerm)) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+});
+
+// Save log file with native OS file picker (Chrome/Edge) or fallback download
+async function saveLog(filename, downloadUrl) {
+    if ('showSaveFilePicker' in window) {
+        try {
+            const fileHandle = await window.showSaveFilePicker({
+                suggestedName: filename,
+                types: [{ description: 'Log Files', accept: { 'text/plain': ['.log', '.txt'] } }]
+            });
+            const response = await fetch(downloadUrl);
+            const blob = await response.blob();
+            const writable = await fileHandle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+        } catch (err) {
+            if (err.name !== 'AbortError') {
+                // Fallback for unexpected errors
+                window.location.href = downloadUrl;
+            }
+        }
+    } else {
+        // Firefox/Safari fallback: regular download
+        window.location.href = downloadUrl;
+    }
+}
+
+// Delete log file
+function deleteLog(filename) {
+    if (!confirm(`Are you sure you want to delete ${filename}?`)) {
+        return;
+    }
+
+    fetch(`{{ url_for('delete_log', filename='PLACEHOLDER') }}`.replace('PLACEHOLDER', filename), {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Reload the page to refresh the list
+            window.location.reload();
+        } else {
+            alert('Failed to delete log file: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        alert('Failed to delete log file: ' + error);
+    });
+}
+</script>
+
+<style>
+.log-link {
+    color: var(--cs-btn-primary-bg, #0972D3);
+    text-decoration: none;
+    font-family: monospace;
+}
+
+.log-link:hover {
+    text-decoration: underline;
+}
+
+#log-search {
+    margin-bottom: 15px;
+    width: 100%;
+    max-width: 400px;
+    height: 36px;
+    padding: 0 12px;
+    border: 1px solid var(--cs-border-input);
+    border-radius: var(--cs-radius-s);
+    font-family: var(--cs-font);
+    font-size: var(--cs-font-size-m);
+    color: var(--cs-text-primary);
+    transition: border-color var(--cs-transition-fast), box-shadow var(--cs-transition-fast);
+}
+#log-search:hover { border-color: var(--cs-text-secondary); }
+#log-search:focus {
+    outline: none;
+    border-color: var(--cs-border-input-focus);
+    box-shadow: 0 0 0 2px rgba(9, 114, 211, 0.25);
+}
+#log-search::placeholder { color: var(--cs-text-disabled); }
+</style>
+{% endblock %}

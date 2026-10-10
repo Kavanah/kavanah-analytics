@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pick a team - Kavanah Analytics</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/cloudscape.css') }}">
+    <style>
+        body {
+            background: var(--cs-bg-page);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 84px 20px 40px;
+        }
+        .login-topbar {
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            height: 56px;
+            background: var(--cs-nav-bg);
+            display: flex;
+            align-items: center;
+            padding: 0 24px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+            z-index: 10;
+        }
+        .login-topbar-logo { height: 24px; width: auto; margin-right: 12px; }
+        .login-topbar-title { font-size: 17px; font-weight: 700; color: #FFFFFF; }
+
+        .picker-container { width: 100%; max-width: 480px; margin-top: 28px; }
+        .picker-card {
+            background: var(--cs-bg-primary);
+            border: 1px solid var(--cs-border-default);
+            border-radius: var(--cs-radius-l);
+            box-shadow: var(--cs-shadow-m);
+            padding: 40px 36px 32px;
+        }
+        .picker-header { text-align: center; margin-bottom: 20px; }
+        .picker-header h1 {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--cs-text-heading);
+            margin: 0 0 8px;
+        }
+        .picker-header p {
+            font-size: var(--cs-font-size-m);
+            color: var(--cs-text-secondary);
+            margin: 0;
+            line-height: 1.5;
+        }
+        .picker-team-list {
+            list-style: none;
+            padding: 0;
+            margin: 16px 0 0;
+            border-top: 1px solid var(--cs-border-divider);
+        }
+        .picker-team-list li {
+            border-bottom: 1px solid var(--cs-border-divider);
+        }
+        .picker-team-list label {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 4px;
+            cursor: pointer;
+            color: var(--cs-text-primary);
+            font-size: var(--cs-font-size-m);
+        }
+        .picker-team-list input[type="radio"] {
+            margin: 0;
+            width: 18px;
+            height: 18px;
+            accent-color: var(--cs-btn-primary-bg);
+            cursor: pointer;
+        }
+        .picker-create-general {
+            border: 1px dashed var(--cs-border-input);
+            border-radius: var(--cs-radius-m);
+            padding: 12px 14px;
+            margin-top: 14px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+            color: var(--cs-text-primary);
+            font-size: var(--cs-font-size-m);
+        }
+        .picker-create-general input[type="radio"] {
+            margin: 0;
+            width: 18px;
+            height: 18px;
+            accent-color: var(--cs-btn-primary-bg);
+            cursor: pointer;
+        }
+        .picker-cta { margin-top: 24px; }
+        .picker-cta button {
+            display: block;
+            width: 100%;
+            height: 44px;
+            border-radius: var(--cs-radius-s);
+            font-size: var(--cs-font-size-l);
+            font-weight: 600;
+            background: var(--cs-btn-primary-bg);
+            color: #FFFFFF;
+            border: 1px solid var(--cs-btn-primary-bg);
+            cursor: pointer;
+        }
+        .picker-cta button:hover { background: var(--cs-btn-primary-bg-hover); }
+    </style>
+</head>
+<body>
+    <a href="#wizard-main" class="cs-skip-link" data-testid="wizard-skip-link">Skip to main content</a>
+    <div class="login-topbar">
+        <img src="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}" alt="" class="login-topbar-logo">
+        <span class="login-topbar-title">Kavanah Analytics</span>
+    </div>
+
+    <main class="picker-container" id="wizard-main">
+        {% include "_onboarding_progress.html" %}
+
+        <div class="picker-card">
+            <div class="picker-header">
+                <h1>Pick a team to join</h1>
+                <p>Your invite didn&rsquo;t name a team. Pick an existing one or start in a fresh &ldquo;General&rdquo; team &mdash; you can always be added to more later.</p>
+            </div>
+
+            <form method="POST" action="{{ url_for('analytics.onboarding_invite_team_picker_page') }}"
+                  data-testid="invite-team-picker-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+                <ul class="picker-team-list" data-testid="invite-team-picker-list"
+                    role="radiogroup" aria-label="Pick a team to join">
+                    {% for team in teams %}
+                    <li>
+                        <label>
+                            <input type="radio"
+                                   name="team_esid"
+                                   value="{{ team.team_esid }}"
+                                   data-testid="invite-team-picker-radio"
+                                   {% if loop.first %}checked{% endif %}>
+                            <span>{{ team.team_title }}</span>
+                        </label>
+                    </li>
+                    {% endfor %}
+                </ul>
+
+                <label class="picker-create-general" data-testid="invite-team-picker-create-general">
+                    <input type="radio"
+                           name="team_esid"
+                           value=""
+                           data-testid="invite-team-picker-radio-general">
+                    <span>Start in a new &ldquo;General&rdquo; team</span>
+                </label>
+                <input type="hidden" name="create_general" value="1">
+
+                <div class="picker-cta">
+                    <button type="submit"
+                            data-testid="invite-team-picker-submit">Join team and continue</button>
+                </div>
+            </form>
+        </div>
+    </main>
+</body>
+</html>

@@ -1,0 +1,93 @@
+{# Cloudscape-style top navigation bar.
+
+   Optional includer-supplied vars (pass via {% with %}):
+     * nav_surface — '' (default) keeps the existing /profile-aware gear
+       logic; 'dashboards' forces the dashboards-side gear (Management
+       Console / Data Explorer / Elastic) so the /dashboard page can share
+       this partial instead of duplicating the whole nav.
+     * logout_url  — Sign-out target. Defaults to /assets/logout; the
+       dashboards surface passes /logout.
+#}
+{% set _nav_surface = nav_surface|default('') %}
+{% set _logout_url = logout_url|default('/assets/logout') %}
+<header class="cs-topnav">
+    <div class="cs-topnav-left">
+        {# K logo links to the dashboards landing from any
+           management-console / dashboard-builder page. #}
+        <a href="/dashboard" class="cs-topnav-logo-link" aria-label="Go to dashboards">
+            <img src="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5" alt="" class="cs-topnav-logo">
+        </a>
+        <span class="cs-topnav-title">{% block nav_title %}Kavanah Analytics{% endblock %}</span>
+        {% if current_user and current_user.roles %}
+        <span class="cs-topnav-context">{{ current_user.roles | first_role_display }}</span>
+        {% endif %}
+    </div>
+    <div class="cs-topnav-right">
+        {% if current_user %}
+        <a href="/docs/" target="_blank" rel="noopener"
+           class="cs-topnav-icon-btn" title="Documentation">
+            <i class="fas fa-book"></i>
+        </a>
+        <button class="cs-topnav-icon-btn" title="Share Feedback" onclick="openFeedbackModal()">
+            <i class="fas fa-comment"></i>
+        </button>
+        {# Settings menu — show the gear that matches the user's current
+           "home" section. On a regular MC page, that's MC. On the NEUTRAL
+           pages (/profile and /billing — reachable from both sides), it's
+           whichever side the user came from (back_url tells us). Rule from
+           the user: the neutral-page gear should match what the user would
+           see in the gear of the section they came from (2026-06-10:
+           /billing added — it previously fell into the MC branch and showed
+           "Dashboards" even when entered from the dashboards side). #}
+        {% set _on_neutral = request.path == '/profile' or request.path.startswith('/profile/')
+                             or request.path == '/billing' or request.path.startswith('/billing/') %}
+        {% set _neutral_back = back_url|default('') %}
+        {# Match both path-form (/assets/...) and absolute-URL form (http://host/assets/...).
+           nav_surface='dashboards' forces the dashboards-side gear regardless of path. #}
+        {% set _from_mc = False if _nav_surface == 'dashboards' else ((_on_neutral and '/assets' in _neutral_back) or not _on_neutral) %}
+        {% if _from_mc %}
+            {# hdr_dashboards_link migrated; sidebar_visible falls back to user_perms #}
+            {% set _show_settings = sidebar_visible('hdr_dashboards_link') or user_perms.hdr_elastic_link %}
+        {% else %}
+            {# db_management_console migrated; sidebar_visible falls back to user_perms #}
+            {% set _show_settings = sidebar_visible('db_management_console') or user_perms.db_data_explorer or user_perms.db_elastic %}
+        {% endif %}
+        {% if _show_settings %}
+        <span class="cs-topnav-user-wrapper u-relative">
+            <button class="cs-topnav-icon-btn" id="cs-settings-btn"
+                    title="Settings" aria-haspopup="true" aria-expanded="false">
+                <i class="fas fa-cog"></i>
+            </button>
+            <div class="cs-dropdown cs-hidden" id="cs-settings-dropdown">
+                {% if _from_mc %}
+                    {% if sidebar_visible('hdr_dashboards_link') %}
+                    <a href="/dashboard" class="cs-dropdown-item"><i class="fas fa-chart-line cs-dropdown-icon"></i> Dashboards</a>
+                    {% endif %}
+                    {% if user_perms.hdr_elastic_link %}
+                    <a href="/kibana" class="cs-dropdown-item"><i class="fas fa-database cs-dropdown-icon"></i> Elastic</a>
+                    {% endif %}
+                {% else %}
+                    {% if sidebar_visible('db_management_console') %}
+                    <a href="/assets/" class="cs-dropdown-item"><i class="fas fa-columns cs-dropdown-icon"></i> Management Console</a>
+                    {% endif %}
+                    {% if user_perms.db_data_explorer %}
+                    <a href="/assets/data-explorer/" class="cs-dropdown-item"><i class="fas fa-search cs-dropdown-icon"></i> Data Explorer</a>
+                    {% endif %}
+                    {% if user_perms.db_elastic %}
+                    <a href="/kibana" class="cs-dropdown-item"><i class="fas fa-database cs-dropdown-icon"></i> Elastic</a>
+                    {% endif %}
+                {% endif %}
+            </div>
+        </span>
+        {% endif %}
+        {# Billing button — left of the Profile link. Restricted to
+           superuser + workspace_owner (can_access_billing); links straight to
+           the Payment sub-page. #}
+        {% if can_access_billing %}
+        <a href="/billing/payment" class="cs-topnav-link u-no-underline" title="Billing"><i class="fas fa-credit-card u-mr-4 u-dim"></i> Billing</a>
+        {% endif %}
+        <a href="/profile" class="cs-topnav-user cs-topnav-link u-no-underline" title="My profile"><i class="fas fa-user-circle u-mr-4 u-dim"></i> {{ current_user.full_name or current_user.username }}</a>
+        <a href="{{ _logout_url }}" class="cs-topnav-link cs-topnav-logout">Sign out</a>
+        {% endif %}
+    </div>
+</header>

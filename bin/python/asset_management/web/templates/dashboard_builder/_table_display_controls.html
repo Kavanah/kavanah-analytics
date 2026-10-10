@@ -1,0 +1,27 @@
+<!-- shared partial (see _table_field_section.html for why). -->
+<!-- table-only display props. Shown by populateConfigPanel
+     only when chart_type === 'table'. -->
+<div class="db-form-group" id="cfg-table-font-size-group" data-mode="properties" style="display:none;">
+  <label>Table Font Size</label>
+  <select id="cfg-table-font-size" onchange="updateChartConfig('table_font_size', parseInt(this.value, 10)); requeryChart()">
+    <option value="9">9px</option>
+    <option value="10">10px</option>
+    <option value="11">11px</option>
+    <option value="12">12px</option>
+    <option value="13">13px</option>
+    <option value="14">14px</option>
+    <option value="15">15px</option>
+    <option value="16">16px</option>
+    <option value="18">18px</option>
+  </select>
+</div>
+<div class="db-form-group db-form-group--checkbox" id="cfg-cell-gradient-group" data-mode="properties" style="display:none;">
+  <label>
+    <input type="checkbox" id="cfg-cell-gradient-enabled" onchange="updateChartConfig('cell_gradient_enabled', this.checked); requeryChart()">
+    Cell shading (heatmap)
+  </label>
+</div>
+<div class="db-form-group db-color-row" id="cfg-cell-gradient-color-group" data-mode="properties" style="display:none;">
+  <label>Shading Color</label>
+  <input type="color" id="cfg-cell-gradient-color" value="#006d2c" oninput="updateChartConfig('cell_gradient_color', this.value); requeryChart()">
+</div>

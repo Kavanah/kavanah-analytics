@@ -1,0 +1,21 @@
+{
+  "properties": {
+    "id": {"type": "keyword"},
+    "user_id": {"type": "keyword"},
+    "user_name": {"type": "keyword"},
+    "is_scheduled_now": {"type": "boolean"},
+    "echo_tenant_subdomain": {"type": "keyword"},
+    "echo_tenant_esid": {"type": "keyword"},
+    "period_start": {"type": "date", "format": "yyyy-MM-dd"},
+    "period_end": {"type": "date", "format": "yyyy-MM-dd"},
+    "sent_messages_count": {"type": "integer"},
+    "hours_online_str": {"type": "keyword"},
+    "hours_online_decimal": {"type": "float"},
+    "claimed_conversations_count": {"type": "integer"},
+    "total_minutes_online": {"type": "integer"},
+    "hours_online_from_hourly": {"type": "float"},
+    "outcome_totals": {"type": "object", "dynamic": true},
+    "last_login_at": {"type": "date", "format": "MMMM dd, yyyy HH:mm:ss 'UTC'"},
+    "@timestamp": {"type": "date"}
+  }
+}

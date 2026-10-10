@@ -1,0 +1,873 @@
+{% extends "base_v2.html" %}
+
+{% block title %}Kavanah Analytics Management Console{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* ── Override base layout for full-width split panel ── */
+    .cs-content {
+        max-width: none;
+        padding: var(--cs-space-m) var(--cs-space-l);
+    }
+
+    /* ── Explorer container (split panel) ── */
+    .explorer-container {
+        display: flex;
+        gap: 0;
+        height: calc(100vh - var(--cs-header-height) - 40px);
+        min-height: 500px;
+        border: 1px solid var(--cs-border-default);
+        border-radius: var(--cs-radius-m);
+        overflow: hidden;
+        box-shadow: var(--cs-shadow-xs);
+    }
+
+    /* ── Tree panel (left) ── */
+    .tree-panel {
+        width: 350px;
+        min-width: 300px;
+        background: var(--cs-bg-primary);
+        border-right: 1px solid var(--cs-border-default);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    .tree-header {
+        padding: var(--cs-space-m) var(--cs-space-m);
+        border-bottom: 1px solid var(--cs-border-divider);
+        background: var(--cs-bg-primary);
+    }
+
+    .tree-header h2 {
+        margin: 0 0 var(--cs-space-s) 0;
+        font-size: var(--cs-font-size-l);
+        font-weight: var(--cs-font-weight-bold);
+        color: var(--cs-text-heading);
+    }
+
+    .search-container {
+        position: relative;
+        display: flex;
+        align-items: center;
+    }
+
+    .search-input {
+        width: 100%;
+        height: 32px;
+        padding: 0 50px 0 10px;
+        border: 1px solid var(--cs-border-input);
+        border-radius: var(--cs-radius-s);
+        font-family: var(--cs-font);
+        font-size: var(--cs-font-size-m);
+        color: var(--cs-text-primary);
+        transition: border-color var(--cs-transition-fast), box-shadow var(--cs-transition-fast);
+    }
+
+    .search-input:hover { border-color: var(--cs-text-secondary); }
+
+    .search-input:focus {
+        outline: none;
+        border-color: var(--cs-border-input-focus);
+        box-shadow: 0 0 0 2px rgba(9, 114, 211, 0.25);
+    }
+
+    .search-input::placeholder { color: var(--cs-text-disabled); }
+
+    .clear-search-btn {
+        position: absolute;
+        right: 5px;
+        border: none;
+        background: var(--cs-error);
+        color: white;
+        border-radius: var(--cs-radius-s);
+        cursor: pointer;
+        font-size: 11px;
+        font-weight: 600;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 4px 8px;
+        transition: background var(--cs-transition-fast);
+    }
+
+    .clear-search-btn:hover { background: #B80D0D; }
+    .clear-search-btn.visible { display: flex; }
+
+    .search-active .tree-node.item-node:not(.search-match) { display: none; }
+    .tree-node.search-match { background: var(--cs-warning-bg); }
+    .tree-node.search-match.selected { background: var(--cs-bg-active); }
+
+    .tree-content {
+        flex: 1;
+        overflow-y: auto;
+        overflow-x: hidden;
+        padding: var(--cs-space-xs);
+    }
+
+    .tree-loading,
+    .loading-message {
+        text-align: center;
+        padding: var(--cs-space-xxxl) var(--cs-space-l);
+        color: var(--cs-text-tertiary);
+    }
+
+    /* ── Tree nodes ── */
+    .tree-node {
+        display: flex;
+        align-items: center;
+        padding: 7px 10px;
+        cursor: pointer;
+        border-radius: var(--cs-radius-s);
+        transition: background var(--cs-transition-fast);
+        user-select: none;
+        position: relative;
+    }
+
+    .tree-node:hover { background: var(--cs-bg-hover); }
+
+    .tree-node.selected {
+        background: var(--cs-bg-active);
+        border-left: 4px solid var(--cs-btn-primary-bg);
+        padding-left: 6px;
+    }
+
+    .tree-node.category-node {
+        font-weight: var(--cs-font-weight-bold);
+        color: var(--cs-text-heading);
+        font-size: var(--cs-font-size-m);
+        margin-bottom: 2px;
+    }
+
+    .tree-node.type-node {
+        font-weight: var(--cs-font-weight-medium);
+        color: var(--cs-text-primary);
+        font-size: var(--cs-font-size-m);
+        padding-left: 20px;
+    }
+
+    .tree-node.item-node {
+        color: var(--cs-text-secondary);
+        font-size: var(--cs-font-size-m);
+        padding-left: 40px;
+    }
+
+    .expand-icon {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        margin-right: 8px;
+        transition: transform var(--cs-transition-normal);
+        font-size: 10px;
+        color: var(--cs-text-tertiary);
+    }
+
+    .expand-icon.expanded { transform: rotate(90deg); }
+
+    .node-icon {
+        margin-right: 8px;
+        font-size: 14px;
+        position: relative;
+    }
+
+    .node-label {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .node-count {
+        margin-left: 8px;
+        padding: 2px 8px;
+        background: var(--cs-bg-secondary);
+        border-radius: var(--cs-radius-pill);
+        font-size: 11px;
+        color: var(--cs-text-tertiary);
+        font-weight: var(--cs-font-weight-normal);
+    }
+
+    .add-btn {
+        margin-left: 8px;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        border: 1px solid var(--cs-btn-primary-bg);
+        background: var(--cs-bg-primary);
+        color: var(--cs-btn-primary-bg);
+        font-size: 16px;
+        line-height: 1;
+        cursor: pointer;
+        transition: all var(--cs-transition-fast);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+    }
+
+    .add-btn:hover {
+        background: var(--cs-btn-primary-bg);
+        color: white;
+    }
+
+    .tree-children { margin-left: 0; }
+    .tree-children.collapsed { display: none; }
+
+    /* ── Details panel (right) ── */
+    .details-panel {
+        flex: 1;
+        background: var(--cs-bg-primary);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        position: relative;
+    }
+
+    .details-header {
+        padding: var(--cs-space-m) var(--cs-space-l);
+        border-bottom: 1px solid var(--cs-border-divider);
+        background: var(--cs-bg-primary);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .details-header h2 {
+        margin: 0;
+        font-size: var(--cs-font-size-xl);
+        font-weight: var(--cs-font-weight-bold);
+        color: var(--cs-text-heading);
+    }
+
+    .details-actions {
+        display: flex;
+        gap: var(--cs-space-xs);
+    }
+
+    .details-actions:empty {
+        display: none;
+    }
+
+    .details-content {
+        flex: 1;
+        overflow-y: auto;
+        padding: var(--cs-space-l);
+        background: var(--cs-bg-page);
+    }
+
+    .loading-overlay {
+        position: absolute;
+        inset: 0;
+        background: rgba(255, 255, 255, 0.9);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 5;
+    }
+
+    .loading-overlay.hidden { display: none; }
+
+    .spinner {
+        width: 36px;
+        height: 36px;
+        border: 3px solid var(--cs-border-divider);
+        border-top-color: var(--cs-btn-primary-bg);
+        border-radius: 50%;
+        animation: cs-spin 0.8s linear infinite;
+    }
+
+    /* ── Backup toolbar ── */
+    .backup-toolbar {
+        display: flex;
+        gap: var(--cs-space-xs);
+        align-items: center;
+        padding: var(--cs-space-xs) var(--cs-space-m);
+        border-bottom: 1px solid var(--cs-border-divider);
+    }
+
+    .backup-action-btn {
+        height: 28px;
+        padding: 0 14px;
+        border: 1px solid var(--cs-btn-primary-bg);
+        border-radius: var(--cs-radius-s);
+        cursor: pointer;
+        font-family: var(--cs-font);
+        font-size: var(--cs-font-size-xs);
+        font-weight: var(--cs-font-weight-medium);
+        background: var(--cs-btn-primary-bg);
+        color: var(--cs-btn-primary-text);
+        transition: background var(--cs-transition-fast);
+    }
+
+    .backup-action-btn:hover { background: var(--cs-btn-primary-bg-hover); }
+
+    .backup-action-btn.restore {
+        background: var(--cs-btn-normal-bg);
+        color: var(--cs-btn-normal-text);
+        border-color: var(--cs-btn-normal-border);
+    }
+
+    .backup-action-btn.restore:hover {
+        background: var(--cs-btn-normal-hover-bg);
+    }
+
+    .last-backup-label {
+        font-size: var(--cs-font-size-xs);
+        color: var(--cs-text-tertiary);
+        margin-left: var(--cs-space-xxs);
+    }
+
+    /* ── Backup/Restore modals ── */
+    .bk-modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 7, 22, 0.5);
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        backdrop-filter: blur(2px);
+    }
+
+    .bk-modal {
+        background: var(--cs-bg-primary);
+        border-radius: var(--cs-radius-l);
+        padding: var(--cs-space-xl) var(--cs-space-xxl);
+        min-width: 340px;
+        max-width: 480px;
+        box-shadow: var(--cs-shadow-modal);
+        font-family: var(--cs-font);
+    }
+
+    .bk-modal h3 {
+        margin: 0 0 var(--cs-space-m) 0;
+        font-size: var(--cs-font-size-xl);
+        font-weight: var(--cs-font-weight-bold);
+        color: var(--cs-text-heading);
+    }
+
+    .bk-modal p {
+        margin: 0 0 var(--cs-space-s) 0;
+        color: var(--cs-text-primary);
+        font-size: var(--cs-font-size-m);
+    }
+
+    .bk-select {
+        width: 100%;
+        height: 32px;
+        padding: 0 10px;
+        border: 1px solid var(--cs-border-input);
+        border-radius: var(--cs-radius-s);
+        font-family: var(--cs-font);
+        font-size: var(--cs-font-size-m);
+        margin-bottom: var(--cs-space-m);
+    }
+
+    .bk-select:focus {
+        outline: none;
+        border-color: var(--cs-border-input-focus);
+        box-shadow: 0 0 0 2px rgba(9, 114, 211, 0.25);
+    }
+
+    .bk-modal-actions {
+        display: flex;
+        gap: var(--cs-space-xs);
+        justify-content: flex-end;
+        margin-top: var(--cs-space-m);
+    }
+
+    .bk-btn {
+        height: 32px;
+        padding: 0 16px;
+        border: none;
+        border-radius: var(--cs-radius-s);
+        cursor: pointer;
+        font-family: var(--cs-font);
+        font-size: var(--cs-font-size-m);
+        font-weight: var(--cs-font-weight-medium);
+        transition: background var(--cs-transition-fast);
+    }
+
+    .bk-btn-primary { background: var(--cs-btn-primary-bg); color: #fff; }
+    .bk-btn-primary:hover { background: var(--cs-btn-primary-bg-hover); }
+    .bk-btn-secondary { background: var(--cs-bg-secondary); color: var(--cs-text-primary); border: 1px solid var(--cs-border-default); }
+    .bk-btn-secondary:hover { background: var(--cs-bg-hover); }
+    .bk-btn-danger { background: var(--cs-error); color: #fff; }
+    .bk-btn-danger:hover { background: #B80D0D; }
+
+    .bk-spinner {
+        display: inline-block;
+        width: 18px;
+        height: 18px;
+        border: 3px solid var(--cs-border-divider);
+        border-top-color: var(--cs-btn-primary-bg);
+        border-radius: 50%;
+        animation: bk-spin 0.7s linear infinite;
+        vertical-align: middle;
+        margin-right: 8px;
+    }
+
+    @keyframes bk-spin { to { transform: rotate(360deg); } }
+
+    .bk-success { color: var(--cs-success); font-weight: var(--cs-font-weight-medium); }
+    .bk-error { color: var(--cs-error); font-weight: var(--cs-font-weight-medium); }
+
+    /* ── Dynamic buttons (generated by tree-explorer.js) ── */
+    .btn {
+        display: inline-flex;
+        align-items: center;
+        height: 32px;
+        padding: 0 14px;
+        background: var(--cs-btn-normal-bg);
+        color: var(--cs-text-link);
+        text-decoration: none;
+        border-radius: var(--cs-radius-s);
+        border: 1px solid var(--cs-btn-normal-border);
+        cursor: pointer;
+        font-family: var(--cs-font);
+        font-size: var(--cs-font-size-m);
+        font-weight: var(--cs-font-weight-medium);
+        transition: all var(--cs-transition-fast);
+    }
+
+    .btn:hover {
+        background: var(--cs-btn-normal-hover-bg);
+        border-color: var(--cs-text-secondary);
+        color: var(--cs-text-link-hover);
+        text-decoration: none;
+    }
+
+    .btn-sm {
+        height: 28px;
+        padding: 0 10px;
+        font-size: var(--cs-font-size-xs);
+    }
+
+    .btn-danger {
+        border-color: var(--cs-error);
+        color: var(--cs-error);
+        background: var(--cs-bg-primary);
+    }
+
+    .btn-danger:hover {
+        background: var(--cs-error-bg);
+        border-color: var(--cs-error);
+    }
+
+    .btn-secondary {
+        border-color: var(--cs-btn-normal-border);
+        color: var(--cs-btn-normal-text);
+        background: var(--cs-btn-normal-bg);
+    }
+
+    .btn-secondary:hover {
+        background: var(--cs-btn-normal-hover-bg);
+    }
+
+    .btn-success {
+        background: var(--cs-btn-primary-bg);
+        color: var(--cs-btn-primary-text);
+        border-color: var(--cs-btn-primary-bg);
+    }
+
+    .btn-success:hover {
+        background: var(--cs-btn-primary-bg-hover);
+        border-color: var(--cs-btn-primary-bg-hover);
+    }
+
+    /* ── Detail field rows (generated by tree-explorer.js) ── */
+    .card {
+        border: 1px solid var(--cs-border-default);
+        border-radius: var(--cs-radius-m);
+        overflow: hidden;
+        box-shadow: var(--cs-shadow-xs);
+    }
+
+    .detail-row {
+        display: flex;
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--cs-border-divider);
+        background: var(--cs-bg-primary);
+    }
+
+    .detail-row:last-child {
+        border-bottom: none;
+    }
+
+    .detail-label {
+        width: 180px;
+        min-width: 180px;
+        font-size: var(--cs-font-size-m);
+        font-weight: var(--cs-font-weight-bold);
+        color: var(--cs-text-secondary);
+        padding-top: 8px;
+    }
+
+    .detail-value {
+        font-size: var(--cs-font-size-m);
+        color: var(--cs-text-primary);
+        word-break: break-word;
+        background: var(--cs-bg-page);
+        border: 1px solid var(--cs-border-divider);
+        border-radius: var(--cs-radius-s);
+        padding: 8px 12px;
+        display: inline-block;
+    }
+
+    .detail-value ul.list-items {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+    }
+
+    .detail-value ul.list-items li {
+        background: var(--cs-bg-primary);
+        border: 1px solid var(--cs-border-default);
+        border-radius: var(--cs-radius-s);
+        padding: 2px 8px;
+        font-size: var(--cs-font-size-s);
+    }
+
+    /* Section dividers in detail view (inline styles from tree-explorer.js) */
+    .card hr {
+        border: none;
+        border-top: 1px solid var(--cs-border-default);
+        margin: 0;
+    }
+
+    .card h3 {
+        font-size: var(--cs-font-size-m);
+        font-weight: var(--cs-font-weight-bold);
+        color: var(--cs-text-heading);
+        margin: 0;
+        padding: 16px 16px 8px;
+        background: var(--cs-bg-primary);
+    }
+
+    .detail-value-list {
+        flex: 1;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+    .detail-value-item {
+        font-size: var(--cs-font-size-m);
+        color: var(--cs-text-primary);
+        background: var(--cs-bg-page);
+        border: 1px solid var(--cs-border-divider);
+        border-radius: var(--cs-radius-s);
+        padding: 6px 12px;
+    }
+
+    .detail-value a {
+        color: var(--cs-text-link);
+        text-decoration: none;
+    }
+
+    .detail-value a:hover {
+        text-decoration: underline;
+    }
+
+    /* ── Summary dashboard (generated by tree-explorer.js) ── */
+    .card {
+        background: var(--cs-bg-primary);
+        border: 1px solid var(--cs-border-default);
+        border-radius: var(--cs-radius-m);
+        padding: var(--cs-space-l);
+        margin-bottom: var(--cs-space-m);
+    }
+
+    .card h2, .card h3 {
+        color: var(--cs-text-heading);
+        margin-bottom: var(--cs-space-m);
+    }
+
+    .asset-type-list {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .asset-type-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--cs-border-divider);
+        transition: background var(--cs-transition-fast);
+    }
+
+    .asset-type-item:last-child { border-bottom: none; }
+
+    .asset-type-item:hover { background: var(--cs-bg-hover); }
+
+    .asset-type-name {
+        font-size: var(--cs-font-size-m);
+        color: var(--cs-text-primary);
+    }
+
+    .asset-type-count {
+        font-size: var(--cs-font-size-s);
+        font-weight: var(--cs-font-weight-bold);
+        color: var(--cs-text-secondary);
+        background: var(--cs-bg-secondary);
+        padding: 2px 10px;
+        border-radius: var(--cs-radius-pill);
+        min-width: 28px;
+        text-align: center;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    th, td {
+        padding: var(--cs-space-xs) var(--cs-space-s);
+        text-align: left;
+        border-bottom: 1px solid var(--cs-border-divider);
+        font-size: var(--cs-font-size-m);
+    }
+
+    th {
+        font-weight: var(--cs-font-weight-medium);
+        color: var(--cs-text-secondary);
+        font-size: var(--cs-font-size-s);
+        background: var(--cs-bg-secondary);
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+        .explorer-container {
+            flex-direction: column;
+            height: auto;
+        }
+        .tree-panel {
+            width: 100%;
+            min-width: auto;
+            max-height: 50vh;
+            border-right: none;
+            border-bottom: 1px solid var(--cs-border-default);
+        }
+        .details-panel {
+            min-height: 400px;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="explorer-container">
+    <!-- LEFT: Tree Panel -->
+    <aside class="tree-panel">
+        <div class="tree-header">
+            <h2>Asset Explorer</h2>
+            <div class="search-container">
+                <input
+                    type="text"
+                    id="asset-search"
+                    placeholder="Search (use * for wildcard)"
+                    class="search-input"
+                />
+                <button id="clear-search" class="clear-search-btn" title="Clear search">Clear</button>
+            </div>
+        </div>
+        <div class="tree-content" id="tree-root">
+            <div class="tree-loading">
+                <p>Loading assets...</p>
+            </div>
+        </div>
+    </aside>
+
+    <!-- RIGHT: Details Panel -->
+    <main class="details-panel">
+        {% if current_user and ('asset_admin' in current_user.roles or 'superuser' in current_user.roles) %}
+        <div class="backup-toolbar">
+            <button id="backup-btn" class="backup-action-btn">Backup</button>
+            <button id="restore-btn" class="backup-action-btn restore">Restore</button>
+            <span id="last-backup-label" class="last-backup-label"></span>
+        </div>
+        {% endif %}
+        <div class="details-header">
+            <div class="details-actions" id="details-actions"></div>
+        </div>
+        <div class="details-content" id="details-content">
+            <div class="loading-message">
+                <p>Loading...</p>
+            </div>
+        </div>
+        <div class="loading-overlay hidden" id="loading-overlay">
+            <div class="spinner"></div>
+        </div>
+    </main>
+</div>
+
+<!-- Backup Modal -->
+<div id="backup-modal" class="bk-modal-overlay" style="display:none;">
+    <div class="bk-modal">
+        <h3>Backup Assets to Server</h3>
+        <p id="backup-modal-msg">This will create a backup of all asset indices on the server. Continue?</p>
+        <div class="bk-modal-actions" id="backup-modal-actions">
+            <button id="backup-ok-btn" class="bk-btn bk-btn-primary">OK</button>
+            <button id="backup-cancel-btn" class="bk-btn bk-btn-secondary">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- Restore Modal -->
+<div id="restore-modal" class="bk-modal-overlay" style="display:none;">
+    <div class="bk-modal">
+        <h3>Restore Assets from Backup</h3>
+        <p>Select a backup file to restore:</p>
+        <select id="restore-file-select" class="bk-select">
+            <option value="">Loading...</option>
+        </select>
+        <div class="bk-modal-actions">
+            <button id="restore-ok-btn" class="bk-btn bk-btn-primary">OK</button>
+            <button id="restore-cancel-btn" class="bk-btn bk-btn-secondary">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- Restore Confirm Modal -->
+<div id="restore-confirm-modal" class="bk-modal-overlay" style="display:none;">
+    <div class="bk-modal">
+        <h3>Confirm Restore</h3>
+        <p>This will <strong>overwrite all current de_asset* indices</strong> with the data from:</p>
+        <p id="restore-confirm-filename" style="font-weight:bold; margin:8px 0;"></p>
+        <p>Are you sure?</p>
+        <div class="bk-modal-actions" id="restore-confirm-actions">
+            <button id="restore-confirm-ok-btn" class="bk-btn bk-btn-danger">Yes, Restore</button>
+            <button id="restore-confirm-cancel-btn" class="bk-btn bk-btn-secondary">Cancel</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{# cache-buster: without it browsers kept serving stale JS after
+   fixes (the charts.js lesson). Bump on every tree-explorer.js
+   change. #}
+<script src="{{ url_for('static', filename='js/tree-explorer.js') }}?v=20260827a"></script>
+<script nonce="{{ csp_nonce }}">
+    document.addEventListener('DOMContentLoaded', function() {
+        TreeExplorer.init();
+    });
+</script>
+<script nonce="{{ csp_nonce }}">
+(function() {
+    var API_BASE = window.location.pathname.startsWith('/assets') ? '/assets' : '';
+
+    function showModal(id) { document.getElementById(id).style.display = 'flex'; }
+    function hideModal(id) { document.getElementById(id).style.display = 'none'; }
+
+    function loadLastBackupLabel() {
+        var label = document.getElementById('last-backup-label');
+        if (!label) return;
+        fetch(API_BASE + '/api/backup/list')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var backups = data.backups || [];
+                if (backups.length === 0) { label.textContent = 'No backups yet'; return; }
+                var match = backups[0].match(/asset-backup-(\d{4})(\d{2})(\d{2})\.tar\.gz/);
+                if (match) { label.textContent = 'Last backup: ' + match[2] + '-' + match[3] + '-' + match[1]; }
+                else { label.textContent = 'Last backup: ' + backups[0]; }
+            })
+            .catch(function() {});
+    }
+    loadLastBackupLabel();
+
+    var backupBtn = document.getElementById('backup-btn');
+    if (backupBtn) { backupBtn.addEventListener('click', openBackupModal); }
+
+    function openBackupModal() {
+        document.getElementById('backup-modal-msg').textContent = 'This will create a backup of all asset indices on the server. Continue?';
+        document.getElementById('backup-modal-msg').className = '';
+        document.getElementById('backup-modal-actions').style.display = 'flex';
+        document.getElementById('backup-ok-btn').disabled = false;
+        showModal('backup-modal');
+    }
+
+    document.getElementById('backup-cancel-btn').addEventListener('click', function() { hideModal('backup-modal'); });
+
+    document.getElementById('backup-ok-btn').addEventListener('click', function() {
+        var msgEl = document.getElementById('backup-modal-msg');
+        var actionsEl = document.getElementById('backup-modal-actions');
+        msgEl.innerHTML = '<span class="bk-spinner"></span> Backing up\u2026';
+        msgEl.className = '';
+        actionsEl.style.display = 'none';
+        fetch(API_BASE + '/api/backup/create', { method: 'POST', headers: {'Content-Type': 'application/json'} })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.ok) { msgEl.innerHTML = '&#10003; Backup complete: <strong>' + data.filename + '</strong>'; msgEl.className = 'bk-success'; loadLastBackupLabel(); }
+                else { msgEl.textContent = 'Backup failed: ' + (data.error || 'Unknown error'); msgEl.className = 'bk-error'; }
+                actionsEl.innerHTML = '<button class="bk-btn bk-btn-secondary" id="backup-close-btn">Close</button>';
+                actionsEl.style.display = 'flex';
+                document.getElementById('backup-close-btn').addEventListener('click', function() { hideModal('backup-modal'); });
+            })
+            .catch(function(err) {
+                msgEl.textContent = 'Backup failed: ' + err.message; msgEl.className = 'bk-error';
+                actionsEl.innerHTML = '<button class="bk-btn bk-btn-secondary" id="backup-close-btn">Close</button>';
+                actionsEl.style.display = 'flex';
+                document.getElementById('backup-close-btn').addEventListener('click', function() { hideModal('backup-modal'); });
+            });
+    });
+
+    var restoreBtn = document.getElementById('restore-btn');
+    if (restoreBtn) { restoreBtn.addEventListener('click', openRestoreModal); }
+
+    function openRestoreModal() {
+        var sel = document.getElementById('restore-file-select');
+        sel.innerHTML = '<option value="">Loading\u2026</option>';
+        showModal('restore-modal');
+        fetch(API_BASE + '/api/backup/list')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                sel.innerHTML = '';
+                var backups = data.backups || [];
+                if (backups.length === 0) { sel.innerHTML = '<option value="">No backups found</option>'; }
+                else { backups.forEach(function(f) { var opt = document.createElement('option'); opt.value = f; opt.textContent = f; sel.appendChild(opt); }); }
+            })
+            .catch(function() { sel.innerHTML = '<option value="">Error loading backups</option>'; });
+    }
+
+    document.getElementById('restore-cancel-btn').addEventListener('click', function() { hideModal('restore-modal'); });
+
+    document.getElementById('restore-ok-btn').addEventListener('click', function() {
+        var sel = document.getElementById('restore-file-select');
+        var filename = sel.value;
+        if (!filename) return;
+        hideModal('restore-modal');
+        document.getElementById('restore-confirm-filename').textContent = filename;
+        document.getElementById('restore-confirm-actions').innerHTML =
+            '<button id="restore-confirm-ok-btn" class="bk-btn bk-btn-danger">Yes, Restore</button>' +
+            '<button id="restore-confirm-cancel-btn" class="bk-btn bk-btn-secondary">Cancel</button>';
+        document.getElementById('restore-confirm-cancel-btn').addEventListener('click', function() { hideModal('restore-confirm-modal'); });
+        document.getElementById('restore-confirm-ok-btn').addEventListener('click', function() { doRestore(filename); });
+        showModal('restore-confirm-modal');
+    });
+
+    function doRestore(filename) {
+        var actionsEl = document.getElementById('restore-confirm-actions');
+        var filenameEl = document.getElementById('restore-confirm-filename');
+        actionsEl.innerHTML = '<span class="bk-spinner"></span> Restoring\u2026';
+        fetch(API_BASE + '/api/backup/restore', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ filename: filename }) })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.ok) { filenameEl.innerHTML = '&#10003; Restore complete. Indices restored: ' + (data.restored || []).length; filenameEl.className = 'bk-success'; }
+                else { filenameEl.textContent = 'Restore failed: ' + (data.error || 'Unknown error'); filenameEl.className = 'bk-error'; }
+                actionsEl.innerHTML = '<button class="bk-btn bk-btn-secondary" id="restore-done-btn">Close</button>';
+                document.getElementById('restore-done-btn').addEventListener('click', function() { hideModal('restore-confirm-modal'); });
+            })
+            .catch(function(err) {
+                filenameEl.textContent = 'Restore failed: ' + err.message; filenameEl.className = 'bk-error';
+                actionsEl.innerHTML = '<button class="bk-btn bk-btn-secondary" id="restore-done-btn">Close</button>';
+                document.getElementById('restore-done-btn').addEventListener('click', function() { hideModal('restore-confirm-modal'); });
+            });
+    }
+})();
+</script>
+{% endblock %}

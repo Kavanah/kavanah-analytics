@@ -1,0 +1,180 @@
+{
+  "connector_id": "google_ads",
+  "created_at": "2026-06-12T14:52:18.566447+00:00",
+  "description": "First-look Google Ads dashboard.",
+  "echarts_config": {
+    "charts": [
+      {
+        "aggregation": "sum",
+        "chart_id": "fl_gads_cost_total",
+        "chart_type": "metric",
+        "data_view": "*_google_ads",
+        "filters": [
+          {
+            "field": "google_ads_customer_id",
+            "op": "match_phrase_any",
+            "value": [
+              "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+            ]
+          }
+        ],
+        "hide_title": false,
+        "position": {
+          "col": 0,
+          "h": 2,
+          "row": 0,
+          "w": 3
+        },
+        "title": "Cost (last 30d)",
+        "y_fields": [
+          "cost"
+        ]
+      },
+      {
+        "aggregation": "sum",
+        "chart_id": "fl_gads_clicks_total",
+        "chart_type": "metric",
+        "data_view": "*_google_ads",
+        "filters": [
+          {
+            "field": "google_ads_customer_id",
+            "op": "match_phrase_any",
+            "value": [
+              "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+            ]
+          }
+        ],
+        "hide_title": false,
+        "position": {
+          "col": 3,
+          "h": 2,
+          "row": 0,
+          "w": 3
+        },
+        "title": "Clicks (last 30d)",
+        "y_fields": [
+          "clicks"
+        ]
+      },
+      {
+        "aggregation": "sum",
+        "chart_id": "fl_gads_impressions_total",
+        "chart_type": "metric",
+        "data_view": "*_google_ads",
+        "filters": [
+          {
+            "field": "google_ads_customer_id",
+            "op": "match_phrase_any",
+            "value": [
+              "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+            ]
+          }
+        ],
+        "hide_title": false,
+        "position": {
+          "col": 6,
+          "h": 2,
+          "row": 0,
+          "w": 3
+        },
+        "title": "Impressions (last 30d)",
+        "y_fields": [
+          "impressions"
+        ]
+      },
+      {
+        "aggregation": "sum",
+        "chart_id": "fl_gads_conversions_total",
+        "chart_type": "metric",
+        "data_view": "*_google_ads",
+        "filters": [
+          {
+            "field": "google_ads_customer_id",
+            "op": "match_phrase_any",
+            "value": [
+              "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+            ]
+          }
+        ],
+        "hide_title": false,
+        "position": {
+          "col": 9,
+          "h": 2,
+          "row": 0,
+          "w": 3
+        },
+        "title": "Conversions (last 30d)",
+        "y_fields": [
+          "conversions"
+        ]
+      },
+      {
+        "aggregation": "sum",
+        "chart_id": "fl_gads_cost_daily",
+        "chart_type": "bar",
+        "data_view": "*_google_ads",
+        "filters": [
+          {
+            "field": "google_ads_customer_id",
+            "op": "match_phrase_any",
+            "value": [
+              "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+            ]
+          }
+        ],
+        "hide_title": false,
+        "position": {
+          "col": 0,
+          "h": 4,
+          "row": 2,
+          "w": 6
+        },
+        "title": "Daily cost",
+        "x_field": "date",
+        "y_fields": [
+          "cost"
+        ]
+      },
+      {
+        "aggregation": "sum",
+        "chart_id": "fl_gads_conversions_daily",
+        "chart_type": "bar",
+        "data_view": "*_google_ads",
+        "filters": [
+          {
+            "field": "google_ads_customer_id",
+            "op": "match_phrase_any",
+            "value": [
+              "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+            ]
+          }
+        ],
+        "hide_title": false,
+        "position": {
+          "col": 6,
+          "h": 4,
+          "row": 2,
+          "w": 6
+        },
+        "title": "Daily conversions",
+        "x_field": "date",
+        "y_fields": [
+          "conversions"
+        ]
+      }
+    ],
+    "filters": [],
+    "global_date_range": null
+  },
+  "frozen_from_dashboard_id": null,
+  "menu_position": 0,
+  "menu_title": "Google Ads",
+  "name": "Google Ads — Spend & conversions, last 30d",
+  "pack_id": "google_ads",
+  "placeholder_field": "google_ads_customer_id",
+  "required_sources": [
+    "google_ads"
+  ],
+  "template_id": "first_look_google_ads",
+  "updated_at": "2026-06-12T14:52:18.566447+00:00"
+}

@@ -1,0 +1,39 @@
+{
+  "dynamic_templates": [
+    {
+      "strings_as_keyword": {
+        "match_mapping_type": "string",
+        "mapping": {
+          "type": "keyword",
+          "ignore_above": 8191
+        }
+      }
+    }
+  ],
+  "properties": {
+    "workspace_title": {
+      "type": "keyword"
+    },
+    "workspace_esid": {
+      "type": "keyword"
+    },
+    "ga_property_title": {
+      "type": "keyword"
+    },
+    "ga_property_id": {
+      "type": "keyword"
+    },
+    "ga_property_display_name": {
+      "type": "text"
+    },
+    "ga_property_resource_name": {
+      "type": "keyword"
+    },
+    "ga_account_title": {
+      "type": "keyword"
+    },
+    "ga_account_esid": {
+      "type": "keyword"
+    }
+  }
+}

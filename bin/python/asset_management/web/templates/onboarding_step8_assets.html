@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Step 8 — Pick your ad accounts · Kavanah Analytics</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/cloudscape.css') }}">
+    <style>
+        body {
+            background: var(--cs-bg-page);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 84px 20px 40px;
+        }
+        .login-topbar {
+            position: fixed; top: 0; left: 0; right: 0;
+            height: 56px;
+            background: var(--cs-nav-bg);
+            display: flex; align-items: center;
+            padding: 0 24px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+            z-index: 10;
+        }
+        .login-topbar-logo { height: 24px; width: auto; margin-right: 12px; }
+        .login-topbar-title { font-size: 17px; font-weight: 700; color: #FFFFFF; }
+
+        .wizard-shell { width: 100%; max-width: 920px; }
+
+        .card {
+            background: var(--cs-bg-primary);
+            border: 1px solid var(--cs-border-default);
+            border-radius: var(--cs-radius-l);
+            box-shadow: var(--cs-shadow-m);
+            padding: 36px 36px 28px;
+        }
+
+        .eyebrow {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 11px; font-weight: 600;
+            letter-spacing: 0.08em; text-transform: uppercase;
+            color: var(--cs-text-secondary);
+            margin-bottom: 8px;
+        }
+        .wizard-title {
+            font-size: 24px; font-weight: 700;
+            color: var(--cs-text-heading);
+            margin: 0 0 6px;
+        }
+        .wizard-sub {
+            font-size: var(--cs-font-size-m);
+            color: var(--cs-text-secondary);
+            line-height: 1.5;
+            margin: 0 0 22px;
+        }
+        .wizard-sub strong { color: var(--cs-text-heading); }
+
+        .asset-stats {
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            flex-wrap: wrap;
+            padding: 10px 14px;
+            margin-bottom: 14px;
+            background: var(--cs-bg-page);
+            border: 1px solid var(--cs-border-default);
+            border-radius: var(--cs-radius-m);
+            font-size: 13px;
+            color: var(--cs-text-secondary);
+        }
+        .asset-stats strong { color: var(--cs-text-heading); }
+        .asset-stats .stat-dot {
+            display: inline-block;
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: var(--cs-btn-primary-bg);
+            margin-right: 6px;
+            vertical-align: middle;
+        }
+
+        .asset-table {
+            border: 1px solid var(--cs-border-default);
+            border-radius: var(--cs-radius-m);
+            overflow: hidden;
+            margin-bottom: 14px;
+        }
+        .asset-thead {
+            display: grid;
+            grid-template-columns: 40px 1fr 220px 70px 100px;
+            column-gap: 16px;
+            background: var(--cs-bg-page);
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--cs-text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--cs-border-default);
+        }
+        .asset-row {
+            display: grid;
+            grid-template-columns: 40px 1fr 220px 70px 100px;
+            column-gap: 16px;
+            align-items: center;
+            padding: 12px 14px;
+            border-bottom: 1px solid var(--cs-border-divider);
+            cursor: pointer;
+            transition: background 90ms ease-out;
+        }
+        .asset-row:last-child { border-bottom: none; }
+        .asset-row:hover { background: var(--cs-bg-page); }
+        .asset-row.selected { background: rgba(9, 114, 211, 0.06); }
+        .asset-row.disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+            background: transparent;
+        }
+        .asset-checkbox {
+            width: 18px; height: 18px;
+            border-radius: 4px;
+            border: 1.5px solid var(--cs-border-input);
+            background: var(--cs-bg-primary);
+            display: flex; align-items: center; justify-content: center;
+        }
+        .asset-row.selected .asset-checkbox {
+            background: var(--cs-btn-primary-bg);
+            border-color: var(--cs-btn-primary-bg);
+        }
+        .asset-row.selected .asset-checkbox::after {
+            content: '';
+            width: 5px; height: 9px;
+            border-right: 2px solid #FFFFFF;
+            border-bottom: 2px solid #FFFFFF;
+            transform: rotate(45deg) translateY(-1px);
+        }
+        .asset-info { min-width: 0; }
+        .asset-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--cs-text-heading);
+            margin-bottom: 2px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .asset-id {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 12px;
+            color: var(--cs-text-secondary);
+        }
+        .asset-bm {
+            font-size: 12px;
+            color: var(--cs-text-secondary);
+            margin-top: 2px;
+        }
+        .asset-friendly-input {
+            height: 32px;
+            padding: 0 8px;
+            font-size: 13px;
+            font-family: var(--cs-font);
+            border: 1px solid var(--cs-border-input);
+            border-radius: var(--cs-radius-s);
+            width: 100%;
+            background: var(--cs-bg-primary);
+        }
+        .asset-friendly-input:focus { outline: 1px solid var(--cs-btn-primary-bg); }
+        /* friendly-name conflict UX. The.has-error class
+           is server-stamped when validate_friendly_names flags the row;
+           inline message renders directly below the input. */
+        .asset-friendly-input.has-error {
+            border-color: #C0392B;
+            background: #FDECEA;
+        }
+        .friendly-name-error {
+            margin-top: 4px;
+            font-size: 11.5px;
+            line-height: 1.35;
+            color: #8C1F11;
+            font-weight: 500;
+        }
+        /* page-level conflict banner above the table. */
+        .friendly-name-conflict-banner {
+            display: flex; gap: 12px;
+            padding: 12px 14px;
+            margin-bottom: 14px;
+            background: #FDECEA;
+            border: 1px solid #F4B4AC;
+            border-radius: var(--cs-radius-m);
+            font-size: 13px;
+            line-height: 1.5;
+            color: #8C1F11;
+        }
+        .friendly-name-conflict-banner strong { color: #8C1F11; font-weight: 700; }
+        .asset-currency {
+            font-size: 13px;
+            color: var(--cs-text-body);
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        }
+        .asset-status {
+            font-size: 12px;
+            font-weight: 600;
+            color: #1B873A;
+        }
+        .asset-status.paused { color: #B45F0B; }
+        .asset-status.disabled { color: var(--cs-text-secondary); }
+        /* screen-reader-only copy carrying the disable
+           reason. The visible cue is the greyed row + the native
+           title-attr hover tooltip; this span gives assistive tech a
+           non-hover surface for the same information. */
+        .sr-only {
+            position: absolute;
+            width: 1px; height: 1px;
+            padding: 0; margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+
+        .empty-state {
+            padding: 28px 24px;
+            text-align: left;
+            color: var(--cs-text-secondary);
+            font-size: 14px;
+            line-height: 1.6;
+            background: var(--cs-bg-page);
+            border: 1px solid var(--cs-border-default);
+            border-radius: var(--cs-radius-m);
+            margin-bottom: 14px;
+        }
+        .empty-state strong { color: var(--cs-text-heading); display: block; margin-bottom: 6px; font-size: 15px; }
+        .empty-state p { margin: 0 0 10px; }
+        .empty-state ul {
+            margin: 0 0 14px 18px;
+            padding: 0;
+            color: var(--cs-text-body);
+        }
+        .empty-state li { margin-bottom: 4px; }
+        .empty-state a { color: var(--cs-text-link); font-weight: 600; text-decoration: none; }
+        .empty-state a:hover { text-decoration: underline; }
+        .empty-state-actions {
+            margin-top: 6px;
+            display: flex;
+            gap: 18px;
+            flex-wrap: wrap;
+        }
+
+        .asset-meta {
+            font-size: 12px;
+            color: var(--cs-text-secondary);
+            margin-bottom: 18px;
+        }
+        .asset-meta a { color: var(--cs-text-link); font-weight: 600; text-decoration: none; }
+        .asset-meta a:hover { text-decoration: underline; }
+
+        /* agency org-shared toggle. The <details>-style
+           disclosure block lives between the asset table and the
+           Skip/Finish row, so an agency owner who scrolls past the
+           rows sees it before clicking Finish. Non-agency users
+           never see this block (server-gated by
+           show_org_shared_toggle). */
+        .org-shared-block {
+            margin: 6px 0 14px;
+            border: 1px solid var(--cs-border-default);
+            border-radius: var(--cs-radius-m);
+            background: var(--cs-bg-page);
+            font-size: 13px;
+            color: var(--cs-text-body);
+        }
+        .org-shared-summary {
+            cursor: pointer;
+            padding: 10px 14px;
+            font-weight: 600;
+            color: var(--cs-text-heading);
+            list-style: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .org-shared-summary::-webkit-details-marker { display: none; }
+        .org-shared-summary::before {
+            content: '▸';
+            display: inline-block;
+            transition: transform 90ms ease-out;
+            color: var(--cs-text-secondary);
+            font-size: 11px;
+        }
+        .org-shared-block[open] .org-shared-summary::before {
+            transform: rotate(90deg);
+        }
+        .org-shared-body {
+            padding: 4px 14px 14px;
+            line-height: 1.5;
+        }
+        .org-shared-label {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            cursor: pointer;
+            padding: 8px 0;
+        }
+        .org-shared-label input[type="checkbox"] {
+            margin-top: 2px;
+            width: 16px; height: 16px;
+            accent-color: var(--cs-btn-primary-bg);
+            cursor: pointer;
+        }
+        .org-shared-label-copy strong {
+            color: var(--cs-text-heading);
+            font-weight: 600;
+            display: block;
+            margin-bottom: 2px;
+        }
+        .org-shared-label-copy span {
+            color: var(--cs-text-secondary);
+            font-size: 12.5px;
+        }
+
+        .btn-row {
+            display: flex; align-items: center; justify-content: space-between;
+            padding-top: 18px;
+            margin-top: 8px;
+            border-top: 1px solid var(--cs-border-divider);
+        }
+        .btn-row-right {
+            display: flex; gap: 10px; align-items: center;
+        }
+        .btn {
+            height: 40px; padding: 0 18px;
+            border-radius: var(--cs-radius-s);
+            font-size: var(--cs-font-size-m);
+            font-weight: 600;
+            font-family: var(--cs-font);
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition: background 90ms ease-out, border-color 90ms ease-out;
+            display: inline-flex; align-items: center;
+            text-decoration: none;
+        }
+        .btn-primary {
+            background: var(--cs-btn-primary-bg);
+            color: #FFFFFF;
+            font-weight: 700;
+        }
+        .btn-primary:hover { background: var(--cs-btn-primary-bg-hover); }
+        /* visible disabled state (matches step-5 +
+           #ws-delete-btn:disabled). Covers the "Setting up…" busy
+           state on the Finish button too. */
+        .btn-primary:disabled,
+        .btn-primary:disabled:hover {
+            background: var(--cs-btn-primary-bg);
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .btn-primary:focus-visible {
+            outline: none;
+            box-shadow: 0 0 0 2px #FFFFFF, 0 0 0 4px var(--cs-btn-primary-bg);
+        }
+        .btn-ghost {
+            background: transparent;
+            color: var(--cs-text-link);
+            border-color: transparent;
+        }
+        .btn-ghost:hover { background: var(--cs-bg-page); }
+        .btn-secondary {
+            background: var(--cs-bg-primary);
+            color: var(--cs-text-body);
+            border-color: var(--cs-border-input);
+        }
+        .btn-secondary:hover { border-color: var(--cs-btn-primary-bg); color: var(--cs-btn-primary-bg); }
+    </style>
+</head>
+<body>
+    <a href="#wizard-main" class="cs-skip-link" data-testid="wizard-skip-link">Skip to main content</a>
+    <div class="login-topbar">
+        <img src="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5" alt="" class="login-topbar-logo">
+        <span class="login-topbar-title">Kavanah Analytics</span>
+    </div>
+
+    <main class="wizard-shell" id="wizard-main">
+        {% include "_onboarding_progress.html" %}
+
+        <div class="card" data-testid="step6-assets-card">
+            <div class="eyebrow">Pick your ad accounts</div>
+            <h1 class="wizard-title" data-testid="step6-title">
+                {% if assets %}
+                We found {{ assets|length }} account{{ '' if assets|length == 1 else 's' }} under your login
+                {% else %}
+                No accounts found under your login
+                {% endif %}
+            </h1>
+            <p class="wizard-sub">
+                {% if assets %}
+                Choose which to bring into your workspace. We've pre-selected your most recently active accounts; you can revisit which accounts are connected later from the Data Connectors page.
+                {% else %}
+                We couldn't find any {{ connector_name }} accounts under your login yet. You can still finish setup — we'll show the dashboard checklist with options to refresh or connect a different login.
+                {% endif %}
+            </p>
+
+            <form method="POST" action="{{ url_for('analytics.onboarding_step8_post') }}" id="step6Form" novalidate>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+                {% if friendly_name_errors %}
+                <div class="friendly-name-conflict-banner"
+                     data-testid="step6-friendly-name-banner"
+                     role="alert">
+                    <div>
+                        <strong>Fix the highlighted name{% if friendly_name_errors|length > 1 %}s{% endif %} below before continuing.</strong>
+                        Friendly names must be unique within this workspace and 64 characters or less.
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if assets %}
+                <div class="asset-stats" data-testid="step6-asset-stats">
+                    <div>
+                        <span class="stat-dot"></span><strong data-testid="step6-selected-count">{{ selected_ids|length }}</strong> of {{ assets|length }} selected
+                    </div>
+                    <div>7-day backfill kicks off when you finish</div>
+                </div>
+
+                <div class="asset-table" data-testid="step6-asset-table"
+                     role="group" aria-label="Ad accounts to import">
+                    <div class="asset-thead" aria-hidden="true">
+                        <div></div>
+                        <div>Account</div>
+                        <div>Friendly name (optional)</div>
+                        <div>Currency</div>
+                        <div>Status</div>
+                    </div>
+                    {% for asset in assets %}
+                    {% set _alias = friendly_names.get(asset.provider_asset_id, '') %}
+                    {% set _err = friendly_name_errors.get(asset.provider_asset_id) %}
+                    {% if asset.status_code == 'disabled' %}
+                      {% if asset.disabled_at %}
+                        {% set _disabled_reason = 'Disabled by Meta on ' ~ asset.disabled_at %}
+                      {% else %}
+                        {% set _disabled_reason = 'Disabled by Meta' %}
+                      {% endif %}
+                    {% else %}
+                      {% set _disabled_reason = '' %}
+                    {% endif %}
+                    <div class="asset-row{% if asset.provider_asset_id in selected_ids %} selected{% endif %}{% if asset.status_code == 'disabled' %} disabled{% endif %}"
+                         data-testid="step6-asset-row"
+                         data-asset-id="{{ asset.provider_asset_id }}"
+                         data-status="{{ asset.status_code }}"
+                         data-default-selected="{{ '1' if asset.default_selected else '0' }}"
+                         role="checkbox"
+                         aria-checked="{% if asset.provider_asset_id in selected_ids %}true{% else %}false{% endif %}"
+                         {% if asset.status_code == 'disabled' %}aria-disabled="true" tabindex="-1"{% else %}tabindex="0"{% endif %}
+                         aria-label="{{ asset.name }} ({{ asset.provider_asset_id }})"
+                         {% if _disabled_reason %}title="{{ _disabled_reason }}"{% endif %}>
+                        <label class="asset-checkbox">
+                            <input type="checkbox"
+                                   name="selected_asset_id"
+                                   value="{{ asset.provider_asset_id }}"
+                                   {% if asset.provider_asset_id in selected_ids %}checked{% endif %}
+                                   {% if asset.status_code == 'disabled' %}disabled{% endif %}
+                                   style="position: absolute; opacity: 0; pointer-events: none;">
+                        </label>
+                        <div class="asset-info">
+                            <div class="asset-name">{{ asset.name }}</div>
+                            <div class="asset-id">{{ asset.provider_asset_id }}</div>
+                            {% if asset.business_manager_hint %}
+                            <div class="asset-bm">{{ asset.business_manager_hint }}</div>
+                            {% endif %}
+                        </div>
+                        <div>
+                            <input class="asset-friendly-input{% if _err %} has-error{% endif %}"
+                                   data-testid="step6-friendly-name-input"
+                                   name="friendly_name__{{ asset.provider_asset_id }}"
+                                   value="{{ _alias }}"
+                                   placeholder="—"
+                                   maxlength="64"
+                                   aria-label="Friendly name for {{ asset.name }}"
+                                   {% if _err %}aria-invalid="true" aria-describedby="friendlyNameError__{{ asset.provider_asset_id }}"{% endif %}
+                                   {% if asset.status_code == 'disabled' %}disabled{% endif %}>
+                            {% if _err %}
+                            {# page-level banner above the table
+                               carries role=alert; per-row error is plain
+                               inline copy with aria-describedby wiring on
+                               the input so SR users hear it on focus. #}
+                            <div class="friendly-name-error"
+                                 data-testid="step6-friendly-name-error"
+                                 id="friendlyNameError__{{ asset.provider_asset_id }}">{{ _err }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="asset-currency"
+                             data-testid="step6-currency-badge">{{ asset.currency }}</div>
+                        <div class="asset-status {{ asset.status_code }}"
+                             data-testid="step6-status-badge"
+                             data-status-code="{{ asset.status_code }}">{{ asset.status_label }}{% if _disabled_reason %}<span class="sr-only"
+                                  data-testid="step6-disabled-tooltip">{{ _disabled_reason }}</span>{% endif %}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <div class="asset-meta">
+                    {# link directly to the re-OAuth flow with
+                       ?reauth=1 so Meta forces the account picker via
+                       auth_type=reauthenticate. Pre-fix this pointed back at
+                       step-5, requiring the user to click a second link there
+                       which silently dead-ended on facebook.com (logout.php
+                       stopped honoring non-fb destinations years ago). #}
+                    Wrong account?
+                    <a href="{{ url_for('analytics.onboarding_step7_start_oauth', reauth='1') }}"
+                       data-testid="step6-switch-account-link">Switch {{ connector_name }} account</a>.
+                </div>
+                {% else %}
+                <div class="empty-state" data-testid="step6-empty-state">
+                    <strong>You're connected, but {{ connector_name }} didn't surface any ad accounts.</strong>
+                    <p>This usually means one of the following:</p>
+                    <ul data-testid="step6-empty-state-causes">
+                        <li>Your account isn't on a {{ connector_name }} Business Manager yet.</li>
+                        <li>A Business Manager owner hasn't granted you access to its ad accounts.</li>
+                        <li>The ad accounts under this login were recently archived or deactivated.</li>
+                        <li>You're logged in to the wrong {{ connector_name }} account.</li>
+                    </ul>
+                    <div class="empty-state-actions">
+                        <a href="https://www.facebook.com/business/help/1710077379203657"
+                           target="_blank"
+                           rel="noopener noreferrer"
+                           data-testid="step6-empty-state-troubleshooting-link">Troubleshooting →</a>
+                        {# empty-state Switch accounts also goes
+                           directly to the re-OAuth flow. #}
+                        <a href="{{ url_for('analytics.onboarding_step7_start_oauth', reauth='1') }}"
+                           data-testid="step6-empty-state-switch-link">Switch accounts</a>
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if show_org_shared_toggle %}
+                <details class="org-shared-block"
+                         data-testid="step6-org-shared-disclosure"
+                         {% if org_shared_checked %}open{% endif %}>
+                    <summary class="org-shared-summary"
+                             data-testid="step6-org-shared-summary">Advanced — sharing settings</summary>
+                    <div class="org-shared-body">
+                        <label class="org-shared-label">
+                            <input type="checkbox"
+                                   name="org_shared"
+                                   value="on"
+                                   data-testid="step6-org-shared-checkbox"
+                                   {% if org_shared_checked %}checked{% endif %}>
+                            <span class="org-shared-label-copy">
+                                <strong data-testid="step6-org-shared-label">Share this connection across all client workspaces in this agency</strong>
+                                <span data-testid="step6-org-shared-help">Recommended for agencies. Uncheck to keep this connection scoped to this workspace only.</span>
+                            </span>
+                        </label>
+                    </div>
+                </details>
+                {% endif %}
+
+                <div class="btn-row">
+                    <a class="btn btn-ghost"
+                       href="{{ url_for('analytics.onboarding_step7_page') }}"
+                       data-testid="step6-back-link">← Back to permissions</a>
+                    <div class="btn-row-right">
+                        <button type="submit"
+                                name="action"
+                                value="skip"
+                                class="btn btn-ghost"
+                                data-testid="step6-skip-btn">Skip — set up later</button>
+                        <button type="submit"
+                                name="action"
+                                value="finish"
+                                class="btn btn-primary"
+                                data-testid="step6-finish-btn">Finish setup →</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </main>
+
+    <script nonce="{{ csp_nonce }}">
+        // Toggle .selected on row click — the row is the click target;
+        // the hidden checkbox is the load-bearing form value. Disabled
+        // rows are no-ops. The selected-count text updates inline.
+        (function () {
+            const form = document.getElementById('step6Form');
+            if (!form) return;
+            const rows = form.querySelectorAll('[data-testid="step6-asset-row"]');
+            const countEl = form.querySelector('[data-testid="step6-selected-count"]');
+            const updateCount = () => {
+                if (!countEl) return;
+                const checked = form.querySelectorAll('input[name="selected_asset_id"]:checked').length;
+                countEl.textContent = String(checked);
+            };
+            const toggleRow = (row) => {
+                if (row.getAttribute('data-status') === 'disabled') return;
+                const cb = row.querySelector('input[name="selected_asset_id"]');
+                if (!cb) return;
+                cb.checked = !cb.checked;
+                if (cb.checked) {
+                    row.classList.add('selected');
+                    row.setAttribute('aria-checked', 'true');
+                } else {
+                    row.classList.remove('selected');
+                    row.setAttribute('aria-checked', 'false');
+                }
+                updateCount();
+            };
+            rows.forEach((row) => {
+                row.addEventListener('click', (ev) => {
+                    // Don't toggle when clicking the friendly-name input.
+                    if (ev.target && ev.target.tagName === 'INPUT' && ev.target.classList.contains('asset-friendly-input')) return;
+                    toggleRow(row);
+                });
+                // Space/Enter on the row toggles selection (role=checkbox
+                // contract). PreventDefault on Space so the page doesn't scroll.
+                row.addEventListener('keydown', (ev) => {
+                    if (ev.key === ' ' || ev.key === 'Spacebar' || ev.key === 'Enter') {
+                        if (ev.target && ev.target.tagName === 'INPUT') return;
+                        ev.preventDefault();
+                        toggleRow(row);
+                    }
+                });
+            });
+
+            // confirm before saving an org-shared connection.
+            // The dialog matches the AC's literal copy ("This connection
+            // will be visible to all clients in your agency") and fires
+            // only on the Finish path with the checkbox still checked.
+            // Skip / Cancel never warns. If the user un-checked the
+            // box (workspace-scoped, the safer outcome), no dialog —
+            // we don't want to nag the safer path.
+            const orgSharedCheckbox = form.querySelector('[data-testid="step6-org-shared-checkbox"]');
+            if (orgSharedCheckbox) {
+                form.addEventListener('submit', (ev) => {
+                    const submitter = ev.submitter || document.activeElement;
+                    const action = submitter && submitter.getAttribute && submitter.getAttribute('value');
+                    if (action !== 'finish') return;
+                    if (!orgSharedCheckbox.checked) return;
+                    const ok = window.confirm('This connection will be visible to all clients in your agency. Continue?');
+                    if (!ok) ev.preventDefault();
+                });
+            }
+
+            // Finish-button double-click guard. On the first
+            // submit we disable BOTH terminal buttons (Finish + Skip),
+            // swap the Finish label to a "Finishing setup…" spinner-style
+            // string, and set a window-level sentinel so a stale handler
+            // reference cannot re-submit the form. The disabled state
+            // survives the redirect; if the POST surfaces a 4xx the page
+            // re-renders fresh with the buttons enabled again. The org-
+            // shared confirm above runs FIRST (browsers fire submit
+            // listeners in registration order); if the user cancels the
+            // org-shared dialog, ev.defaultPrevented is true on entry
+            // here and we leave the buttons enabled so they can retry.
+            //
+            // (2026-05-26; originally labelled, that
+            // number was later repurposed for the data-connectors picker
+            // leak — this step-8 fix is per commit 34fb524a779):
+            // the original implementation set
+            // ``finishBtn.disabled = true`` SYNCHRONOUSLY inside the
+            // submit handler — which is BEFORE the browser serializes
+            // the form for the POST. Disabled submit buttons are
+            // EXCLUDED from form data, so the ``name="action"
+            // value="finish"`` pair never reached the server. Result:
+            // the step-8 finish handler saw ``action=''`` and treated
+            // every Finish click as a Skip, silently bypassing asset
+            // selection + dashboard materialization. Confirmed via
+            // diagnostic logging on staging 2026-05-26 (test-account3
+            // ran wizard end-to-end, log showed ``action=''`` despite
+            // user clicking Finish).
+            //
+            // Fix: defer the disable with ``setTimeout(0)`` so the
+            // browser serializes the form FIRST, then we disable on
+            // the next tick. The form data captures the
+            // action=finish/skip pair correctly; the double-click
+            // guard still fires before any second click can race in
+            // (the window._wizardFinishing sentinel is set
+            // synchronously to prevent a second submit on this tick).
+            const finishBtn = form.querySelector('[data-testid="step6-finish-btn"]');
+            const skipBtn = form.querySelector('[data-testid="step6-skip-btn"]');
+            form.addEventListener('submit', (ev) => {
+                if (ev.defaultPrevented) return;
+                if (window._wizardFinishing) {
+                    // Race-stale handler — sentinel set by an earlier
+                    // click already in flight. Drop the second submit
+                    // without re-disabling (already disabled).
+                    ev.preventDefault();
+                    return;
+                }
+                // Sentinel must be synchronous so a second click on
+                // this same tick gets blocked by the branch above.
+                window._wizardFinishing = true;
+                // Capture the submitter SYNCHRONOUSLY — ev.submitter
+                // is only valid during the submit phase; reading it
+                // from the deferred callback would return null.
+                const submitter = ev.submitter || document.activeElement;
+                const isFinish = submitter && submitter.getAttribute && submitter.getAttribute('value') === 'finish';
+                // Defer the disable so the browser has already serialized
+                // the clicked button's name/value into the POST body
+                // before we strip them by disabling. See comment
+                // above.
+                setTimeout(() => {
+                    if (finishBtn) {
+                        finishBtn.disabled = true;
+                        finishBtn.setAttribute('aria-busy', 'true');
+                        if (isFinish) {
+                            finishBtn.textContent = 'Finishing setup…';
+                        }
+                    }
+                    if (skipBtn) {
+                        skipBtn.disabled = true;
+                        skipBtn.setAttribute('aria-busy', 'true');
+                    }
+                }, 0);
+            });
+        })();
+    </script>
+</body>
+</html>

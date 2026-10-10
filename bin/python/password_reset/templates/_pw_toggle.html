@@ -1,0 +1,17 @@
+{# Show/hide button for a password input. Place inside <div class="pw-wrap">
+   immediately after the <input class="pw-input" id="..."> it controls.
+   Requires /static/css/password-toggle.css and /static/js/password-toggle.js.
+
+   Usage:
+     <div class="pw-wrap">
+       <input type="password" class="pw-input" id="my_pw" name="my_pw">
+       {% include "_pw_toggle.html" %}
+     </div>
+
+   Falls back to the input's id when target is not passed in the include
+   context — but every <input> here already has an id so the explicit
+   data-target is set from the surrounding template. #}
+<button type="button" class="pw-toggle" data-target="{{ pw_target }}" aria-label="Show password" aria-pressed="false" tabindex="-1">
+    <svg class="icon-show" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+    <svg class="icon-hide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.94 10.94 0 0112 19c-6.5 0-10-7-10-7a18.77 18.77 0 014.22-5.19"/><path d="M9.9 4.24A10.94 10.94 0 0112 4c6.5 0 10 7 10 7a18.77 18.77 0 01-3.11 4.19"/><path d="M1 1l22 22"/><path d="M14.12 14.12a3 3 0 11-4.24-4.24"/></svg>
+</button>

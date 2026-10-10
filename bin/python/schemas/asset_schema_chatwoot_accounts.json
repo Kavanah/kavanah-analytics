@@ -1,0 +1,36 @@
+{
+  "dynamic_templates": [
+    {
+      "strings_as_keyword": {
+        "match_mapping_type": "string",
+        "mapping": {
+          "type": "keyword",
+          "ignore_above": 8191
+        }
+      }
+    }
+  ],
+  "properties": {
+    "workspace_title": {
+      "type": "keyword"
+    },
+    "workspace_esid": {
+      "type": "keyword"
+    },
+    "chatwoot_account_title": {
+      "type": "keyword"
+    },
+    "chatwoot_account_id": {
+      "type": "keyword"
+    },
+    "chatwoot_base_url": {
+      "type": "keyword"
+    },
+    "chatwoot_api_token": {
+      "type": "keyword"
+    },
+    "chatwoot_account_description": {
+      "type": "text"
+    }
+  }
+}

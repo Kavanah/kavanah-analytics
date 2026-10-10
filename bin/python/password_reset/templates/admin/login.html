@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Login - Password Reset{% endblock %}
+
+{% block body %}
+<div class="container">
+    <div class="page-header">
+        <h1>Admin Login</h1>
+        <p>Password Reset Configuration</p>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="flash-messages">
+                {% for category, message in messages %}
+                    <div class="flash {{ category }}">{{ message }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <form method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-group">
+            <label for="password">Admin Password</label>
+            <div class="pw-wrap">
+                <input type="password" id="password" name="password" class="pw-input" placeholder="Enter admin password" required autofocus>
+                {% with pw_target="password" %}{% include "_pw_toggle.html" %}{% endwith %}
+            </div>
+            {% if not settings.get('admin_password_hash') %}
+                <p class="help-text">First time setup: Enter the password from the ADMIN_PASSWORD environment variable.</p>
+            {% endif %}
+        </div>
+
+        <button type="submit">Login</button>
+    </form>
+
+    <div class="back-link">
+        <a href="{{ url_for('request_reset') }}">← Back to Password Reset</a>
+    </div>
+</div>
+{% endblock %}

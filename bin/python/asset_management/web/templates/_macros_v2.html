@@ -1,0 +1,97 @@
+{#
+    Cloudscape component macros for the redesigned UI.
+    Usage: {% from "examples/_macros_v2.html" import cs_button, cs_breadcrumb %}
+#}
+
+
+{# ── Button ──────────────────────────────────────────────── #}
+{% macro cs_button(label, variant='primary', size='', icon=None, href=None, type='button', id=None, onclick=None, classes='') %}
+{%- set tag = 'a' if href else 'button' -%}
+{%- set size_cls = ' cs-btn-' ~ size if size else '' -%}
+<{{ tag }}
+    class="cs-btn cs-btn-{{ variant }}{{ size_cls }}{% if classes %} {{ classes }}{% endif %}"
+    {% if href %}href="{{ href }}"{% endif %}
+    {% if not href %}type="{{ type }}"{% endif %}
+    {% if id %}id="{{ id }}"{% endif %}
+    {% if onclick %}onclick="{{ onclick }}"{% endif %}
+>
+    {%- if icon %}<i class="{{ icon }}"></i>{% endif -%}
+    {{ label }}
+</{{ tag }}>
+{%- endmacro %}
+
+
+{# ── Breadcrumbs ─────────────────────────────────────────── #}
+{% macro cs_breadcrumb(items) %}
+<nav class="cs-breadcrumbs" aria-label="Breadcrumbs">
+    {% for item in items %}
+        {% if not loop.last %}
+            <a href="{{ item.url }}">{{ item.label }}</a>
+            <span class="cs-breadcrumbs-separator"><i class="fas fa-angle-right"></i></span>
+        {% else %}
+            <span class="cs-breadcrumbs-current">{{ item.label }}</span>
+        {% endif %}
+    {% endfor %}
+</nav>
+{%- endmacro %}
+
+
+{# ── Flash bar (notification) ────────────────────────────── #}
+{% macro cs_flash_bar(message, type='info', dismissible=True, id=None) %}
+{%- set icons = {'info': 'fas fa-info-circle', 'success': 'fas fa-check-circle', 'warning': 'fas fa-exclamation-triangle', 'error': 'fas fa-exclamation-circle'} -%}
+<div class="cs-flash-bar cs-flash-bar-{{ type }}" {% if id %}id="{{ id }}"{% endif %}>
+    <span class="cs-flash-bar-icon"><i class="{{ icons.get(type, 'fas fa-info-circle') }}"></i></span>
+    <span class="cs-flash-bar-content">{{ message }}</span>
+    {% if dismissible %}
+    <button class="cs-flash-bar-dismiss" onclick="this.closest('.cs-flash-bar').remove()" aria-label="Dismiss">&times;</button>
+    {% endif %}
+</div>
+{%- endmacro %}
+
+
+{# ── Card ────────────────────────────────────────────────── #}
+{% macro cs_card(title=None, id=None, classes='') %}
+<div class="cs-card{% if classes %} {{ classes }}{% endif %}" {% if id %}id="{{ id }}"{% endif %}>
+    {% if title %}
+    <div class="cs-card-header">
+        <h3>{{ title }}</h3>
+    </div>
+    {% endif %}
+    <div class="cs-card-body">
+        {{ caller() }}
+    </div>
+</div>
+{%- endmacro %}
+
+
+{# ── Badge ───────────────────────────────────────────────── #}
+{% macro cs_badge(text, variant='default') %}
+<span class="cs-badge cs-badge-{{ variant }}">{{ text }}</span>
+{%- endmacro %}
+
+
+{# ── Modal ───────────────────────────────────────────────── #}
+{% macro cs_modal(id, title, size='') %}
+{%- set width = {'sm': '360px', 'lg': '640px', 'xl': '800px'}.get(size, '480px') -%}
+<div class="cs-modal-overlay cs-hidden" id="{{ id }}-overlay" onclick="document.getElementById('{{ id }}-overlay').classList.add('cs-hidden')">
+    <div class="cs-modal" style="width: {{ width }}" onclick="event.stopPropagation()">
+        <div class="cs-modal-header">
+            <h3>{{ title }}</h3>
+            <button class="cs-modal-close" onclick="document.getElementById('{{ id }}-overlay').classList.add('cs-hidden')" aria-label="Close">&times;</button>
+        </div>
+        <div class="cs-modal-body">
+            {{ caller() }}
+        </div>
+    </div>
+</div>
+{%- endmacro %}
+
+
+{# ── Empty state ─────────────────────────────────────────── #}
+{% macro cs_empty_state(icon='fas fa-inbox', title='No data', message='') %}
+<div class="cs-empty-state">
+    <div class="cs-empty-state-icon"><i class="{{ icon }}"></i></div>
+    <h3>{{ title }}</h3>
+    {% if message %}<p>{{ message }}</p>{% endif %}
+</div>
+{%- endmacro %}

@@ -1,0 +1,103 @@
+{
+  "properties": {
+    "@timestamp": {
+      "type": "date"
+    },
+    "kibana_date": {
+      "type": "date",
+      "format": "yyyy-MM-dd"
+    },
+    "date": {
+      "type": "date",
+      "format": "yyyy-MM-dd"
+    },
+    "chatwoot_account_title": {
+      "type": "keyword"
+    },
+    "chatwoot_account_id": {
+      "type": "keyword"
+    },
+    "chatwoot_account_esid": {
+      "type": "keyword"
+    },
+    "team_title": {
+      "type": "keyword"
+    },
+    "team_esid": {
+      "type": "keyword"
+    },
+    "organization_title": {
+      "type": "keyword"
+    },
+    "conversation_id": {
+      "type": "integer"
+    },
+    "conversation_uuid": {
+      "type": "keyword"
+    },
+    "status": {
+      "type": "keyword"
+    },
+    "inbox_id": {
+      "type": "integer"
+    },
+    "created_at": {
+      "type": "date",
+      "format": "epoch_second"
+    },
+    "updated_at": {
+      "type": "float"
+    },
+    "last_activity_at": {
+      "type": "date",
+      "format": "epoch_second"
+    },
+    "first_reply_created_at": {
+      "type": "date",
+      "format": "epoch_second"
+    },
+    "waiting_since": {
+      "type": "date",
+      "format": "epoch_second"
+    },
+    "unread_count": {
+      "type": "integer"
+    },
+    "priority": {
+      "type": "keyword"
+    },
+    "sla_policy_id": {
+      "type": "keyword"
+    },
+    "muted": {
+      "type": "boolean"
+    },
+    "can_reply": {
+      "type": "boolean"
+    },
+    "labels": {
+      "type": "keyword"
+    },
+    "channel_type": {
+      "type": "keyword"
+    },
+    "assignee_id": {
+      "type": "integer"
+    },
+    "assignee_name": {
+      "type": "keyword"
+    },
+    "assignee_type": {
+      "type": "keyword"
+    },
+    "sender_id": {
+      "type": "integer"
+    },
+    "sender_instagram_follower_count": {
+      "type": "integer"
+    },
+    "sender_instagram_is_verified": {
+      "type": "boolean"
+    }
+  }
+}

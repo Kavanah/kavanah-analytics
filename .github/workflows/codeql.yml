@@ -1,0 +1,75 @@
+# CodeQL for the PUBLIC snapshot repo (kavanah-analytics) —.
+#
+# Free for public repositories; hosted runners; no secrets. Copied onto each
+# export by bin/python/tools/publish_release.py alongside ci.yml and dco.yml.
+#
+# The snapshot repo is still PRIVATE, and on a private repo code scanning needs
+# GitHub Code Security (paid, disabled here) — so every run failed at upload
+# with "Resource not accessible by integration" (11/11 runs since 2026-09-11).
+# The visibility job gates the analysis on the repo actually being public, so
+# CodeQL turns itself on the day the repo is made public. It asks the API
+# rather than reading github.event.repository, which a schedule event lacks.
+name: CodeQL
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  schedule:
+    - cron: "17 6 * * 1"
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  visibility:
+    name: Check repository visibility
+    runs-on: ubuntu-latest
+    outputs:
+      public: ${{ steps.check.outputs.public }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          private="$(gh api "repos/${GITHUB_REPOSITORY}" --jq .private)"
+          if [ "$private" = "false" ]; then
+            echo "public=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "public=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Repository is private and Code Security is not enabled; skipping CodeQL."
+          fi
+
+  analyze:
+    name: Analyze ${{ matrix.language }}
+    needs: visibility
+    if: needs.visibility.outputs.public == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ["python", "javascript-typescript"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938  # v4.37.9
+        with:
+          languages: ${{ matrix.language }}
+          # tests/ never ships or serves requests; its CSP-string
+          # assertions ("https://js.stripe.com" in csp) read to CodeQL as
+          # URL sanitisers and were 19 of the first 244 alerts.
+          config: |
+            paths-ignore:
+              - tests/**
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@cdf488f595d80d6e07e03d4674febd5ab45fa938  # v4.37.9
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938  # v4.37.9
+        with:
+          category: "/language:${{ matrix.language }}"

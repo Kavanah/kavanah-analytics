@@ -1,0 +1,41 @@
+{% extends "!layout.html" %}
+
+{% block extrabody %}
+<div class="back-to-app-banner">
+  <span class="back-to-app-title">Kavanah Analytics Documentation</span>
+  <a href="/dashboard"
+     class="back-to-app-close"
+     id="back-to-app-close"
+     title="Close documentation"
+     aria-label="Close documentation">Close</a>
+</div>
+<script>
+  // Docs opens in a new tab from the management console (rel="noopener").
+  // Most users want the close button to dismiss that tab and return to the
+  // original app tab. If close() is blocked (tab has its own history —
+  // e.g., user typed the URL directly), fall back to navigating to
+  // /dashboard so the button still does something useful.
+  (function() {
+    var link = document.getElementById('back-to-app-close');
+    if (!link) return;
+    link.addEventListener('click', function(event) {
+      event.preventDefault();
+      // If this tab has browsing history, close() will usually be blocked
+      // by the browser, so we navigate instead.
+      if (window.history.length > 1) {
+        window.location.href = link.getAttribute('href');
+        return;
+      }
+      // Try to close; if that's blocked (no scripts-opened-this-tab grant),
+      // fall through to navigation.
+      window.close();
+      // close() is async-ish in some browsers; if we're still here after
+      // a tick, navigate.
+      setTimeout(function() {
+        window.location.href = link.getAttribute('href');
+      }, 100);
+    });
+  })();
+</script>
+{{ super() }}
+{% endblock %}

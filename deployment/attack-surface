@@ -1,0 +1,45 @@
+#!/bin/bash
+#
+# attack-surface — convenience shim for the attack-surface regression suite.
+#
+# WHY this exists:
+#   Operators want to type `attack-surface` from anywhere instead of the full
+#   `deployment/run-attack-surface-tests.sh` path. This file is the committed
+#   target of a per-user symlink in ~/.local/bin (which is already on PATH for
+#   the ubuntu user). Because the symlink points HERE and this lives in the
+#   repo, `git pull` keeps it current — there is no loose script in ~/.local/bin
+#   to drift or get lost on re-clone.
+#
+# ONE-TIME INSTALL (per machine — staging and prod):
+#   ln -s "$(pwd)/deployment/attack-surface" ~/.local/bin/attack-surface
+#   # (run from the repo root; ~/.local/bin must be on PATH)
+#
+# USAGE:
+#   attack-surface                 # staging run (guards active; refuses prod)
+# attack-surface --prod # deliberate prod run
+#   attack-surface -k SameTitle    # forward extra args to pytest
+#
+# All arguments are passed straight through to run-attack-surface-tests.sh,
+# which owns the --prod handling and the prod-hostname guard. This shim adds no
+# logic of its own beyond locating the runner — deliberately, so there is only
+# one place where prod-gating lives.
+
+set -euo pipefail
+
+# Resolve this script's real directory even when invoked via a symlink, so the
+# runner is found relative to the repo, not relative to ~/.local/bin.
+SOURCE="${BASH_SOURCE[0]}"
+while [[ -h "$SOURCE" ]]; do
+    DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+    SOURCE="$(readlink "$SOURCE")"
+    [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+
+RUNNER="$SCRIPT_DIR/run-attack-surface-tests.sh"
+if [[ ! -x "$RUNNER" && ! -f "$RUNNER" ]]; then
+    echo "[ERROR] runner not found at $RUNNER" >&2
+    exit 1
+fi
+
+exec bash "$RUNNER" "$@"

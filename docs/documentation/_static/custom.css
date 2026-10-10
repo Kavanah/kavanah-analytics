@@ -1,0 +1,111 @@
+/* ----- Docs top banner (title + close button) ----- */
+
+.back-to-app-banner {
+    background: #1a233a;
+    padding: 0 16px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 9999;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/* Push sidebar and content below the fixed banner */
+.wy-nav-side {
+    padding-top: 36px;
+}
+
+.wy-nav-content-wrap {
+    margin-top: 36px;
+}
+
+.back-to-app-title {
+    color: #fff;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.back-to-app-close {
+    display: inline-flex;
+    align-items: center;
+    color: #fff;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 5px 14px;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 4px;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.back-to-app-close:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.6);
+    color: #fff;
+    text-decoration: none;
+}
+
+/* ----- Scribe embed container ----- */
+
+.scribe-embed {
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    padding: 16px;
+    margin: 16px 0;
+    overflow: auto;
+}
+
+.scribe-embed img {
+    max-width: 100%;
+    height: auto;
+}
+
+/* ----- Landing page task grid (top-level index.rst) -----
+ * Renders the "What do you want to do?" bullet list as a responsive
+ * card grid instead of a vertical list. Each list item becomes a
+ * clickable-feeling card with a hover lift.
+ */
+
+ul.doc-landing-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+    list-style: none;
+    margin: 24px 0;
+    padding: 0;
+}
+
+ul.doc-landing-grid > li {
+    background: #fff;
+    border: 1px solid #e1e4e8;
+    border-radius: 6px;
+    padding: 16px 18px;
+    margin: 0;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease,
+                transform 0.15s ease;
+}
+
+ul.doc-landing-grid > li:hover {
+    border-color: #2980b9;
+    box-shadow: 0 2px 8px rgba(41, 128, 185, 0.15);
+    transform: translateY(-1px);
+}
+
+ul.doc-landing-grid > li > p:first-child {
+    margin-top: 0;
+}
+
+ul.doc-landing-grid > li > p:last-child {
+    margin-bottom: 0;
+}
+
+ul.doc-landing-grid a.reference {
+    display: inline-block;
+    margin-top: 4px;
+    font-weight: 500;
+}

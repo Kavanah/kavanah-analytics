@@ -1,0 +1,31 @@
+/* utilities.css — Phase 2.
+ *
+ * Small utility classes that replace repeated inline `style="..."` attributes
+ * as the CSP `unsafe-inline` migration walks the templates. Served from
+ * /static (CSP `'self'`), so these survive Phase 4's strict policy with no
+ * nonce. Grows chunk-by-chunk as templates are migrated.
+ *
+ * HIDING: do NOT add a hide utility here — reuse the existing
+ * `.cs-hidden { display: none !important; }` from cloudscape.css. Because it
+ * uses `!important`, an element shown via a CSSOM `el.style.display = 'block'`
+ * write will NOT un-hide; toggle `.cs-hidden` via `classList` instead. This
+ * is the convention the cs-dropdown / cs-modal code already follows.
+ *
+ * Rule of thumb for utility vs component modifier:
+ *   - Utility here when the target element has NO component rule setting the
+ *     same property (bare elements; head-order load then can't be overridden
+ *     by a body `<style>` block).
+ *   - When overriding a property a component class already sets, add a
+ *     higher-specificity modifier in that component's own stylesheet instead
+ *     (avoids `!important` and source-order fragility).
+ */
+
+/* Text. #5F6B7A is the Cloudscape secondary-text token. */
+.u-text-secondary { color: var(--cs-text-secondary, #5F6B7A); }
+.u-fw-normal { font-weight: 400; }
+
+/* Layout / misc, composable. */
+.u-relative { position: relative; }
+.u-no-underline { text-decoration: none; }
+.u-mr-4 { margin-right: 4px; }
+.u-dim { opacity: 0.7; }

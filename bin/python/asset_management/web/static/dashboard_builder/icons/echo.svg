@@ -1,0 +1,49 @@
+<svg width="240" height="240" viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="120" cy="120" r="120" fill="#ffffff"/>
+
+  <style>
+    .echo-stroke {
+      fill: none;
+      stroke: #5EC6FF;
+      stroke-width: 10;
+      stroke-linecap: round;
+    }
+    .echo-text {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 60px;
+      fill: #5EC6FF;
+      font-weight: 600;
+      letter-spacing: 3px;
+    }
+  </style>
+
+  <!-- Middle circle (formerly inner) -->
+  <circle
+    class="echo-stroke"
+    cx="120"
+    cy="120"
+    r="85"
+    stroke-dasharray="150 25"
+    stroke-dashoffset="0"
+  />
+
+  <!-- Outer circle, rotated so gap is offset downward -->
+  <circle
+    class="echo-stroke"
+    cx="120"
+    cy="120"
+    r="115"
+    stroke-dasharray="180 30"
+    stroke-dashoffset="90"
+  />
+
+  <text
+    class="echo-text"
+    x="50%"
+    y="50%"
+    dominant-baseline="middle"
+    text-anchor="middle"
+  >
+    echo
+  </text>
+</svg>

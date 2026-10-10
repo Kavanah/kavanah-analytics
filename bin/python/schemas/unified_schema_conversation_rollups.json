@@ -1,0 +1,59 @@
+{
+  "properties": {
+    "@timestamp": {
+      "type": "date"
+    },
+    "kibana_date": {
+      "type": "date",
+      "format": "yyyy-MM-dd"
+    },
+    "month": {
+      "type": "keyword"
+    },
+    "team_esid": {
+      "type": "keyword"
+    },
+    "team_title": {
+      "type": "keyword"
+    },
+    "source": {
+      "type": "keyword"
+    },
+    "conversations": {
+      "type": "long"
+    },
+    "spiritual_conversation": {
+      "type": "long"
+    },
+    "multiplier": {
+      "type": "long"
+    },
+    "no_response": {
+      "type": "long"
+    },
+    "language_barrier": {
+      "type": "long"
+    },
+    "Other": {
+      "type": "long"
+    },
+    "incomingMessagesCount": {
+      "type": "long"
+    },
+    "outboundMessagesCount": {
+      "type": "long"
+    },
+    "clients": {
+      "type": "long"
+    },
+    "retention_months": {
+      "type": "integer"
+    },
+    "cutoff": {
+      "type": "date"
+    },
+    "rolled_up_at": {
+      "type": "date"
+    }
+  }
+}

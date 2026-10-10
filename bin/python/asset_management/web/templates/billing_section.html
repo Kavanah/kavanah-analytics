@@ -1,0 +1,3239 @@
+{% extends "base_v2.html" %}
+
+{% block sidebar %}{% endblock %}
+{% block main_toolbar %}{% endblock %}
+
+{% block title %}Billing - Kavanah Analytics{% endblock %}
+
+{# one connector row for the Current Plan "Your data connections"
+   card. ``is_active`` toggles the de-emphasised styling + the "Inactive — not
+   imported" badge on over-cap rows. The row body (provider label, green
+   Configured pill, connector count, Meta sub-sections / flat account list) is
+   the markup, unchanged. #}
+{% macro billing_conn_item(conn, is_active) %}
+                <li class="billing-conn-item{{ '' if is_active else ' billing-conn-item-inactive' }}" data-testid="billing-conn-item">
+                    <div class="billing-conn-head">
+                        {# prefer the connector's display label
+                           ("Disciple.Tools", "Meta", "Echo Messaging") so the
+                           raw underscore provider key never surfaces; fall back
+                           to the capitalized provider for older shapes. #}
+                        <span class="billing-conn-provider">{{ conn.label or ((conn.provider or 'Connection') | capitalize) }}</span>
+                        {% if conn.status %}
+                        {# green "Configured" pill. #}
+                        <span class="billing-conn-status billing-conn-status-ok">{{ conn.status }}</span>
+                        {% endif %}
+                        {# per-provider count to the right of the pill.
+                           labelled "sources" (not "connectors"): the
+                           count is sources under this provider, the same unit as
+                           the card total + usage meter, so a Meta row reading "3
+                           sources" visibly sums toward the "N of M used" meter
+                           instead of looking like a separate "connectors" unit. #}
+                        {% if conn.count %}
+                        <span class="billing-conn-count" data-testid="billing-conn-count">{{ conn.count }} source{{ '' if conn.count == 1 else 's' }}</span>
+                        {% endif %}
+                        {# over-cap rows carry a muted "not imported" badge. #}
+                        {% if not is_active %}
+                        <span class="billing-conn-status billing-conn-status-inactive" data-testid="billing-conn-inactive-badge">Not imported</span>
+                        {% endif %}
+                    </div>
+                    {# Meta renders labelled sub-sections (Ad
+                       accounts / Pages / Instagram); every other provider
+                       renders a single flat list. ESIDs are never shown. #}
+                    {% if conn.groups %}
+                    {% for grp in conn.groups %}
+                    <div class="billing-conn-subsection" data-testid="billing-conn-subsection">
+                        <div class="billing-conn-subhead">{{ grp.label }}</div>
+                        <ul class="billing-conn-accounts">
+                            {% for acct in grp.accounts %}
+                            <li>{{ acct.name }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    {% endfor %}
+                    {% elif conn.accounts %}
+                    <ul class="billing-conn-accounts">
+                        {% for acct in conn.accounts %}
+                        <li>{{ acct.name }}</li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <div class="billing-conn-empty">No accounts under this connection.</div>
+                    {% endif %}
+                </li>
+{% endmacro %}
+
+{# Billing section shell. Three sub-pages (Payment, Plans,
+   Current Plan) share this template and differ only by the ``active``
+   var, which highlights the matching tab and selects the scaffold body.
+   Content is a deferred-to- placeholder; the Plans tab
+   carries the folded "Upgrade to add more sources" copy. #}
+
+{% block extra_css %}
+<style>
+    /* Billing is full-width — no sidebar even for management-console users
+       (mirrors profile.html). */
+    .cs-main {
+        margin-left: 0 !important;
+    }
+    .billing-page {
+        max-width: 960px;
+        margin: 0 auto;
+    }
+    /* Back link — mirrors profile's .profile-back-link (arrow + "Back"). */
+    .billing-back-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--cs-text-link);
+        font-size: var(--cs-font-size-s);
+        text-decoration: none;
+        margin-bottom: var(--cs-space-m);
+        padding: 4px 8px;
+        margin-left: -8px;
+        border-radius: var(--cs-radius-s);
+        transition: background var(--cs-transition-fast);
+    }
+    .billing-back-link:hover {
+        background: var(--cs-bg-hover);
+        text-decoration: none;
+    }
+    .billing-back-link i { font-size: 12px; }
+    .billing-page h1 {
+        font-size: 22px;
+        font-weight: var(--cs-font-weight-bold);
+        color: var(--cs-text-heading);
+        margin-bottom: 2px;
+    }
+    .billing-subtitle {
+        color: var(--cs-text-secondary);
+        font-size: var(--cs-font-size-s);
+        margin-bottom: var(--cs-space-m);
+    }
+    /* Horizontal section nav (tabs). */
+    .billing-tabs {
+        display: flex;
+        gap: var(--cs-space-xs);
+        border-bottom: 1px solid var(--cs-border-divider);
+        margin-bottom: var(--cs-space-l);
+    }
+    .billing-tab {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 10px 14px;
+        color: var(--cs-text-secondary);
+        font-size: var(--cs-font-size-m);
+        font-weight: var(--cs-font-weight-medium);
+        text-decoration: none;
+        border-bottom: 2px solid transparent;
+        margin-bottom: -1px;
+        transition: color var(--cs-transition-fast),
+                    border-color var(--cs-transition-fast);
+    }
+    .billing-tab:hover {
+        color: var(--cs-text-primary);
+        text-decoration: none;
+    }
+    .billing-tab.active {
+        color: var(--cs-text-link);
+        border-bottom-color: var(--cs-text-link);
+    }
+    .billing-tab i {
+        font-size: 13px;
+        color: var(--cs-text-tertiary);
+    }
+    .billing-tab.active i { color: var(--cs-text-link); }
+    .billing-card {
+        background: var(--cs-bg-primary);
+        border: 1px solid var(--cs-border-divider);
+        border-radius: var(--cs-radius-l);
+        padding: var(--cs-space-l) var(--cs-space-xl);
+    }
+    .billing-eyebrow {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 11px;
+        font-weight: var(--cs-font-weight-bold);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--cs-text-secondary);
+        margin-bottom: 8px;
+    }
+    /* connections-card header: eyebrow on the left, the source
+       total (same unit as the usage meter) on the right. */
+    .billing-conn-card-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: var(--cs-space-m);
+        margin-bottom: 8px;
+    }
+    .billing-conn-card-head .billing-eyebrow {
+        margin-bottom: 0;
+    }
+    .billing-conn-total {
+        font-size: var(--cs-font-size-s);
+        color: var(--cs-text-secondary);
+        white-space: nowrap;
+    }
+    .billing-card h2 {
+        font-size: var(--cs-font-size-l);
+        font-weight: var(--cs-font-weight-bold);
+        color: var(--cs-text-heading);
+        margin: 0 0 6px;
+    }
+    .billing-card p {
+        font-size: var(--cs-font-size-m);
+        color: var(--cs-text-secondary);
+        line-height: 1.5;
+        margin: 0 0 14px;
+    }
+    .billing-actions {
+        margin-top: var(--cs-space-m);
+        display: flex;
+        gap: var(--cs-space-s);
+        flex-wrap: wrap;
+    }
+    .billing-btn {
+        height: 38px;
+        padding: 0 16px;
+        border-radius: var(--cs-radius-s);
+        font-size: var(--cs-font-size-m);
+        font-weight: var(--cs-font-weight-bold);
+        font-family: var(--cs-font);
+        cursor: pointer;
+        border: 1px solid transparent;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+    }
+    .billing-btn-primary {
+        background: var(--cs-btn-primary-bg);
+        color: #fff;
+    }
+    .billing-btn-primary:hover {
+        background: var(--cs-btn-primary-bg-hover);
+        text-decoration: none;
+    }
+    .billing-btn-ghost {
+        background: transparent;
+        color: var(--cs-text-link);
+    }
+    .billing-btn-ghost:hover {
+        background: var(--cs-bg-hover);
+        text-decoration: none;
+    }
+    /* Destructive ghost — red text for the add-on Remove action (
+       2026-06-15). Same transparent ghost shape, danger-colored label. */
+    .billing-btn-danger-ghost {
+        background: transparent;
+        color: #d13212;
+    }
+    .billing-btn-danger-ghost:hover {
+        background: #fdf3f1;
+        text-decoration: none;
+    }
+
+    /* --- Payment page: two-column summary + card form ---- */
+    .billing-pay-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+        gap: var(--cs-space-l);
+        align-items: start;
+    }
+    @media (max-width: 760px) {
+        .billing-pay-grid { grid-template-columns: 1fr; }
+    }
+    .billing-summary-line {
+        display: flex;
+        justify-content: space-between;
+        gap: var(--cs-space-m);
+        font-size: var(--cs-font-size-m);
+        color: var(--cs-text-primary);
+        padding: 8px 0;
+    }
+    .billing-summary-line .billing-summary-label-strong {
+        font-weight: var(--cs-font-weight-bold);
+        color: var(--cs-text-heading);
+    }
+    /* Coupon discount line in the checkout summary. */
+    .billing-summary-discount .billing-summary-discount-amt { color: var(--cs-text-success, #1e7e34); }
+    /* ``display: flex`` on .billing-summary-line overrides the HTML [hidden]
+       attribute, so the row showed even when empty. Force it hidden when the
+       attribute is present (JS clears [hidden] to reveal it on Apply). */
+    .billing-summary-discount[hidden] { display: none; }
+    .billing-summary-plan {
+        padding: 10px 0 14px;
+        border-bottom: 1px solid var(--cs-border-divider);
+    }
+    .billing-summary-plan .billing-plan-name {
+        font-weight: var(--cs-font-weight-bold);
+        color: var(--cs-text-heading);
+        font-size: var(--cs-font-size-m);
+    }
+    .billing-summary-caption {
+        color: var(--cs-text-secondary);
+        font-size: var(--cs-font-size-s);
+        margin-top: 2px;
+    }
+    .billing-summary-divider {
+        border: 0;
+        border-top: 1px solid var(--cs-border-divider);
+        margin: 6px 0;
+    }
+    .billing-summary-total {
+        display: flex;
+        justify-content: space-between;
+        gap: var(--cs-space-m);
+        font-size: var(--cs-font-size-l);
+        font-weight: var(--cs-font-weight-bold);
+        color: var(--cs-text-heading);
+        padding-top: 10px;
+        margin-top: 4px;
+        border-top: 2px solid var(--cs-border-divider);
+    }
+    .billing-coupon-row {
+        display: flex;
+        gap: var(--cs-space-xs);
+        margin: 12px 0;
+    }
+    .billing-input {
+        height: 38px;
+        flex: 1;
+        min-width: 0;
+        padding: 0 12px;
+        border: 1px solid var(--cs-border-input, var(--cs-border-divider));
+        border-radius: var(--cs-radius-s);
+        background: var(--cs-bg-primary);
+        color: var(--cs-text-primary);
+        font-family: var(--cs-font);
+        font-size: var(--cs-font-size-m);
+    }
+    .billing-input:focus {
+        outline: none;
+        border-color: var(--cs-text-link);
+    }
+    /* Billing-details fields (name/address/company) above the card. */
+    .billing-field {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin-bottom: 12px;
+        flex: 1;
+        min-width: 0;
+    }
+    .billing-field label {
+        font-size: var(--cs-font-size-s);
+        font-weight: var(--cs-font-weight-medium);
+        color: var(--cs-text-secondary);
+    }
+    .billing-field .billing-input { flex: none; width: 100%; }
+    .billing-field-row {
+        display: flex;
+        gap: var(--cs-space-s);
+    }
+    @media (max-width: 480px) {
+        .billing-field-row { flex-direction: column; gap: 0; }
+    }
+    .billing-req { color: var(--cs-text-danger, #b3261e); }
+    .billing-optional { color: var(--cs-text-tertiary, var(--cs-text-secondary)); font-weight: normal; }
+    .billing-card-subhead {
+        font-size: var(--cs-font-size-l);
+        font-weight: var(--cs-font-weight-bold);
+        color: var(--cs-text-heading);
+        margin: 6px 0 6px;
+    }
+    .billing-update-hint {
+        font-size: var(--cs-font-size-s);
+        color: var(--cs-text-secondary);
+        margin: 0 0 10px;
+    }
+    /* Stripe Elements mount point — Stripe renders the iframe inside. */
+    #stripe-update-element {
+        margin: 6px 0 16px;
+        padding: 12px;
+        border: 1px solid var(--cs-border-input, var(--cs-border-divider));
+        border-radius: var(--cs-radius-s);
+        background: var(--cs-bg-primary);
+        min-height: 44px;
+    }
+    #stripe-payment-element {
+        margin: 6px 0 16px;
+        padding: 12px;
+        border: 1px solid var(--cs-border-input, var(--cs-border-divider));
+        border-radius: var(--cs-radius-s);
+        background: var(--cs-bg-primary);
+        min-height: 44px;
+    }
+    .billing-pay-error {
+        display: none;
+        color: var(--cs-text-danger, #b3261e);
+        font-size: var(--cs-font-size-s);
+        margin: 8px 0;
+    }
+    .billing-pay-error.is-visible { display: block; }
+    .billing-pay-notice {
+        color: var(--cs-text-secondary);
+        font-size: var(--cs-font-size-m);
+        background: var(--cs-bg-hover);
+        border: 1px solid var(--cs-border-divider);
+        border-radius: var(--cs-radius-s);
+        padding: 14px 16px;
+        margin: 6px 0 16px;
+    }
+    .billing-pay-success {
+        display: none;
+        color: var(--cs-text-success, #1e7e34);
+        background: var(--cs-bg-hover);
+        border: 1px solid var(--cs-border-divider);
+        border-radius: var(--cs-radius-s);
+        padding: 14px 16px;
+        margin: 6px 0;
+        font-size: var(--cs-font-size-m);
+    }
+    .billing-pay-success.is-visible { display: block; }
+    .billing-btn[disabled] { opacity: 0.6; cursor: not-allowed; }
+
+    /* --- coupon apply (Payment page) ---- */
+    .billing-coupon-apply-row {
+        display: flex;
+        gap: 8px;
+        align-items: stretch;
+    }
+    .billing-coupon-apply-row .billing-input { flex: 1 1 auto; }
+    .billing-coupon-apply-row .billing-btn { flex: 0 0 auto; white-space: nowrap; }
+    .billing-coupon-status {
+        font-size: var(--cs-font-size-s);
+        margin-top: 6px;
+        min-height: 1em;
+    }
+    .billing-coupon-status.is-error { color: var(--cs-text-danger, #b3261e); }
+    .billing-coupon-status.is-ok { color: var(--cs-text-success, #1e7e34); }
+    .billing-pay-row {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+    .billing-discount-badge {
+        font-size: var(--cs-font-size-s);
+        font-weight: 600;
+        color: var(--cs-text-success, #1e7e34);
+        background: var(--cs-bg-hover);
+        border: 1px solid var(--cs-border-divider);
+        border-radius: var(--cs-radius-s);
+        padding: 4px 10px;
+    }
+    /* "Have a coupon?" on the Current Plan page — separated from the
+       Change-plan/Cancel actions above, with a short (not full-width) input. */
+    .billing-sub-coupon {
+        margin-top: 20px;
+        padding-top: 16px;
+        border-top: 1px solid var(--cs-border-divider);
+    }
+    .billing-sub-coupon label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 600;
+    }
+    /* Coupon box: override the row's flex-grow so it doesn't stretch full
+       width, but stay wide enough to show the whole "Enter a coupon code"
+       placeholder. */
+    .billing-sub-coupon .billing-coupon-apply-row .billing-input {
+        flex: 0 0 auto;
+        width: 24ch;
+    }
+
+    /* --- Plans page: two-plan comparison cards ---- */
+    .billing-plans-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--cs-space-l);
+        align-items: stretch;
+    }
+    @media (max-width: 760px) {
+        .billing-plans-grid { grid-template-columns: 1fr; }
+    }
+    .billing-plan-card {
+        display: flex;
+        flex-direction: column;
+    }
+    .billing-plan-price {
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+        margin: 2px 0 10px;
+    }
+    .billing-plan-amount {
+        font-size: 30px;
+        font-weight: var(--cs-font-weight-bold);
+        color: var(--cs-text-heading);
+        line-height: 1;
+    }
+    .billing-plan-cadence {
+        font-size: var(--cs-font-size-m);
+        color: var(--cs-text-secondary);
+    }
+    .billing-plan-contact {
+        font-size: var(--cs-font-size-l);
+        font-weight: var(--cs-font-weight-bold);
+        color: var(--cs-text-heading);
+        line-height: 1.2;
+    }
+    .billing-plan-blurb {
+        font-size: var(--cs-font-size-m);
+        color: var(--cs-text-secondary);
+        line-height: 1.5;
+        margin: 0 0 14px;
+    }
+    .billing-plan-features {
+        list-style: none;
+        padding: 0;
+        margin: 0 0 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    .billing-plan-features li {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: var(--cs-font-size-m);
+        color: var(--cs-text-primary);
+    }
+    .billing-plan-features li i {
+        color: var(--cs-text-success, #1e7e34);
+        font-size: 12px;
+    }
+    .billing-plan-eligibility {
+        font-size: var(--cs-font-size-s);
+        color: var(--cs-text-secondary);
+        background: var(--cs-bg-hover);
+        border: 1px solid var(--cs-border-divider);
+        border-radius: var(--cs-radius-s);
+        padding: 10px 12px;
+        margin: 0 0 14px;
+        line-height: 1.5;
+    }
+    .billing-plan-eligibility i { margin-right: 4px; }
+    /* Push the actions + "more connections" CTA to the bottom so both
+       cards align regardless of body length. */
+    .billing-plan-card .billing-actions {
+        margin-top: auto;
+    }
+    .billing-plan-more {
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid var(--cs-border-divider);
+        font-size: var(--cs-font-size-s);
+        color: var(--cs-text-secondary);
+    }
+
+    /* --- Current Plan: state badge, usage, connections ---- */
+    .billing-current {
+        display: flex;
+        flex-direction: column;
+        gap: var(--cs-space-l);
+    }
+    .billing-current-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: var(--cs-space-m);
+    }
+    .billing-state-badge {
+        flex: none;
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: var(--cs-font-weight-bold);
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        border: 1px solid transparent;
+    }
+    .billing-state-active {
+        color: var(--cs-text-success, #1e7e34);
+        background: var(--cs-bg-hover);
+        border-color: var(--cs-text-success, #1e7e34);
+    }
+    .billing-state-trial {
+        color: var(--cs-text-link);
+        background: var(--cs-bg-hover);
+        border-color: var(--cs-text-link);
+    }
+    .billing-state-lapsed {
+        color: var(--cs-text-danger, #b3261e);
+        background: var(--cs-bg-hover);
+        border-color: var(--cs-text-danger, #b3261e);
+    }
+    .billing-state-warn {
+        color: var(--cs-text-warning, #92610a);
+        background: var(--cs-bg-hover);
+        border-color: var(--cs-text-warning, #92610a);
+    }
+    .billing-bill-date {
+        font-size: var(--cs-font-size-m);
+        color: var(--cs-text-secondary);
+    }
+    .billing-bill-date i { margin-right: 4px; color: var(--cs-text-link); }
+    .billing-cancel-btn { color: var(--cs-text-danger, #b3261e); }
+    .billing-uncancel-btn { color: var(--cs-text-success, #1e7e34); }
+    .billing-cancel-result {
+        font-size: var(--cs-font-size-s);
+        margin-top: 8px;
+        min-height: 1em;
+    }
+    .billing-cancel-result.is-ok { color: var(--cs-text-success, #1e7e34); }
+    .billing-cancel-result.is-error { color: var(--cs-text-danger, #b3261e); }
+    .billing-usage {
+        margin: var(--cs-space-m) 0;
+        border-top: 1px solid var(--cs-border-divider);
+    }
+    .billing-usage-row {
+        display: flex;
+        justify-content: space-between;
+        gap: var(--cs-space-m);
+        padding: 10px 0;
+        border-bottom: 1px solid var(--cs-border-divider);
+        font-size: var(--cs-font-size-m);
+    }
+    .billing-usage-label {
+        color: var(--cs-text-primary);
+        font-weight: var(--cs-font-weight-medium);
+    }
+    .billing-usage-count {
+        color: var(--cs-text-secondary);
+    }
+    /* "Ad accounts" is a SUBSET of the Data connections count
+       above (every paid-platform account is already counted as a connection).
+       The sub-row styling (indent + lighter label + caption) makes that
+       containment visible so the two numbers don't read as independent
+       quotas. */
+    .billing-usage-row--sub {
+        padding-left: var(--cs-space-m);
+    }
+    .billing-usage-row--sub .billing-usage-label {
+        font-weight: var(--cs-font-weight-regular);
+        color: var(--cs-text-secondary);
+    }
+    .billing-usage-subcaption {
+        display: block;
+        font-size: var(--cs-font-size-s);
+        color: var(--cs-text-secondary);
+    }
+    .billing-conn-list {
+        list-style: none;
+        padding: 0;
+        margin: 8px 0 0;
+        display: flex;
+        flex-direction: column;
+        gap: var(--cs-space-s);
+    }
+    .billing-conn-item {
+        border: 1px solid var(--cs-border-divider);
+        border-radius: var(--cs-radius-s);
+        padding: 12px 14px;
+    }
+    .billing-conn-head {
+        display: flex;
+        align-items: center;
+        gap: var(--cs-space-s);
+    }
+    .billing-conn-provider {
+        font-weight: var(--cs-font-weight-bold);
+        color: var(--cs-text-heading);
+        /* no capitalize transform: labels like "Disciple.Tools"
+           and "Meta" are already correctly cased and must render verbatim. */
+    }
+    .billing-conn-status {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--cs-text-secondary);
+        border: 1px solid var(--cs-border-divider);
+        border-radius: 999px;
+        padding: 2px 8px;
+    }
+    /* green "Configured" pill. */
+    .billing-conn-status.billing-conn-status-ok {
+        color: var(--cs-success);
+        background: var(--cs-success-bg);
+        border-color: var(--cs-success);
+    }
+    /* connector count to the right of the pill. */
+    .billing-conn-count {
+        font-size: var(--cs-font-size-s);
+        color: var(--cs-text-secondary);
+    }
+    /* Meta sub-section heading (Ad accounts / Pages). */
+    .billing-conn-subsection {
+        margin-top: 8px;
+    }
+    .billing-conn-subhead {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--cs-text-secondary);
+        font-weight: var(--cs-font-weight-bold);
+        margin-bottom: 2px;
+    }
+    .billing-conn-subsection .billing-conn-accounts {
+        margin-top: 2px;
+    }
+    .billing-conn-accounts {
+        list-style: none;
+        padding: 0;
+        margin: 8px 0 0;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+    .billing-conn-accounts li {
+        font-size: var(--cs-font-size-m);
+        color: var(--cs-text-primary);
+        padding-left: 12px;
+        border-left: 2px solid var(--cs-border-divider);
+    }
+    .billing-conn-empty {
+        font-size: var(--cs-font-size-s);
+        color: var(--cs-text-secondary);
+        margin-top: 6px;
+    }
+    /* single height-bounded scroll box holding both the Active and
+       Inactive groups, so the card never grows the billing page unbounded no
+       matter how many connections an org has connected. ~3 rows tall before
+       it scrolls. */
+    .billing-conn-scroll {
+        margin-top: 8px;
+        max-height: 320px;
+        overflow-y: auto;
+        padding-right: 4px;
+    }
+    /* Active / Inactive group heading inside the scroll box. */
+    .billing-conn-group-head {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        font-weight: var(--cs-font-weight-bold);
+        color: var(--cs-text-secondary);
+        margin: 12px 0 4px;
+    }
+    .billing-conn-group-head:first-child {
+        margin-top: 0;
+    }
+    /* the Inactive group head reads in the danger tone so it's
+       unmistakable that those connections are over the plan limit. */
+    .billing-conn-group-head-inactive {
+        color: var(--cs-error);
+    }
+    /* over-cap connections are clearly flagged: a soft red tint +
+       red left edge mark the whole row, and each carries a solid red
+       "Not imported" pill. They are still listed — only labelled inactive;
+       imports are not disabled by this UI. */
+    .billing-conn-item-inactive {
+        border-color: var(--cs-error);
+        background: var(--cs-error-bg);
+    }
+    /* Solid red danger pill — mirrors the green "Configured" pill, opposite
+       tone, so Active/Inactive read at a glance. */
+    .billing-conn-status.billing-conn-status-inactive {
+        color: #fff;
+        background: var(--cs-error);
+        border-color: var(--cs-error);
+    }
+    .billing-comp-result {
+        font-size: var(--cs-font-size-s);
+        margin-top: 8px;
+        min-height: 1em;
+    }
+    .billing-comp-result.is-ok { color: var(--cs-text-success, #1e7e34); }
+    .billing-comp-result.is-error { color: var(--cs-text-danger, #b3261e); }
+    /* Comp user-search autocomplete: relative wrapper + absolute dropdown. */
+    .billing-comp-search {
+        position: relative;
+        /* Size to the "Search by username or email" placeholder (~28 chars)
+           plus a little slack — NOT flex:1, which stretched the box across the
+           whole card. Fixed ``ch`` width keeps it just longer than the text.
+            */
+        flex: 0 0 auto;
+        width: 34ch;
+        max-width: 100%;
+    }
+    /* The input is NESTED inside .billing-comp-search (a relative wrapper for
+       the autocomplete dropdown), so it is NOT a flex child of the row — the
+       shared `.billing-input { flex: 1 }` doesn't apply. Without this it falls
+       back to its intrinsic width (~20ch) and clips the placeholder. Make it
+       fill the wrapper. */
+    .billing-comp-search .billing-input {
+        width: 100%;
+        box-sizing: border-box;
+    }
+    .billing-comp-suggestions {
+        position: absolute;
+        top: calc(100% + 2px);
+        left: 0;
+        right: 0;
+        z-index: 20;
+        margin: 0;
+        padding: 4px 0;
+        list-style: none;
+        background: var(--cs-bg-primary);
+        border: 1px solid var(--cs-border-divider);
+        border-radius: var(--cs-radius-s);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+        max-height: 240px;
+        overflow-y: auto;
+    }
+    .billing-comp-suggestion {
+        padding: 8px 12px;
+        font-size: var(--cs-font-size-m);
+        color: var(--cs-text-primary);
+        cursor: pointer;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .billing-comp-suggestion:hover {
+        background: var(--cs-bg-hover);
+    }
+    /* Org-comp cascade: a labelled divider + the org
+       dropdown sized to sit beside the workspace search in the coupon row. */
+    .billing-comp-org-divider {
+        margin: var(--cs-space-m) 0 var(--cs-space-s);
+        font-size: var(--cs-font-size-s);
+        color: var(--cs-text-secondary);
+        text-transform: lowercase;
+    }
+    .billing-comp-org-row {
+        align-items: center;
+    }
+    .billing-comp-org-select {
+        flex: 0 0 auto;
+        width: 28ch;
+        max-width: 100%;
+    }
+    /* Currently-comped roster. */
+    .billing-comped-roster {
+        margin-top: var(--cs-space-m);
+        border-top: 1px solid var(--cs-border-divider);
+        padding-top: var(--cs-space-m);
+    }
+    .billing-comped-head {
+        font-size: var(--cs-font-size-s);
+        font-weight: var(--cs-font-weight-bold);
+        color: var(--cs-text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        margin-bottom: 8px;
+    }
+    .billing-comped-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+    .billing-comped-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--cs-space-s);
+        padding: 8px 10px;
+        border: 1px solid var(--cs-border-divider);
+        border-radius: var(--cs-radius-s);
+        font-size: var(--cs-font-size-m);
+    }
+    .billing-comped-who { min-width: 0; }
+    .billing-comped-name {
+        font-weight: var(--cs-font-weight-medium);
+        color: var(--cs-text-primary);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .billing-comped-meta {
+        font-size: var(--cs-font-size-s);
+        color: var(--cs-text-secondary);
+    }
+    .billing-comped-empty {
+        font-size: var(--cs-font-size-s);
+        color: var(--cs-text-secondary);
+    }
+    .billing-comped-clear {
+        flex: none;
+        height: 30px;
+        padding: 0 12px;
+        font-size: var(--cs-font-size-s);
+    }
+</style>
+{% endblock %}
+
+{# Stripe.js is loaded only on the Payment sub-page, and only
+   when a publishable key is configured (otherwise the page degrades to a
+   "payments not configured" notice and needs no script). #}
+{% block extra_head %}
+{% if active == 'payment' and stripe_enabled %}
+<script src="https://js.stripe.com/v3/"></script>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="billing-page">
+    <a href="{{ back_url|default('/dashboard') }}" class="billing-back-link" data-testid="billing-back-link">
+        <i class="fas fa-arrow-left"></i> Back
+    </a>
+    <h1>Billing</h1>
+    <p class="billing-subtitle">Manage your payment method, compare plans, and review your current subscription.</p>
+
+    <nav class="billing-tabs" aria-label="Billing sections">
+        <a href="{{ url_for('analytics.billing_payment_page') }}"
+           class="billing-tab{% if active == 'payment' %} active{% endif %}"
+           data-testid="billing-tab-payment">
+            <i class="fas fa-credit-card"></i> Payment
+        </a>
+        <a href="{{ url_for('analytics.billing_plans_page') }}"
+           class="billing-tab{% if active == 'plans' %} active{% endif %}"
+           data-testid="billing-tab-plans">
+            <i class="fas fa-layer-group"></i> Plans
+        </a>
+        <a href="{{ url_for('analytics.billing_current_page') }}"
+           class="billing-tab{% if active == 'current' %} active{% endif %}"
+           data-testid="billing-tab-current">
+            <i class="fas fa-receipt"></i> Current Plan
+        </a>
+    </nav>
+
+    {% if active == 'payment' %}
+    {# Payment screen: subscription summary (left) + Stripe
+       Elements card form (right). Card data is captured entirely by
+       Stripe; only a payment_method_id is POSTed to our server. #}
+    <div class="billing-pay-grid">
+        <div class="billing-card" data-testid="billing-summary">
+            <div class="billing-eyebrow">Subscription Information</div>
+            <h2>Your plan</h2>
+
+            {% if is_superuser %}
+            {# Complimentary access — no plan price / total to show. #}
+            <p class="billing-summary-caption" data-testid="billing-summary-superuser">
+                You have complimentary administrator access — no payment is required.
+            </p>
+            {% elif state.is_comped %}
+            {# Comped user — complimentary access, so the priced plan summary
+               (plan/price/total) is hidden; nothing to pay. #}
+            <p class="billing-summary-caption" data-testid="billing-summary-comped">
+                You have complimentary access — no payment is required.
+            </p>
+            {% else %}
+            <div class="billing-summary-plan">
+                <div class="billing-summary-line">
+                    <div>
+                        <div class="billing-plan-name" data-testid="billing-plan-name">{{ summary.plan_name }}</div>
+                        <div class="billing-summary-caption">{{ summary.cadence_caption }}</div>
+                        <div class="billing-summary-caption">{{ summary.limits_caption }}</div>
+                    </div>
+                    <div class="billing-summary-label-strong">{{ summary.unit_price }}</div>
+                </div>
+                <div class="billing-summary-caption">Quantity: {{ summary.quantity }}</div>
+            </div>
+
+            {# Discount line — pre-rendered visible when the user already has a
+               discounted subscription (summary.discount_amount set server-side);
+               otherwise hidden until the checkout Apply fills + reveals it
+               . #}
+            <div class="billing-summary-line billing-summary-discount" id="billing-summary-discount"
+                 data-testid="billing-summary-discount" {% if not summary.discount_amount %}hidden{% endif %}>
+                <span id="billing-summary-discount-label">Discount</span>
+                <span id="billing-summary-discount-amount" class="billing-summary-discount-amt">{{ summary.discount_amount | default('') }}</span>
+            </div>
+            <div class="billing-summary-total">
+                <span>Total</span>
+                <span data-testid="billing-total" id="billing-summary-total">{{ summary.total }}</span>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="billing-card" data-testid="billing-payment-form">
+            <div class="billing-eyebrow">Payment Information</div>
+            {# Single card title that switches with the mode: a paid-active
+               subscriber is only changing their card (no address form), so the
+               header reads "Update payment method"; a new subscriber fills in
+               their billing details + card, so it reads "Billing details". #}
+            <h2>{% if paid_active and stripe_enabled %}Update payment method{% else %}Billing details{% endif %}</h2>
+
+            <div class="billing-pay-success" id="billing-pay-success" data-testid="billing-pay-success"></div>
+
+            {% if is_superuser %}
+            {# A superuser has complimentary access — no payment is required. #}
+            <div class="billing-pay-notice" data-testid="billing-pay-superuser">
+                You have complimentary administrator access — no payment is
+                required. See your <a href="{{ url_for('analytics.billing_current_page') }}">Current Plan</a>.
+            </div>
+            {% elif state.is_comped %}
+            {# A comped user has complimentary access — no card form / Pay button
+               (canceling/paying for a granted comp makes no sense).
+               2026-06-08. #}
+            <div class="billing-pay-notice" data-testid="billing-pay-comped">
+                You have complimentary access — no payment is required. See your
+                <a href="{{ url_for('analytics.billing_current_page') }}">Current Plan</a>.
+            </div>
+            {% elif fully_discounted %}
+            {# a 100%-off ($0) active subscription is charged nothing,
+               so there's no upcoming charge to put a card behind. Hide the
+               update-card form and show the same no-payment-required notice a
+               comped user gets. #}
+            <div class="billing-pay-notice" data-testid="billing-pay-fully-discounted">
+                Your subscription is fully discounted — no payment is required. See your
+                <a href="{{ url_for('analytics.billing_current_page') }}">Current Plan</a>.
+            </div>
+            {% elif paid_active and stripe_enabled %}
+            {# PAID-active — no NEW subscription (that would double-charge), but
+               the user can CHANGE the card used for the next billing period.
+               Collects the SAME full billing details as the pay form (
+               2026-06-05) and posts to /billing/payment-method (attaches the
+               new card, sets it as the subscription default, detaches the old
+               card, and refreshes the Customer's billing details). #}
+            <p class="billing-update-hint">Enter a new card to use for your upcoming billing periods.</p>
+            <form id="billing-update-card-form"
+                  data-update-url="{{ url_for('analytics.billing_update_payment_method') }}"
+                  data-publishable-key="{{ stripe_publishable_key }}">
+                {# Pre-fill from the Stripe Customer so a
+                   paid user doesn't re-type their billing address on every card
+                   change. The card field is never pre-filled. update_prefill is
+                   None when unavailable → | default('') renders blanks. #}
+                {% set _pf = update_prefill or {} %}
+                {% set _pa = _pf.address or {} %}
+                <div class="billing-field">
+                    <label for="upd-name">Full name <span class="billing-req">*</span></label>
+                    <input type="text" id="upd-name" class="billing-input" autocomplete="name"
+                           maxlength="150" required data-billing-required
+                           data-billing-filter="name"
+                           title="Letters, spaces, and . ' - only"
+                           value="{{ _pf.name | default('') }}"
+                           data-testid="upd-name">
+                </div>
+                <div class="billing-field">
+                    <label for="upd-company">Company <span class="billing-optional">(optional)</span></label>
+                    <input type="text" id="upd-company" class="billing-input" autocomplete="organization"
+                           maxlength="150" data-billing-filter="company"
+                           title="Letters, numbers, spaces, and & . , ' - ( ) only"
+                           value="{{ _pf.company | default('') }}"
+                           data-testid="upd-company">
+                </div>
+                <div class="billing-field">
+                    <label for="upd-address">Address <span class="billing-req">*</span></label>
+                    <input type="text" id="upd-address" class="billing-input" autocomplete="address-line1"
+                           maxlength="200" required data-billing-required
+                           data-billing-filter="address"
+                           title="Letters, numbers, spaces, and . , ' - / # & only"
+                           value="{{ _pa.line1 | default('') }}"
+                           data-testid="upd-address">
+                </div>
+                <div class="billing-field-row">
+                    <div class="billing-field">
+                        <label for="upd-city">City <span class="billing-req">*</span></label>
+                        <input type="text" id="upd-city" class="billing-input" autocomplete="address-level2"
+                               maxlength="100" required data-billing-required
+                               data-billing-filter="name"
+                               title="Letters, spaces, and . ' - only"
+                               value="{{ _pa.city | default('') }}"
+                               data-testid="upd-city">
+                    </div>
+                    <div class="billing-field">
+                        <label for="upd-state">State / Region</label>
+                        <input type="text" id="upd-state" class="billing-input" autocomplete="address-level1"
+                               maxlength="100" data-billing-filter="name"
+                               title="Letters, spaces, and . ' - only"
+                               value="{{ _pa.state | default('') }}"
+                               data-testid="upd-state">
+                    </div>
+                </div>
+                <div class="billing-field-row">
+                    <div class="billing-field">
+                        <label for="upd-zip">ZIP / Postal code <span class="billing-req">*</span></label>
+                        <input type="text" id="upd-zip" class="billing-input" autocomplete="postal-code"
+                               maxlength="10" required data-billing-required
+                               data-billing-filter="postal"
+                               title="Letters, numbers, spaces, and hyphens only"
+                               value="{{ _pa.postal_code | default('') }}"
+                               data-testid="upd-zip">
+                    </div>
+                    <div class="billing-field">
+                        <label for="upd-country">Country <span class="billing-req">*</span></label>
+                        {# Country dropdown. Submits the 2-letter ISO
+                           code (Stripe requires it). Stripe stores the code
+                           (e.g. "US"), so the prefill matches an option value
+                           directly. #}
+                        {% set _ucountry = (_pa.country | default('')) | upper %}
+                        <select id="upd-country" class="billing-input" autocomplete="country"
+                                required data-billing-required data-testid="upd-country">
+                            <option value="" disabled {% if not _ucountry %}selected{% endif %}>Select a country…</option>
+                            {% for code, name in countries %}
+                            <option value="{{ code }}" {% if code == _ucountry %}selected{% endif %}>{{ name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <h2 class="billing-card-subhead">Card details</h2>
+                <div id="stripe-update-element" data-testid="stripe-update-element">
+                    <!-- Stripe Elements mounts the card iframe here -->
+                </div>
+                <div class="billing-pay-error" id="billing-update-error" data-testid="billing-update-error" role="alert"></div>
+                <div class="billing-pay-success" id="billing-update-success" data-testid="billing-update-success"></div>
+                <button type="submit"
+                        class="billing-btn billing-btn-primary"
+                        id="billing-update-btn"
+                        disabled
+                        data-testid="billing-update-btn">Save card</button>
+            </form>
+            {% elif already_active %}
+            {# Comped-active (or Stripe off) — no Stripe card to change; just
+               point to Current Plan. #}
+            <div class="billing-pay-notice" data-testid="billing-pay-already-active">
+                Your subscription is already active. You can review and manage it
+                on the <a href="{{ url_for('analytics.billing_current_page') }}">Current Plan</a> page.
+            </div>
+            {% elif stripe_enabled %}
+            <form id="billing-pay-form"
+                  data-create-url="{{ url_for('analytics.billing_create_subscription') }}"
+                  data-publishable-key="{{ stripe_publishable_key }}">
+                {# Name + address collected by our own inputs and passed to
+                   Stripe as billing_details (ZIP lives here with the address,
+                   not in the card iframe — hidePostalCode:true). Company is
+                   optional. * fields are required and gate the Pay button. #}
+                {# Character-type restrictions: data-billing-filter
+                   names a character class; the page JS strips anything outside it
+                   as the user types, and the title explains the rule. Rules are
+                   permissive enough for international input (accented letters,
+                   alphanumeric postal codes, addresses with #/&). #}
+                <div class="billing-field">
+                    <label for="bill-name">Full name <span class="billing-req">*</span></label>
+                    <input type="text" id="bill-name" class="billing-input" autocomplete="name"
+                           maxlength="150" required data-billing-required
+                           data-billing-filter="name"
+                           title="Letters, spaces, and . ' - only"
+                           data-testid="bill-name">
+                </div>
+                <div class="billing-field">
+                    <label for="bill-company">Company <span class="billing-optional">(optional)</span></label>
+                    <input type="text" id="bill-company" class="billing-input" autocomplete="organization"
+                           maxlength="150" data-billing-filter="company"
+                           title="Letters, numbers, spaces, and & . , ' - ( ) only"
+                           data-testid="bill-company">
+                </div>
+                <div class="billing-field">
+                    <label for="bill-address">Address <span class="billing-req">*</span></label>
+                    <input type="text" id="bill-address" class="billing-input" autocomplete="address-line1"
+                           maxlength="200" required data-billing-required
+                           data-billing-filter="address"
+                           title="Letters, numbers, spaces, and . , ' - / # & only"
+                           data-testid="bill-address">
+                </div>
+                <div class="billing-field-row">
+                    <div class="billing-field">
+                        <label for="bill-city">City <span class="billing-req">*</span></label>
+                        <input type="text" id="bill-city" class="billing-input" autocomplete="address-level2"
+                               maxlength="100" required data-billing-required
+                               data-billing-filter="name"
+                               title="Letters, spaces, and . ' - only"
+                               data-testid="bill-city">
+                    </div>
+                    <div class="billing-field">
+                        <label for="bill-state">State / Region</label>
+                        <input type="text" id="bill-state" class="billing-input" autocomplete="address-level1"
+                               maxlength="100" data-billing-filter="name"
+                               title="Letters, spaces, and . ' - only"
+                               data-testid="bill-state">
+                    </div>
+                </div>
+                <div class="billing-field-row">
+                    <div class="billing-field">
+                        <label for="bill-zip">ZIP / Postal code <span class="billing-req">*</span></label>
+                        <input type="text" id="bill-zip" class="billing-input" autocomplete="postal-code"
+                               maxlength="10" required data-billing-required
+                               data-billing-filter="postal"
+                               title="Letters, numbers, spaces, and hyphens only"
+                               data-testid="bill-zip">
+                    </div>
+                    <div class="billing-field">
+                        <label for="bill-country">Country <span class="billing-req">*</span></label>
+                        {# Country dropdown. Submits the 2-letter ISO
+                           code (Stripe requires it); label shows the name. #}
+                        <select id="bill-country" class="billing-input" autocomplete="country"
+                                required data-billing-required data-testid="bill-country">
+                            <option value="" disabled selected>Select a country…</option>
+                            {% for code, name in countries %}
+                            <option value="{{ code }}">{{ name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <h2 class="billing-card-subhead">Card details</h2>
+                <div id="stripe-payment-element" data-testid="stripe-payment-element">
+                    <!-- Stripe Elements mounts the secure card iframe here -->
+                </div>
+
+                {# Optional coupon code. The user
+                   types a code and clicks Apply; the server validates against
+                   Stripe and returns the discounted total — the Pay button then
+                   shows the new amount and a "60% off" badge. An invalid code
+                   shows "Invalid code." inline. The code is re-validated at
+                   charge time. Letters/digits/-/_ only. #}
+                <div class="billing-field"
+                     data-apply-coupon-url="{{ url_for('analytics.billing_apply_coupon') }}"
+                     data-plan-key="{{ summary.plan_key }}">
+                    {# item 3 — a single coupon field, Stripe-validated.
+                       A "comp" is just a 100%-off Stripe coupon (no distinct
+                       comp-code system; real comps are superuser-granted), and
+                       "comp code" appeared nowhere else, so the label is plain
+                       "Coupon code" — accurate without advertising a comp tier
+                       (user decision 2026-06-09). A 100%-off code still works. #}
+                    <label for="bill-coupon">Coupon code <span class="billing-optional">(optional)</span></label>
+                    <div class="billing-coupon-apply-row">
+                        <input type="text" id="bill-coupon" class="billing-input" autocomplete="off"
+                               maxlength="64" data-billing-filter="coupon"
+                               placeholder="Have a code? Enter it here"
+                               title="Letters, numbers, hyphens and underscores only"
+                               data-testid="bill-coupon">
+                        <button type="button"
+                                class="billing-btn billing-btn-ghost"
+                                id="bill-coupon-apply"
+                                data-testid="bill-coupon-apply">Apply</button>
+                    </div>
+                    <div class="billing-coupon-status" id="bill-coupon-status"
+                         data-testid="bill-coupon-status" role="status"></div>
+                </div>
+
+                <div class="billing-pay-error" id="billing-pay-error" data-testid="billing-payment-error" role="alert"></div>
+                <div class="billing-pay-row">
+                    <button type="submit"
+                            class="billing-btn billing-btn-primary"
+                            id="billing-pay-btn"
+                            disabled
+                            data-testid="billing-pay-btn">Pay {{ summary.total }}</button>
+                    <span class="billing-discount-badge" id="bill-discount-badge"
+                          data-testid="bill-discount-badge" hidden></span>
+                </div>
+            </form>
+            {% else %}
+            <div class="billing-pay-notice" data-testid="billing-pay-disabled">
+                Online payments are not configured for this environment yet.
+                Please contact <a href="mailto:sales@kavanahanalytics.com">sales@kavanahanalytics.com</a>
+                to set up your subscription.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {% elif active == 'plans' %}
+    {# Plans comparison. Both tiers are shown with price, the
+       shared connection cap, and the 1-account-per-connection rule. The
+       Business card routes into the self-serve Payment flow carrying
+       ?plan=business; the nonprofit card surfaces the sales-contact
+       eligibility route (automatic EIN verification not yet built).
+       Every plan carries a "Contact us for more connections" CTA. #}
+    <div class="billing-plans-grid" data-testid="billing-plans">
+        {% for plan in plans %}
+        <div class="billing-card billing-plan-card"
+             data-testid="billing-plan-card-{{ plan.key }}">
+            {% if plan.show_name_eyebrow %}
+            <div class="billing-eyebrow">{{ plan.name }}</div>
+            {% endif %}
+            {% if plan.show_price %}
+            <div class="billing-plan-price">
+                <span class="billing-plan-amount" data-testid="billing-plan-price-{{ plan.key }}">{{ plan.price_display }}</span>
+                <span class="billing-plan-cadence">/ month</span>
+            </div>
+            {% else %}
+            <div class="billing-plan-price">
+                <span class="billing-plan-contact" data-testid="billing-plan-contact-{{ plan.key }}">{{ plan.price_contact_text }}</span>
+            </div>
+            {% endif %}
+            {# item 2: nonprofit tile's blurb was dropped (server-side),
+               so suppress the <p> entirely when blank rather than render empty. #}
+            {% if plan.blurb %}
+            <p class="billing-plan-blurb">{{ plan.blurb }}</p>
+            {% endif %}
+
+            <ul class="billing-plan-features">
+                {% if caps_enabled %}
+                <li><i class="fas fa-check"></i> Up to {{ connection_cap }} connections</li>
+                <li><i class="fas fa-check"></i> 1 ad account per connection</li>
+                {% else %}
+                {# no caps on data sources. #}
+                <li><i class="fas fa-check"></i> Unlimited data connections</li>
+                {% endif %}
+            </ul>
+
+            {% if plan.eligibility %}
+            {# Christian ministry: discounted rate gated behind manual
+               eligibility ships automatic verification.
+                item 2 dropped the 501(c)(3) framing in favor of
+               "Christian ministry". #}
+            <div class="billing-plan-eligibility" data-testid="billing-plan-eligibility-{{ plan.key }}">
+                <i class="fas fa-info-circle"></i>
+                Eligibility required.
+                {# the sponsored-license application form replaces the
+                   old sales mailto; applications are reviewed by a person. #}
+                <a href="{{ plan.apply_url }}" target="_blank" rel="noopener">Apply for a sponsored license</a>
+                to confirm your ministry's eligibility.
+            </div>
+            {% endif %}
+
+            <div class="billing-actions">
+                {% if plan.self_serve %}
+                <a class="billing-btn billing-btn-primary"
+                   href="{{ url_for('analytics.billing_payment_page', plan=plan.key) }}"
+                   data-testid="billing-plan-choose-{{ plan.key }}">Choose plan</a>
+                {% else %}
+                {# non-self-serve (ministry) tile routes to the
+                   sponsored-license application form, not a sales mailto. #}
+                <a class="billing-btn billing-btn-primary"
+                   href="{{ plan.apply_url }}" target="_blank" rel="noopener"
+                   data-testid="billing-plan-choose-{{ plan.key }}">Apply for sponsored license</a>
+                {% endif %}
+            </div>
+
+            {# "Contact us for more connections" CTA. 2026-06-09: shown
+               ONLY on the self-serve (Business) tile — the Christian-ministry
+               tile (plan.eligibility set) is sales-contact end-to-end and omits
+               it. Mission "$5" parenthetical dropped from this CTA (the mission
+               rate is a code on the actual add-on purchase, not stated here). #}
+            {% if not plan.eligibility and caps_enabled %}
+            <div class="billing-plan-more" data-testid="billing-plan-more-{{ plan.key }}">
+                Need more than {{ connection_cap }} connections?
+                Additional connections are ${{ addon_connection_price }} each
+                <a href="mailto:sales@kavanahanalytics.com?subject=More%20connections">Contact us</a>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
+    {% else %}
+    {# Current Plan: subscription state (trial/active/lapsed),
+       trial days-remaining, usage vs the caps for that state, the user's
+       connections + accounts, and entry points to Plans + Payment. #}
+    <div class="billing-current" data-testid="billing-current">
+        {# ── State + plan summary card ─────────────────────────────── #}
+        <div class="billing-card" data-testid="billing-current-summary">
+            <div class="billing-current-head">
+                <div>
+                    <div class="billing-eyebrow">Current Plan</div>
+                    <h2>{{ state_display.headline }}</h2>
+                </div>
+                <span class="billing-state-badge billing-state-{{ state_display.tone }}"
+                      data-testid="billing-state-badge">{{ state_display.badge }}</span>
+            </div>
+
+            {# workspace-billing Phase 4: copy references the top-level
+               billing entity — members inherit its subscription. item 1
+               renames that entity "organization" in user-facing copy (the
+               internal data tier is unchanged — still the workspace; only the
+               word changes). #}
+            {% if state.state == 'trial' %}
+            <p data-testid="billing-trial-copy">
+                {{ state.trial_days_remaining }}
+                day{{ '' if state.trial_days_remaining == 1 else 's' }} remaining on your
+                organization's free trial.
+                {% if caps_enabled %}
+                During the trial you can use
+                {{ state.connection_cap }} data source{{ '' if state.connection_cap == 1 else 's' }}
+                with {{ state.account_cap_per_connection }} account each.
+                Choose a plan to unlock the full {{ connection_cap }}-connection limit.
+                {% else %}
+                {# no caps: connect as many sources as you need. #}
+                Connect as many data sources as you need — there is no limit.
+                Choose a plan before the trial ends to keep importing.
+                {% endif %}
+            </p>
+            {% elif state.state == 'lapsed' %}
+            {# Body states the CONSEQUENCE + next step only — the headline
+               ("Your organization's trial has ended") already says what
+               happened, so we don't restate it. #}
+            <p data-testid="billing-lapsed-copy">
+                Your existing data is still visible, but new data imports are paused.
+                Choose a plan to resume importing.
+            </p>
+            {% elif state.state == 'past_due' %}
+            <p data-testid="billing-pastdue-copy">
+                Your data and imports are still active for now — please update the
+                payment method to avoid an interruption.
+            </p>
+            {% elif state.state == 'canceled' %}
+            <p data-testid="billing-canceled-copy">
+                Your existing data is still visible, but new data imports are paused.
+                Choose a plan to resume importing.
+            </p>
+            {% elif state.state == 'comp_revoked' %}
+            <p data-testid="billing-comp-revoked-copy">
+                Your existing data is still visible, but new data imports are paused.
+                Ask an administrator for access again, or choose a plan to continue.
+            </p>
+            {% elif is_superuser %}
+            <p data-testid="billing-superuser-copy">
+                You have <strong>complimentary access</strong> as an administrator —
+                no subscription or payment is required.
+                {% if caps_enabled %}You have the full {{ connection_cap }}-connection limit.{% endif %}
+            </p>
+            {% elif state.is_comped %}
+            {# Comped (non-superuser): the ORGANIZATION has complimentary access
+               (an admin granted it); every member inherits it. #}
+            <p data-testid="billing-comped-copy">
+                Your organization has <strong>complimentary access</strong> —
+                no subscription or payment is required.
+                {% if caps_enabled %}You have the full {{ connection_cap }}-connection limit.{% endif %}
+            </p>
+            {% else %}
+            {# 2026-06-09 — show the ACTUAL charged price (list minus
+               any coupon). billing.price_display is the discounted amount from
+               Stripe; falls back to the plan list price when unavailable. When
+               a coupon is active, also show the struck-through list price. #}
+            {% set _eff_price = (billing.price_display if billing and billing.price_display else plan.price_display) %}
+            {% set _is_free = billing and billing.is_free %}
+            <p data-testid="billing-active-copy">
+                {# a 100%-off coupon makes the plan FREE: render "free"
+                   wording, not a bare "$0.00 / month" (which reads as a glitch).
+                   The struck list price still shows so the discount's value is
+                   clear. Otherwise show the actual charged price as before. #}
+                {% if _is_free %}
+                Your organization is on the <strong>{{ plan.name }}</strong> plan
+                (<span class="billing-eff-price" data-testid="billing-free-label" data-list-price="{{ plan.price_display }}">free with your discount</span>, billed monthly{% if billing.list_price_display %} — normally <s>{{ billing.list_price_display }}</s>{% endif %}).
+                {% else %}
+                Your organization is on the <strong>{{ plan.name }}</strong> plan
+                (<span class="billing-eff-price" data-list-price="{{ plan.price_display }}">{{ _eff_price }}</span>
+                / month, billed monthly)<span class="billing-discount-note">{% if billing and billing.has_discount %}
+                — discounted from <s>{{ billing.list_price_display }}</s>{% endif %}</span>.
+                {% endif %}
+            </p>
+            {# Next billing date — only for a real paid Stripe subscription.
+               Once a cancel is scheduled, show the end date instead. #}
+            {% if billing and billing.current_period_end %}
+            <p class="billing-bill-date" data-testid="billing-bill-date">
+                {% if billing.cancel_at_period_end %}
+                <i class="fas fa-info-circle"></i>
+                Your subscription is set to cancel — access continues until
+                <strong>{{ billing.current_period_end[:10] }}</strong>, then it won't renew.
+                {% else %}
+                Next billing date: <strong>{{ billing.current_period_end[:10] }}</strong>
+                (<span class="billing-eff-price">{{ 'free' if _is_free else _eff_price }}</span>).
+                {% endif %}
+            </p>
+            {% endif %}
+            {% endif %}
+
+            {# ── Usage vs caps ─────────────────────────────────────── #}
+            <div class="billing-usage" data-testid="billing-usage">
+                <div class="billing-usage-row">
+                    <span class="billing-usage-label">Data connections</span>
+                    {# a complimentary account (superuser / comped) is
+                       covered in full: there is no "of 6" cap to count against,
+                       so show the total covered instead of "N of 6 used" (which
+                       wrongly implied connections beyond 6 were over-limit). #}
+                    <span class="billing-usage-count" data-testid="billing-usage-connections">
+                        {% if is_complimentary %}
+                        {{ state.connections_used }} connection{{ '' if state.connections_used == 1 else 's' }} — all covered
+                        {% elif not caps_enabled %}
+                        {# no cap to count against. #}
+                        {{ state.connections_used }} connection{{ '' if state.connections_used == 1 else 's' }}
+                        {% else %}
+                        {{ state.connections_used }} of {{ state.connection_cap }} used
+                        {% endif %}
+                    </span>
+                </div>
+                {# Ad accounts is a SUBSET of Data connections above
+                   (paid ad-platform accounts — Google Ads / GA4 — are already
+                   counted in the connections total). Rendered as an indented
+                   sub-row with an "Included above" caption so it doesn't read
+                   as a second, independent quota. #}
+                <div class="billing-usage-row billing-usage-row--sub">
+                    <span class="billing-usage-label">
+                        Ad accounts
+                        <span class="billing-usage-subcaption">Included in connections above</span>
+                    </span>
+                    <span class="billing-usage-count" data-testid="billing-usage-accounts">
+                        {{ state.accounts_used }} used
+                        {% if caps_enabled %}({{ state.account_cap_per_connection }} per connection){% endif %}
+                    </span>
+                </div>
+            </div>
+
+            {# A superuser has complimentary access — no plan to choose,
+               payment to update, or subscription to cancel. The payment/
+               plan/cancel controls are hidden for them (their admin comp
+               control still renders in its own card below). #}
+            {% if not is_superuser %}
+            <div class="billing-actions">
+                {# Change-plan / Update-payment only make sense for a real
+                   paying user. A comped (complimentary) user has no plan to
+                   change or card to update — they only get the Cancel control
+                   (which removes the comp). #}
+                {% if not state.is_comped %}
+                <a class="billing-btn billing-btn-primary"
+                   href="{{ url_for('analytics.billing_plans_page') }}"
+                   data-testid="billing-current-plans-cta">
+                    {% if state.state in ('active', 'past_due') %}Change plan{% else %}Choose a plan{% endif %}
+                </a>
+                {# Update payment — ONLY for a live ACTIVE subscription that is
+                   NOT scheduled to cancel. A trial/lapsed/
+                   canceled user has no card on file to update (the Payment page
+                   would show the SUBSCRIBE form — that's "Choose a plan"), and
+                   a cancel-scheduled sub should be restored first. NOTE: also
+                   hidden on past_due per the same rule — that state's copy
+                   directs users to the Payment page via the top-nav Billing
+                   button instead. #}
+                {% if state.state == 'active' and not (billing and billing.cancel_at_period_end) %}
+                <a class="billing-btn billing-btn-ghost"
+                   href="{{ url_for('analytics.billing_payment_page') }}"
+                   data-testid="billing-current-payment-cta">Update payment</a>
+                {% endif %}
+                {% endif %}
+                {# Cancel — self-serve, for an active PAID subscription only.
+                   A comped (complimentary) user has nothing to cancel: only an
+                   administrator removes a comp (via the comp control), so the
+                   Cancel button is hidden for them. Also hidden once a paid sub
+                   is already scheduled to cancel (the Restore button shows
+                   instead). Posts to /billing/cancel. #}
+                {% if state.state == 'active' and not state.is_comped and not (billing and billing.cancel_at_period_end) %}
+                <button type="button"
+                        class="billing-btn billing-btn-ghost billing-cancel-btn"
+                        id="billing-cancel-btn"
+                        data-cancel-url="{{ url_for('analytics.billing_cancel_subscription') }}"
+                        data-testid="billing-cancel-btn">Cancel subscription</button>
+                {% endif %}
+                {# Uncancel — only while a paid sub is scheduled to cancel at
+                   period end. Flips cancel_at_period_end back to false so it
+                   renews. Posts to /billing/resume. Same styling as the
+                   "Update payment" ghost button, but with green text. #}
+                {% if billing and billing.cancel_at_period_end %}
+                <button type="button"
+                        class="billing-btn billing-btn-ghost billing-uncancel-btn"
+                        id="billing-resume-btn"
+                        data-resume-url="{{ url_for('analytics.billing_resume_subscription') }}"
+                        data-testid="billing-resume-btn">Restore subscription</button>
+                {% endif %}
+            </div>
+
+            {# ── Add a coupon to an existing paid subscription (
+               2026-06-08) ─────────────────────────────────────────────────
+               Self-serve, PAID-active only (a comped/superuser pays nothing).
+               Validates against Stripe + attaches to the live subscription;
+               the discount takes effect on the NEXT bill (the current period is
+               not refunded), which the result message states. Hidden once a
+               cancel is scheduled — there's no next bill to discount (
+               2026-06-09). #}
+            {% if state.state == 'active' and not state.is_comped and not (billing and billing.cancel_at_period_end) %}
+            <div class="billing-sub-coupon" data-testid="billing-sub-coupon"
+                 data-apply-url="{{ url_for('analytics.billing_apply_coupon_to_subscription') }}">
+                <label for="sub-coupon">Have a coupon?</label>
+                <div class="billing-coupon-apply-row">
+                    <input type="text" id="sub-coupon" class="billing-input" autocomplete="off"
+                           maxlength="64" data-billing-filter="coupon"
+                           placeholder="Enter a coupon code"
+                           title="Letters, numbers, hyphens and underscores only"
+                           data-testid="sub-coupon">
+                    <button type="button" class="billing-btn billing-btn-ghost"
+                            id="sub-coupon-apply" data-testid="sub-coupon-apply">Apply</button>
+                </div>
+                <div class="billing-coupon-status" id="sub-coupon-status"
+                     data-testid="sub-coupon-status" role="status"></div>
+                <p class="billing-summary-caption">Applies to your next bill — your current period isn't changed.</p>
+            </div>
+            {% endif %}
+            {% endif %}
+            <div class="billing-cancel-result" id="billing-resume-result" data-testid="billing-resume-result" role="status"></div>
+            <div class="billing-cancel-result" id="billing-cancel-result" data-testid="billing-cancel-result" role="status"></div>
+        </div>
+
+        {# ── Connections + accounts ────────────────────────────────── #}
+        <div class="billing-card" data-testid="billing-current-connections">
+            {# the card header carries the SAME source total the usage
+               meter shows ({{ state.connections_used }}), so the two surfaces
+               can never read as contradictory. The per-provider rows below
+               decompose this total; the meter above counts it against the cap.
+               Both speak the unit "data sources" (one FB page/IG account/ad
+               account, one GA4 property, one Echo tenant, …), NOT provider rows
+               — counting the visible rows is what made "4 of 6 used" look like
+               it disagreed with a 2-row list. #}
+            <div class="billing-conn-card-head">
+                <span class="billing-eyebrow">Your data connections</span>
+                <span class="billing-conn-total" data-testid="billing-conn-total">
+                    {{ state.connections_used }} data source{{ '' if state.connections_used == 1 else 's' }}
+                </span>
+            </div>
+            {% set active_conns = connections.active if connections else [] %}
+            {% set inactive_conns = connections.inactive if connections else [] %}
+            {% if active_conns or inactive_conns %}
+            {# (2026-06-11): when imports are actually blocked (the
+               lapsed/canceled/comp_revoked states), tie this inventory to the
+               state — the connections are kept, imports through them are
+               paused. Turns the list into a re-subscribe nudge instead of
+               ambient data. trial/active/past_due import normally → no note. #}
+            {% if state.state in ('lapsed', 'canceled', 'comp_revoked') %}
+            <p class="billing-summary-caption" data-testid="billing-conn-paused-note">
+                Imports through these connections are paused until your
+                organization is on an active plan — your connections and
+                existing data are kept.
+            </p>
+            {% endif %}
+            {# helper copy: explain WHY some sources are inactive and
+               point the user to the Data Connectors page (Billing itself never
+               adds/removes connections — it is read-only here). The cap + the
+               "Active" group are counted in SOURCES, matching the usage meter. #}
+            <p class="billing-summary-caption" data-testid="billing-conn-cap-note">
+                {# a complimentary account is covered in full: every
+                   connection is comped with $0 owed, so the included-6 / over-cap
+                   framing doesn't apply. Show comped copy instead. #}
+                {% if is_complimentary %}
+                Your complimentary access covers all of your connections — there
+                is no plan limit and nothing to pay.
+                {% elif not caps_enabled %}
+                {# no caps: every connection imports. #}
+                Every connection you add is imported — there is no plan limit on
+                data sources.
+                {% else %}
+                Your plan includes {{ effective_cap }} connection{{ '' if effective_cap == 1 else 's' }}.
+                Connections beyond that limit are not imported.
+                {% endif %}
+                {# the Billing section is reachable at the
+                   BARE /billing path (nginx proxies it directly), where
+                   SCRIPT_NAME is empty and a plain url_for emits a bare
+                   /data-connectors that 404s (the route is mounted ONLY under
+                   /assets). assets_url guarantees the prefix in prod and stays
+                   bare in local dev (FLASK_USE_PREFIX=false), replacing the
+                   hardcoded /assets/... workaround. #}
+                <a href="{{ assets_url('data_connectors.index') }}">Add or remove connections on the Data Connectors page.</a>
+            </p>
+            {# the route already split sources into the active group
+               (first effective_cap sources, flattened display order) and the
+               inactive group (the overflow). Render both inside ONE
+               height-bounded scroll box so the card never grows the billing
+               page unbounded. Labels only — no import is disabled here. #}
+            <div class="billing-conn-scroll" data-testid="billing-conn-scroll">
+                {% if active_conns %}
+                <div class="billing-conn-group-head" data-testid="billing-conn-group-active">Active</div>
+                <ul class="billing-conn-list">
+                    {% for conn in active_conns %}
+                    {{ billing_conn_item(conn, true) }}
+                    {% endfor %}
+                </ul>
+                {% endif %}
+                {% if inactive_conns %}
+                <div class="billing-conn-group-head billing-conn-group-head-inactive" data-testid="billing-conn-group-inactive">Inactive — over your plan limit</div>
+                <ul class="billing-conn-list">
+                    {% for conn in inactive_conns %}
+                    {{ billing_conn_item(conn, false) }}
+                    {% endfor %}
+                </ul>
+                {% endif %}
+            </div>
+            {% else %}
+            <p data-testid="billing-conn-empty">
+                You have no data connections yet.
+                <a href="{{ url_for('analytics.billing_plans_page') }}">Choose a plan</a>
+                to get started.
+            </p>
+            {% endif %}
+
+            {# ── Add data connections ──
+               Paid-active orgs can buy connections beyond the included cap at
+               the add-on rate, prorated for the current period. The optional
+               coupon field accepts any add-on-scoped code (a discounted org's
+               code lands here); we deliberately DON'T name or surface that
+               discounted rate in the UI so for-profits don't see it (no
+               mission/$5 value is passed to this template). The preview shows
+               the exact prorated charge before the user confirms. #}
+            {% if addon_self_serve %}
+            {# (2026-06-16) — section order + visibility rules:
+               1. Coupon box FIRST (above Add), shown ALWAYS except when a FULL
+                  removal is scheduled (all add-ons marked to cancel).
+               2/3. The "apply it after purchase" pointer text was removed (the
+                  box is now always visible, so nothing to hunt for).
+               5. When a FULL removal is scheduled (addon_remove_at and not
+                  addon_pending_qty), HIDE the Add + Remove boxes — only the
+                  scheduled-cancellation note (at the bottom) remains.
+               6. The single scheduled-cancellation note moves to the very
+                  BOTTOM of the section (one date — a new removal replaces any
+                  prior one, so there is never more than one).
+               _full_removal = every owned add-on is marked to cancel. #}
+            {% set _full_removal = addon_remove_at and not addon_pending_qty %}
+
+            {# ── (#1/#2) Have a coupon for your add-ons? — FIRST, always shown
+               except on a full removal (nothing left to discount then). The
+               add-on coupon is item-level: it discounts ALL owned add-ons,
+               current + later-added, from the next bill. With 0 add-ons the
+               apply route returns a clear "no add-ons to apply a coupon to"
+               message (it never 500s), so the box is safe to show then too. #}
+            {% if not _full_removal %}
+            <div class="billing-sub-coupon" data-testid="billing-addon-coupon"
+                 data-apply-url="{{ url_for('analytics.billing_addon_coupon') }}">
+                <label for="addon-have-coupon">Have a coupon for your add-ons?</label>
+                <div class="billing-coupon-apply-row">
+                    <input type="text" id="addon-have-coupon" class="billing-input" autocomplete="off"
+                           maxlength="64" data-billing-filter="coupon"
+                           placeholder="Enter a coupon code"
+                           title="Letters, numbers, hyphens and underscores only"
+                           data-testid="addon-have-coupon">
+                    <button type="button" class="billing-btn billing-btn-ghost"
+                            id="addon-coupon-apply" data-testid="addon-coupon-apply">Apply</button>
+                </div>
+                <div class="billing-coupon-status" id="addon-coupon-status"
+                     data-testid="addon-coupon-status" role="status"></div>
+                <p class="billing-summary-caption">Applies to all your add-on connections.</p>
+            </div>
+            {% endif %}
+
+            {# ── Data connections stepper ────────────
+               One control replaces the old separate Add / Remove boxes (user
+               decision: a single stepper is less awkward than two flows). The
+               user dials a TARGET total of EXTRA connections in
+               [0 .. addon_max]; the JS computes the delta off the effective
+               owned count and routes by direction:
+                 • target > owned → ADD (immediate, prorated charge now)
+                 • target < owned → REDUCE (scheduled to period end, bill drops)
+                 • target = owned → no-op (Update disabled)
+               Both backend paths are unchanged — this is a UI consolidation.
+               Hidden on a FULL removal (#5): only the cancellation note (below)
+               shows then, with its Undo button. The over-cap data attrs feed
+               the reduce-direction warning (#7). No coupon field here — the
+               "Have a coupon for your add-ons?" box above is the single coupon
+               surface; we never name the mission/$5 rate in the UI. #}
+            {% if not _full_removal %}
+            {% set _effective = addon_pending_qty if addon_remove_at else addon_connections %}
+            <div class="billing-sub-coupon" data-testid="billing-addon-control"
+                 data-preview-url="{{ url_for('analytics.billing_addon_connections_preview') }}"
+                 data-buy-url="{{ url_for('analytics.billing_addon_connections') }}"
+                 data-included="{{ addon_included }}"
+                 data-owned="{{ _effective }}"
+                 data-max="{{ addon_max }}"
+                 data-price="{{ addon_price }}"
+                 data-connections-used="{{ state.connections_used }}"
+                 data-connection-cap="{{ state.connection_cap }}"
+                 {# next billing date (ISO yyyy-mm-dd) so the ADD
+                    confirm dialog can name when the new monthly rate starts.
+                    Empty when there's no live summary (staging/offline). #}
+                 data-next-bill="{{ billing.current_period_end[:10] if billing and billing.current_period_end else '' }}">
+                <label for="addon-qty">Extra data connections</label>
+                <p class="billing-summary-caption">
+                    Your plan includes {{ addon_included }} connections. Extra
+                    connections are ${{ addon_price }} each per month. Set how
+                    many extra you'd like below.
+                    {% if _effective %}You currently have
+                    <strong id="addon-current-count">{{ _effective }}</strong>
+                    extra (<strong data-testid="addon-current-cost">${{ '%.2f'|format(_effective * addon_price) }}/mo</strong>).{% endif %}
+                </p>
+                {# Number stepper, bounded [0, addon_max]. A target ABOVE the
+                   current count adds (prorated charge previewed live); BELOW
+                   schedules a reduction to that number at period end; EQUAL is a
+                   no-op. The hard cap is enforced server-side too — the max attr
+                   is convenience. #}
+                <div class="billing-coupon-apply-row" data-effective="{{ _effective }}">
+                    <input type="number" id="addon-qty" class="billing-input"
+                           inputmode="numeric" min="0" max="{{ addon_max }}"
+                           step="1" value="{{ _effective }}"
+                           title="How many extra connections you want in total (0–{{ addon_max }})"
+                           data-testid="addon-qty">
+                    {# Label/amount filled by the auto-preview: "Pay $X.XX" when
+                       adding (prorated), "Schedule reduction" when reducing,
+                       disabled when unchanged. #}
+                    <button type="button" class="billing-btn billing-btn-primary"
+                            id="addon-update-btn" data-testid="addon-update-btn">Update</button>
+                </div>
+                <div class="billing-coupon-status" id="addon-status"
+                     data-testid="addon-status" role="status"></div>
+                {# Volume-pricing note — the path BEYOND the
+                   self-serve cap. Always visible; carries the at-cap testid so
+                   the at-cap state is detectable without a separate paragraph. #}
+                <p class="billing-summary-caption" data-testid="billing-addon-volume-note">
+                    Need more than {{ addon_max }} extra connections?
+                    <a href="mailto:sales@kavanahanalytics.com?subject=Volume%20pricing"
+                       data-testid="billing-addon-at-cap">Contact us for volume pricing.</a>
+                </p>
+            </div>
+            {% endif %}
+
+            {# ── (#6) Scheduled-cancellation note — at the VERY BOTTOM of the
+               add-on section. One date only: a new removal replaces any prior
+               one, so there is never more than one expiration date to show.
+               States how many are leaving + the date in both the full-removal
+               and partial-reduction cases. #}
+            {% if addon_remove_at %}
+            {% set _marked = addon_connections - addon_pending_qty %}
+            <div class="billing-sub-coupon" data-testid="billing-addon-removal-note"
+                 data-buy-url="{{ url_for('analytics.billing_addon_connections') }}"
+                 data-owned="{{ addon_connections }}">
+                <p class="billing-summary-caption">
+                    {% if addon_pending_qty %}
+                    <strong>{{ _marked }}</strong> of your {{ addon_connections }}
+                    extra connections are scheduled to be canceled on
+                    <strong>{{ addon_remove_at[:10] }}</strong> (dropping you to
+                    {{ addon_pending_qty }}) — all stay usable until then, and
+                    your next bill covers only {{ addon_pending_qty }}.
+                    {% else %}
+                    All <strong>{{ addon_connections }}</strong> of your extra
+                    connection{{ '' if addon_connections == 1 else 's' }}
+                    {{ 'is' if addon_connections == 1 else 'are' }} scheduled to
+                    be canceled on <strong>{{ addon_remove_at[:10] }}</strong> —
+                    usable until then, and your next bill won't include them.
+                    {% endif %}
+                    Your connections and data are not deleted.
+                </p>
+                {# Undo (#5 escape hatch, 2026-06-16): on a FULL removal the Add +
+                   Remove boxes are hidden, so this is the only way to cancel the
+                   scheduled cancellation before it expires. Re-adds to the
+                   already-paid count (free netting) which clears the schedule —
+                   no new charge. A partial reduction keeps its Remove box, which
+                   already lets the user change/cancel the scheduled number, so
+                   the Undo button is shown only on a full removal. #}
+                {% if _full_removal %}
+                <button type="button" class="billing-btn billing-btn-ghost"
+                        id="addon-undo-removal-btn" data-testid="addon-undo-removal-btn">
+                    Undo scheduled removal
+                </button>
+                <div class="billing-coupon-status" id="addon-undo-status"
+                     data-testid="addon-undo-status" role="status"></div>
+                {% endif %}
+            </div>
+            {% endif %}
+            {% endif %}
+        </div>
+
+        {# ── Team subscriptions ───────────
+           Per-team billing: one subscription per licensed team under the
+           org's Stripe customer. Renders ONLY when the route passed a
+           non-empty list (ORG_BILLING_PER_TEAM flag on + the org has
+           licensed teams) — invisible until cutover. Read-only roster:
+           team, status, add-on connections, discount marker. #}
+        {% if team_subscriptions %}
+        <div class="billing-card" data-testid="billing-team-subscriptions">
+            <div class="billing-eyebrow">Team subscriptions</div>
+            <p>
+                Each licensed team under your organization carries its own
+                subscription. Coupons and add-on connections apply per team.
+            </p>
+            <ul class="billing-conn-list">
+                {% for sub in team_subscriptions %}
+                <li class="billing-conn-item" data-testid="billing-team-sub-item">
+                    <div class="billing-conn-head">
+                        <span class="billing-conn-provider">{{ sub.team_title }}</span>
+                        {# Status tone reuses the state-badge palette: active/
+                           trialing → green, past_due → amber, else red. #}
+                        {% set _tone = 'active' if sub.stripe_status in ('active', 'trialing')
+                                       else ('warn' if sub.stripe_status == 'past_due' else 'lapsed') %}
+                        <span class="billing-state-badge billing-state-{{ _tone }}"
+                              data-testid="billing-team-sub-status">{{ sub.stripe_status or 'unknown' }}</span>
+                    </div>
+                    <ul class="billing-conn-accounts">
+                        <li>{{ plan.name }} plan ({{ plan.price_display }} / month){% if sub.has_discount %} — discount applied{% endif %}</li>
+                        {% if sub.addon_connections %}
+                        <li>{{ sub.addon_connections }} add-on connection{{ '' if sub.addon_connections == 1 else 's' }}</li>
+                        {% endif %}
+                    </ul>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        {# ── AI Assistant usage ─────────────────────────────
+           Renders ONLY when the route passed a non-None ai_spend — i.e.
+           the resolved billing workspace has the AI Assistant enabled by
+           a superuser. spend_usd None = usage index unavailable → the
+           figure blanks with a soft note (never an error, never inf).
+           Historical spend predating workspace attribution (2026-07-28)
+           is not included — the counter starts at rollout. #}
+        {% if ai_spend %}
+        <div class="billing-card" data-testid="billing-ai-spend">
+            <div class="billing-eyebrow">AI Assistant usage</div>
+            {% if ai_spend.spend_usd is not none %}
+            <p data-testid="billing-ai-spend-amount">
+                {# Sub-cent spend reads as "< $0.01", not "$0.00" — real
+                   usage must never look like a dead counter. #}
+                <strong>{% if 0 < ai_spend.spend_usd < 0.005 %}&lt; $0.01{% else %}${{ '%.2f' | format(ai_spend.spend_usd) }}{% endif %}</strong>
+                estimated AI Assistant usage
+                {% if ai_spend.source == 'stripe' %}
+                this billing period (since {{ (ai_spend.cycle_start or '')[:10] }}{% if ai_spend.cycle_end %}, renews {{ ai_spend.cycle_end[:10] }}{% endif %}).
+                {% else %}
+                this calendar month (since {{ (ai_spend.cycle_start or '')[:10] }}).
+                {% endif %}
+            </p>
+            {% else %}
+            <p data-testid="billing-ai-spend-unavailable">
+                Usage figures are temporarily unavailable — check back shortly.
+            </p>
+            {% endif %}
+            <p class="billing-summary-caption">
+                Workspace-wide estimated cost of Canvas AI Assistant and
+                Data Explorer AI queries. Usage resets with each
+                {{ 'billing period' if ai_spend.source == 'stripe' else 'calendar month' }}.
+            </p>
+        </div>
+        {% endif %}
+
+        {# ── Superuser comp override ─────────────────────── #}
+        {% if is_superuser %}
+        <div class="billing-card billing-comp" data-testid="billing-comp-control">
+            <div class="billing-eyebrow">Admin — Comp a subscription</div>
+            <p>
+                Grant an existing user an active subscription without payment
+                (for migrating current users or comped accounts). Reversible
+                and recorded.
+            </p>
+            <form id="billing-comp-form"
+                  data-comp-url="{{ url_for('analytics.billing_set_comp') }}"
+                  data-search-url="{{ url_for('analytics.billing_comp_search') }}"
+                  data-list-url="{{ url_for('analytics.billing_comp_list') }}"
+                  data-ws-search-url="{{ url_for('analytics.billing_comp_workspaces') }}"
+                  data-orgs-url="{{ url_for('analytics.billing_comp_orgs') }}">
+                <div class="billing-coupon-row">
+                    <div class="billing-comp-search">
+                        <input type="text"
+                               id="billing-comp-target"
+                               class="billing-input"
+                               placeholder="Search by username or email"
+                               autocomplete="off"
+                               maxlength="254"
+                               title="Letters, numbers, and @ . _ - + only"
+                               aria-autocomplete="list"
+                               aria-expanded="false"
+                               data-testid="billing-comp-target">
+                        <ul class="billing-comp-suggestions" id="billing-comp-suggestions"
+                            data-testid="billing-comp-suggestions" role="listbox" hidden></ul>
+                    </div>
+                    {# Clearing is done per-row in the "Currently comped" roster
+                       below; the search box + this button only ADD a comp. #}
+                    <button type="button"
+                            class="billing-btn billing-btn-primary"
+                            data-comp-action="set"
+                            data-testid="billing-comp-set">Comp (active)</button>
+                </div>
+
+                {# ── Comp a specific ORGANIZATION ──────
+                   The user search above resolves a user's PRIMARY org only; a
+                   multi-org user can't comp a non-primary org that way. This
+                   Workspace → Org cascade comps an org directly. #}
+                <div class="billing-comp-org-divider" aria-hidden="true">or comp a specific organization</div>
+                <div class="billing-coupon-row billing-comp-org-row">
+                    <div class="billing-comp-search">
+                        <input type="text"
+                               id="billing-comp-ws"
+                               class="billing-input"
+                               placeholder="Search workspaces"
+                               autocomplete="off"
+                               maxlength="120"
+                               aria-autocomplete="list"
+                               aria-expanded="false"
+                               data-testid="billing-comp-ws">
+                        <ul class="billing-comp-suggestions" id="billing-comp-ws-suggestions"
+                            data-testid="billing-comp-ws-suggestions" role="listbox" hidden></ul>
+                    </div>
+                    <select id="billing-comp-org"
+                            class="billing-input billing-comp-org-select"
+                            data-testid="billing-comp-org"
+                            disabled
+                            aria-label="Organization">
+                        <option value="">Select a workspace first…</option>
+                    </select>
+                    <button type="button"
+                            class="billing-btn billing-btn-primary"
+                            id="billing-comp-org-set"
+                            data-testid="billing-comp-org-set"
+                            disabled>Comp this org</button>
+                    {# comp the WORKSPACE record + cascade an org
+                       comp to every org under it. Covers workspace members
+                       with no org role (the cody case), whom org comps can
+                       never reach. #}
+                    <button type="button"
+                            class="billing-btn"
+                            id="billing-comp-ws-set"
+                            data-testid="billing-comp-ws-set"
+                            disabled>Comp entire workspace</button>
+                </div>
+            </form>
+            <div class="billing-comp-result" id="billing-comp-result" data-testid="billing-comp-result" role="status"></div>
+
+            {# Currently-comped roster — loaded by JS on page load + after each
+               comp/clear. Each row has a Clear button. #}
+            <div class="billing-comped-roster" data-testid="billing-comped-roster">
+                <div class="billing-comped-head">Currently comped</div>
+                <ul class="billing-comped-list" id="billing-comped-list" data-testid="billing-comped-list"></ul>
+                <div class="billing-comped-empty" id="billing-comped-empty" hidden>No comped accounts.</div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{# Payment page client logic. Stripe Elements captures the card
+   in a Stripe-hosted iframe; we only ever POST the resulting
+   payment_method_id to our server, with the CSRF token in the
+   X-CSRF-Token header (enforced by the global before-request hook). #}
+{% block extra_js %}
+{# Character-type restriction for the billing-details text fields. Runs for
+   BOTH the new-subscription form and the update-card form (independent of
+   Stripe), stripping any character outside the field's allowed class as the
+   user types. Server-side trims/validates separately; this is the UX layer.
+   ALSO on the Current Plan page: the add-on coupon boxes carry
+   data-billing-filter="coupon" and the qty box carries data-billing-int —
+   without loading the script here those attributes are inert. #}
+{% if active in ('payment', 'current') %}
+<script nonce="{{ csp_nonce }}">
+(function () {
+    // Allowed-character classes per data-billing-filter value. Unicode-aware
+    // so accented letters (José, Łódź) are accepted; À-ɏ covers the
+    // Latin-1/Extended ranges common in names + place names.
+    var L = "A-Za-z\\u00C0-\\u024F";
+    var CLASSES = {
+        // Names / city / state / country: letters, space, . ' -
+        name: new RegExp("[^" + L + " .'\\-]", "g"),
+        // Company: letters, digits, space, & . , ' - ( )
+        company: new RegExp("[^" + L + "0-9 &.,'()\\-]", "g"),
+        // Address: letters, digits, space, . , ' - / # &
+        address: new RegExp("[^" + L + "0-9 .,'/#&\\-]", "g"),
+        // Postal/ZIP: letters, digits, space, hyphen
+        postal: new RegExp("[^" + L + "0-9 \\-]", "g"),
+        // Promo/coupon code: ASCII letters, digits, hyphen, underscore (no spaces)
+        coupon: new RegExp("[^A-Za-z0-9_\\-]", "g")
+    };
+    function applyFilter(el) {
+        var rx = CLASSES[el.getAttribute('data-billing-filter')];
+        if (!rx) { return; }
+        el.addEventListener('input', function () {
+            var cleaned = el.value.replace(rx, '');
+            if (cleaned !== el.value) {
+                var pos = el.selectionStart - (el.value.length - cleaned.length);
+                el.value = cleaned;
+                try { el.setSelectionRange(pos, pos); } catch (e) { /* unsupported on some types */ }
+            }
+        });
+    }
+    var fields = document.querySelectorAll('[data-billing-filter]');
+    Array.prototype.forEach.call(fields, applyFilter);
+
+    // Integer quantity fields (data-billing-int, type=number): a number
+    // input still accepts e/E/+/-/. keystrokes — block them, and clamp
+    // typed values to the input's min/max as the user types. Empty stays
+    // allowed mid-edit (clearing before typing a new number).
+    function applyIntGuard(el) {
+        el.addEventListener('keydown', function (ev) {
+            if (['e', 'E', '+', '-', '.', ','].indexOf(ev.key) !== -1) { ev.preventDefault(); }
+        });
+        el.addEventListener('input', function () {
+            if (el.value === '') { return; }
+            var n = parseInt(el.value, 10);
+            if (isNaN(n)) { el.value = ''; return; }
+            var min = parseInt(el.getAttribute('min') || '0', 10);
+            var max = parseInt(el.getAttribute('max') || '100', 10);
+            if (n < min) { el.value = String(min); }
+            else if (n > max) { el.value = String(max); }
+        });
+    }
+    var intFields = document.querySelectorAll('[data-billing-int]');
+    Array.prototype.forEach.call(intFields, applyIntGuard);
+})();
+</script>
+{% endif %}
+{% if active == 'payment' and stripe_enabled %}
+<script nonce="{{ csp_nonce }}">
+(function () {
+    var form = document.getElementById('billing-pay-form');
+    if (!form || typeof Stripe === 'undefined') { return; }
+
+    var publishableKey = form.getAttribute('data-publishable-key');
+    var createUrl = form.getAttribute('data-create-url');
+    var csrfToken = {{ csrf_token | tojson }};
+
+    var stripe = Stripe(publishableKey);
+    var elements = stripe.elements();
+    // hidePostalCode:true → the ZIP/postal is collected by our own address
+    // field (#bill-zip) and sent to Stripe as billing_details.address, so the
+    // card iframe shows only number/expiry/CVC.
+    var card = elements.create('card', { hidePostalCode: true });
+    card.mount('#stripe-payment-element');
+
+    var payBtn = document.getElementById('billing-pay-btn');
+    var errorEl = document.getElementById('billing-pay-error');
+    var successEl = document.getElementById('billing-pay-success');
+
+    // Billing-details inputs. The required ones (data-billing-required) gate
+    // the Pay button alongside the card; Company + State are optional.
+    var fName = document.getElementById('bill-name');
+    var fCompany = document.getElementById('bill-company');
+    var fAddress = document.getElementById('bill-address');
+    var fCity = document.getElementById('bill-city');
+    var fState = document.getElementById('bill-state');
+    var fZip = document.getElementById('bill-zip');
+    var fCountry = document.getElementById('bill-country');
+    var fCoupon = document.getElementById('bill-coupon');
+    var requiredFields = Array.prototype.slice.call(form.querySelectorAll('[data-billing-required]'));
+    // the "*" asterisk span in each required field's label, so we can
+    // hide them when a $0 coupon makes those fields optional (a starred field
+    // that isn't actually required reads as misleading). Resolved from each
+    // field's <label for="..."> .billing-req span.
+    var requiredAsterisks = requiredFields
+        .map(function (el) {
+            var lbl = el.id ? form.querySelector('label[for="' + el.id + '"]') : null;
+            return lbl ? lbl.querySelector('.billing-req') : null;
+        })
+        .filter(Boolean);
+
+    var cardComplete = false;
+    // set true when an applied coupon brings the total to $0. While
+    // true the card + billing-detail fields are not required and the Pay button
+    // is enabled with no payment method (nothing is charged).
+    var zeroTotal = false;
+    // The card section + the billing-details fieldset, hidden/disabled while a
+    // $0 coupon is applied. Located lazily so the markup can change without
+    // breaking the script.
+    var cardSection = document.getElementById('stripe-payment-element');
+    var cardSubhead = cardSection ? cardSection.previousElementSibling : null;
+
+    function showError(msg) {
+        errorEl.textContent = msg;
+        errorEl.classList.add('is-visible');
+    }
+    function clearError() {
+        errorEl.textContent = '';
+        errorEl.classList.remove('is-visible');
+    }
+    function showSuccess(msg) {
+        successEl.textContent = msg;
+        successEl.classList.add('is-visible');
+    }
+    function addressComplete() {
+        return requiredFields.every(function (el) { return (el.value || '').trim() !== ''; });
+    }
+    function refreshPayBtn() {
+        // Pay is enabled only when the card is complete/valid AND every
+        // required billing-detail field is filled — UNLESS a $0 coupon is
+        // applied, in which case there's nothing to collect (card
+        // hidden, name/address optional) and Pay is enabled outright.
+        if (zeroTotal) { payBtn.disabled = false; return; }
+        payBtn.disabled = !(cardComplete && addressComplete());
+    }
+    // toggle the payment-details requirement when the total flips
+    // to/from $0. When free: hide the card section, make the billing-detail
+    // fields optional (drop the HTML required attr AND hide their "*" asterisks
+    // so a starred-but-optional field never misleads), and enable Pay. When a
+    // charge is due again, restore the card, the required attrs, and the
+    // asterisks.
+    function setZeroTotal(isFree) {
+        zeroTotal = !!isFree;
+        if (cardSection) { cardSection.hidden = zeroTotal; }
+        if (cardSubhead && cardSubhead.classList.contains('billing-card-subhead')) {
+            cardSubhead.hidden = zeroTotal;
+        }
+        requiredFields.forEach(function (el) {
+            if (zeroTotal) { el.removeAttribute('required'); }
+            else { el.setAttribute('required', ''); }
+        });
+        requiredAsterisks.forEach(function (star) { star.hidden = zeroTotal; });
+        refreshPayBtn();
+    }
+
+    // Gate on the card Element's ``complete`` state (no error) + the address.
+    payBtn.disabled = true;
+    card.on('change', function (event) {
+        if (event.error) {
+            showError(event.error.message);
+        } else {
+            clearError();
+        }
+        cardComplete = !!event.complete && !event.error;
+        refreshPayBtn();
+    });
+    requiredFields.forEach(function (el) {
+        // 'input' covers text fields; 'change' covers the Country <select>.
+        el.addEventListener('input', refreshPayBtn);
+        el.addEventListener('change', refreshPayBtn);
+    });
+
+    // ── coupon apply ──────────────────────────────────────────────
+    // Apply validates the code server-side and, on success, rewrites the Pay
+    // button to the discounted total + shows a "60% off" badge. An invalid code
+    // shows "Invalid code." inline. The code stays in the field and is sent +
+    // re-validated at charge time.
+    var couponField = fCoupon ? fCoupon.closest('.billing-field') : null;
+    var applyBtn = document.getElementById('bill-coupon-apply');
+    var couponStatus = document.getElementById('bill-coupon-status');
+    var discountBadge = document.getElementById('bill-discount-badge');
+    var applyUrl = couponField ? couponField.getAttribute('data-apply-coupon-url') : '';
+    var planKey = couponField ? couponField.getAttribute('data-plan-key') : '';
+    // The original (undiscounted) Pay button label, captured to restore it
+    // when a coupon is cleared.
+    var basePayLabel = payBtn ? payBtn.textContent.trim() : '';
+    // Summary-box elements (left card): the discount line + Total update with
+    // the discounted amount when a coupon is applied.
+    var sumDiscountRow = document.getElementById('billing-summary-discount');
+    var sumDiscountLabel = document.getElementById('billing-summary-discount-label');
+    var sumDiscountAmt = document.getElementById('billing-summary-discount-amount');
+    var sumTotal = document.getElementById('billing-summary-total');
+    var baseSummaryTotal = sumTotal ? sumTotal.textContent.trim() : '';
+
+    function setCouponStatus(msg, kind) {
+        if (!couponStatus) { return; }
+        couponStatus.textContent = msg || '';
+        couponStatus.classList.remove('is-error', 'is-ok');
+        if (kind) { couponStatus.classList.add(kind === 'ok' ? 'is-ok' : 'is-error'); }
+    }
+    function clearDiscount() {
+        if (payBtn) { payBtn.textContent = basePayLabel; }
+        if (discountBadge) { discountBadge.hidden = true; discountBadge.textContent = ''; }
+        // Restore the summary box to the undiscounted state.
+        if (sumDiscountRow) { sumDiscountRow.hidden = true; }
+        if (sumTotal) { sumTotal.textContent = baseSummaryTotal; }
+        // a cleared/edited coupon means a charge is due again — restore
+        // the payment-details requirement.
+        setZeroTotal(false);
+    }
+    // If the user edits the code after applying, the preview is stale → reset.
+    if (fCoupon) {
+        fCoupon.addEventListener('input', function () { setCouponStatus('', null); clearDiscount(); });
+    }
+    if (applyBtn) {
+        applyBtn.addEventListener('click', function () {
+            var code = fCoupon ? (fCoupon.value || '').trim() : '';
+            if (!code) { setCouponStatus('Enter a coupon code.', 'error'); clearDiscount(); return; }
+            applyBtn.disabled = true;
+            setCouponStatus('Checking…', null);
+            fetch(applyUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                body: JSON.stringify({ coupon: code, plan: planKey })
+            }).then(function (resp) {
+                return resp.json().then(function (data) { return { ok: resp.ok, data: data }; });
+            }).then(function (res) {
+                var d = res.data || {};
+                if (res.ok && d.status === 'ok') {
+                    // Rewrite Pay button to the discounted total + show the badge.
+                    if (payBtn) { payBtn.textContent = 'Pay ' + d.total; }
+                    if (discountBadge) {
+                        // item 4 — make the savings explicit: show the
+                        // percent off the base plan price (e.g. the percent off
+                        // the listed monthly plan), not just the bare percent.
+                        // The base price comes from d.unit_price so it's correct
+                        // for whichever plan the coupon was applied to (the
+                        // summary "Discount (…)" line keeps the short label).
+                        if (d.discount_label && d.unit_price) {
+                            discountBadge.textContent = d.discount_label + ' the ' + d.unit_price + ' plan';
+                        } else {
+                            discountBadge.textContent = d.discount_label || 'discount applied';
+                        }
+                        discountBadge.hidden = false;
+                    }
+                    // Update the summary box: reveal the Discount line + set the
+                    // discounted Total.
+                    if (sumDiscountRow && d.discount_amount) {
+                        if (sumDiscountLabel) {
+                            sumDiscountLabel.textContent = d.discount_label
+                                ? ('Discount (' + d.discount_label + ')') : 'Discount';
+                        }
+                        if (sumDiscountAmt) { sumDiscountAmt.textContent = d.discount_amount; }
+                        sumDiscountRow.hidden = false;
+                    }
+                    if (sumTotal && d.total) { sumTotal.textContent = d.total; }
+                    // a 100%-off coupon zeroes the total — drop the
+                    // payment-details requirement so the user can complete
+                    // checkout with no card. raw_total is the authoritative
+                    // server-computed amount.
+                    setZeroTotal(typeof d.raw_total === 'number' && d.raw_total <= 0);
+                    if (zeroTotal) {
+                        setCouponStatus('Coupon applied — no payment required.', 'ok');
+                    } else {
+                        setCouponStatus('Coupon applied.', 'ok');
+                    }
+                } else if (d.status === 'unavailable') {
+                    // Can't validate the code right now (the host can't reach
+                    // Stripe — e.g. a missing/stub secret key, or a transient
+                    // blip). Don't claim the code is bad (it's re-checked at
+                    // charge time), but DON'T fail silently either: a blank
+                    // response reads as "nothing happened".
+                    setCouponStatus('Coupon validation is temporarily unavailable. Please try again later.', 'error');
+                    clearDiscount();
+                } else {
+                    setCouponStatus(d.message || 'Invalid code.', 'error');
+                    clearDiscount();
+                }
+            }).catch(function () {
+                setCouponStatus('Could not check that code. Try again.', 'error');
+                clearDiscount();
+            }).then(function () { applyBtn.disabled = false; });
+        });
+    }
+
+    // POST the (optionally card-less) order to the server and handle the result.
+    function submitOrder(paymentMethodId, billingDetails) {
+        return fetch(createUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': csrfToken
+            },
+            body: JSON.stringify({
+                // Empty when a $0 coupon means no card was collected.
+                payment_method_id: paymentMethodId || '',
+                name: (fName.value || '').trim(),
+                company: (fCompany.value || '').trim(),
+                address: billingDetails.address,
+                coupon: fCoupon ? (fCoupon.value || '').trim() : ''
+            })
+        }).then(function (resp) {
+            return resp.json().then(function (data) { return { ok: resp.ok, data: data }; });
+        }).then(function (res) {
+            if (res.ok && (res.data.status === 'active' || res.data.status === 'stub')) {
+                form.style.display = 'none';
+                showSuccess(res.data.message || 'Payment successful.');
+            } else {
+                showError((res.data && res.data.message) || 'Payment failed. Please try again.');
+                payBtn.disabled = false;
+            }
+        });
+    }
+
+    form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        clearError();
+        payBtn.disabled = true;
+
+        var billingDetails = {
+            name: (fName.value || '').trim(),
+            address: {
+                line1: (fAddress.value || '').trim(),
+                city: (fCity.value || '').trim(),
+                state: (fState.value || '').trim(),
+                postal_code: (fZip.value || '').trim(),
+                country: (fCountry.value || '').trim()
+            }
+        };
+
+        // a $0 order (100%-off coupon) has nothing to tokenize — skip
+        // Stripe entirely and submit with no payment method. The server
+        // re-validates the coupon and only accepts the card-less order when the
+        // total is genuinely $0.
+        if (zeroTotal) {
+            submitOrder('', billingDetails).catch(function () {
+                showError('Something went wrong completing your order. Please try again.');
+                payBtn.disabled = false;
+            });
+            return;
+        }
+
+        stripe.createPaymentMethod({
+            type: 'card',
+            card: card,
+            billing_details: billingDetails
+        }).then(function (result) {
+            if (result.error) {
+                showError(result.error.message);
+                payBtn.disabled = false;
+                return;
+            }
+            return submitOrder(result.paymentMethod.id, billingDetails);
+        }).catch(function () {
+            showError('Something went wrong processing your payment. Please try again.');
+            payBtn.disabled = false;
+        });
+    });
+})();
+
+// Update payment method (paid-active). Mounts its own card Element,
+// creates a PaymentMethod, and POSTs it to /billing/payment-method to set it as
+// the subscription's default. No new subscription is created.
+(function () {
+    var form = document.getElementById('billing-update-card-form');
+    if (!form || typeof Stripe === 'undefined') { return; }
+
+    var publishableKey = form.getAttribute('data-publishable-key');
+    var updateUrl = form.getAttribute('data-update-url');
+    var csrfToken = {{ csrf_token | tojson }};
+
+    var stripe = Stripe(publishableKey);
+    var elements = stripe.elements();
+    var card = elements.create('card', { hidePostalCode: true });
+    card.mount('#stripe-update-element');
+
+    var btn = document.getElementById('billing-update-btn');
+    var errorEl = document.getElementById('billing-update-error');
+    var successEl = document.getElementById('billing-update-success');
+    var uName = document.getElementById('upd-name');
+    var uCompany = document.getElementById('upd-company');
+    var uAddress = document.getElementById('upd-address');
+    var uCity = document.getElementById('upd-city');
+    var uState = document.getElementById('upd-state');
+    var uZip = document.getElementById('upd-zip');
+    var uCountry = document.getElementById('upd-country');
+    var requiredFields = Array.prototype.slice.call(form.querySelectorAll('[data-billing-required]'));
+
+    var cardComplete = false;
+
+    function showError(msg) { errorEl.textContent = msg; errorEl.classList.add('is-visible'); }
+    function clearError() { errorEl.textContent = ''; errorEl.classList.remove('is-visible'); }
+    function clearSuccess() { successEl.textContent = ''; successEl.classList.remove('is-visible'); }
+    function addressComplete() {
+        return requiredFields.every(function (el) { return (el.value || '').trim() !== ''; });
+    }
+    function refreshBtn() { btn.disabled = !(cardComplete && addressComplete()); }
+
+    btn.disabled = true;
+    card.on('change', function (event) {
+        if (event.error) { showError(event.error.message); } else { clearError(); }
+        cardComplete = !!event.complete && !event.error;
+        refreshBtn();
+    });
+    requiredFields.forEach(function (el) { el.addEventListener('input', refreshBtn); });
+
+    form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        clearError();
+        clearSuccess();
+        btn.disabled = true;
+        var billingDetails = {
+            name: (uName.value || '').trim(),
+            address: {
+                line1: (uAddress.value || '').trim(),
+                city: (uCity.value || '').trim(),
+                state: (uState.value || '').trim(),
+                postal_code: (uZip.value || '').trim(),
+                country: (uCountry.value || '').trim()
+            }
+        };
+        stripe.createPaymentMethod({
+            type: 'card',
+            card: card,
+            billing_details: billingDetails
+        }).then(function (result) {
+            if (result.error) { showError(result.error.message); btn.disabled = false; return; }
+            return fetch(updateUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                body: JSON.stringify({
+                    payment_method_id: result.paymentMethod.id,
+                    name: billingDetails.name,
+                    company: (uCompany.value || '').trim(),
+                    address: billingDetails.address
+                })
+            }).then(function (resp) {
+                return resp.json().then(function (data) { return { ok: resp.ok, data: data }; });
+            }).then(function (res) {
+                if (res.ok && res.data.status === 'ok') {
+                    // fix 2026-06-05: keep the form usable so the user
+                    // can update again without refreshing. Clear the card
+                    // Element + reset the gate; the address fields persist.
+                    successEl.textContent = 'This card will be used in your next billing period.';
+                    successEl.classList.add('is-visible');
+                    card.clear();
+                    cardComplete = false;
+                    refreshBtn();
+                } else {
+                    showError((res.data && res.data.message) || 'Could not update your card. Please try again.');
+                    btn.disabled = false;
+                }
+            });
+        }).catch(function () {
+            showError('Something went wrong. Please try again.');
+            btn.disabled = false;
+        });
+    });
+})();
+</script>
+{% endif %}
+
+{# Current Plan superuser comp control. POSTs {target, action}
+   to /billing/comp with the CSRF token; the global before-request hook
+   enforces CSRF and the handler enforces superuser-only. #}
+{% if active == 'current' and is_superuser %}
+<script nonce="{{ csp_nonce }}">
+(function () {
+    var form = document.getElementById('billing-comp-form');
+    if (!form) { return; }
+    var compUrl = form.getAttribute('data-comp-url');
+    var searchUrl = form.getAttribute('data-search-url');
+    var csrfToken = {{ csrf_token | tojson }};
+    var targetInput = document.getElementById('billing-comp-target');
+    var resultEl = document.getElementById('billing-comp-result');
+    var suggestEl = document.getElementById('billing-comp-suggestions');
+
+    function showResult(msg, ok) {
+        resultEl.textContent = msg;
+        resultEl.className = 'billing-comp-result ' + (ok ? 'is-ok' : 'is-error');
+    }
+
+    // ── Character restriction: a username/email may only
+    // contain letters, digits, and @ . _ - + — strip anything else as typed,
+    // preserving caret position. ──────────────────────────────────────────
+    var _userQueryRx = /[^A-Za-z0-9@._+\-]/g;
+    targetInput.addEventListener('input', function () {
+        var cleaned = targetInput.value.replace(_userQueryRx, '');
+        if (cleaned !== targetInput.value) {
+            var pos = targetInput.selectionStart - (targetInput.value.length - cleaned.length);
+            targetInput.value = cleaned;
+            try { targetInput.setSelectionRange(pos, pos); } catch (e) { /* ignore */ }
+        }
+    });
+
+    // ── Autocomplete: search users by username/email as you type ─────────
+    function closeSuggestions() {
+        suggestEl.hidden = true;
+        suggestEl.innerHTML = '';
+        targetInput.setAttribute('aria-expanded', 'false');
+    }
+    function renderSuggestions(results) {
+        suggestEl.innerHTML = '';
+        if (!results || !results.length) { closeSuggestions(); return; }
+        results.forEach(function (u) {
+            var li = document.createElement('li');
+            li.className = 'billing-comp-suggestion';
+            li.setAttribute('role', 'option');
+            li.setAttribute('data-username', u.username);
+            var label = u.username;
+            if (u.email) { label += ' — ' + u.email; }
+            li.textContent = label;
+            li.addEventListener('mousedown', function (e) {
+                // mousedown (not click) so it fires before the input blur.
+                e.preventDefault();
+                targetInput.value = u.username;
+                closeSuggestions();
+            });
+            suggestEl.appendChild(li);
+        });
+        suggestEl.hidden = false;
+        targetInput.setAttribute('aria-expanded', 'true');
+    }
+    var searchTimer = null;
+    targetInput.addEventListener('input', function () {
+        var q = (targetInput.value || '').trim();
+        if (searchTimer) { clearTimeout(searchTimer); }
+        if (q.length < 2) { closeSuggestions(); return; }
+        searchTimer = setTimeout(function () {
+            fetch(searchUrl + '?q=' + encodeURIComponent(q), { headers: { 'Accept': 'application/json' } })
+                .then(function (r) { return r.ok ? r.json() : { results: [] }; })
+                .then(function (data) { renderSuggestions(data.results || []); })
+                .catch(function () { closeSuggestions(); });
+        }, 200);
+    });
+    document.addEventListener('click', function (e) {
+        if (!suggestEl.contains(e.target) && e.target !== targetInput) { closeSuggestions(); }
+    });
+
+    // ── Comp set/clear (shared by the form buttons + per-row Clear) ──────
+    // Targets a user (by username) OR an org directly (by org_esid). When
+    // org_esid is given it wins; `label` is the friendly name to echo back.
+    function doComp(target, action, org_esid, label) {
+        if (!org_esid && !target) { showResult('Enter a username first.', false); return; }
+        resultEl.textContent = '';
+        var body = { action: action };
+        if (org_esid) { body.org_esid = org_esid; } else { body.target = target; }
+        var echo = label || target;
+        fetch(compUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+            body: JSON.stringify(body)
+        }).then(function (resp) {
+            return resp.json().then(function (data) { return { ok: resp.ok, data: data }; });
+        }).then(function (res) {
+            if (res.ok && res.data.status === 'ok') {
+                showResult(
+                    (action === 'set' ? 'Comped ' : 'Cleared comp for ') + echo + '.',
+                    true
+                );
+                if (action === 'set' && !org_esid) { targetInput.value = ''; }
+                if (action === 'set' && org_esid) { resetOrgPicker(); }
+                loadComped();  // refresh the roster after a change
+            } else {
+                showResult((res.data && res.data.message) || 'Comp update failed.', false);
+            }
+        }).catch(function () {
+            showResult('Something went wrong. Please try again.', false);
+        });
+    }
+
+    form.querySelectorAll('[data-comp-action]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            doComp((targetInput.value || '').trim(), btn.getAttribute('data-comp-action'));
+        });
+    });
+
+    // ── Comp a specific ORG: Workspace autocomplete → Org dropdown ───────
+    var wsSearchUrl = form.getAttribute('data-ws-search-url');
+    var orgsUrl = form.getAttribute('data-orgs-url');
+    var wsInput = document.getElementById('billing-comp-ws');
+    var wsSuggestEl = document.getElementById('billing-comp-ws-suggestions');
+    var orgSelect = document.getElementById('billing-comp-org');
+    var orgSetBtn = document.getElementById('billing-comp-org-set');
+    var wsSetBtn = document.getElementById('billing-comp-ws-set');
+    var chosenWs = null;  // {workspace_esid, workspace_title}
+
+    function resetOrgPicker() {
+        chosenWs = null;
+        if (wsInput) { wsInput.value = ''; }
+        if (orgSelect) {
+            orgSelect.innerHTML = '<option value="">Select a workspace first…</option>';
+            orgSelect.disabled = true;
+        }
+        if (orgSetBtn) { orgSetBtn.disabled = true; }
+        if (wsSetBtn) { wsSetBtn.disabled = true; }
+    }
+
+    function syncOrgSetBtn() {
+        if (orgSetBtn) { orgSetBtn.disabled = !(orgSelect && orgSelect.value); }
+    }
+
+    function closeWsSuggestions() {
+        wsSuggestEl.hidden = true;
+        wsSuggestEl.innerHTML = '';
+        wsInput.setAttribute('aria-expanded', 'false');
+    }
+
+    function loadOrgsForWorkspace(ws) {
+        orgSelect.innerHTML = '<option value="">Loading…</option>';
+        orgSelect.disabled = true;
+        syncOrgSetBtn();
+        fetch(orgsUrl + '?workspace_esid=' + encodeURIComponent(ws.workspace_esid), { headers: { 'Accept': 'application/json' } })
+            .then(function (r) { return r.ok ? r.json() : { results: [] }; })
+            .then(function (data) {
+                var orgs = data.results || [];
+                if (!orgs.length) {
+                    orgSelect.innerHTML = '<option value="">No organizations in this workspace</option>';
+                    orgSelect.disabled = true;
+                } else {
+                    orgSelect.innerHTML = '<option value="">Select an organization…</option>';
+                    orgs.forEach(function (o) {
+                        var opt = document.createElement('option');
+                        opt.value = o.org_esid;
+                        opt.textContent = o.org_title || o.org_esid;
+                        orgSelect.appendChild(opt);
+                    });
+                    orgSelect.disabled = false;
+                }
+                syncOrgSetBtn();
+            })
+            .catch(function () {
+                orgSelect.innerHTML = '<option value="">Couldn\'t load organizations</option>';
+                orgSelect.disabled = true;
+                syncOrgSetBtn();
+            });
+    }
+
+    function renderWsSuggestions(results) {
+        wsSuggestEl.innerHTML = '';
+        if (!results || !results.length) { closeWsSuggestions(); return; }
+        results.forEach(function (w) {
+            var li = document.createElement('li');
+            li.className = 'billing-comp-suggestion';
+            li.setAttribute('role', 'option');
+            li.textContent = w.workspace_title || w.workspace_esid;
+            li.addEventListener('mousedown', function (e) {
+                e.preventDefault();  // fire before the input blur
+                chosenWs = w;
+                wsInput.value = w.workspace_title || w.workspace_esid;
+                closeWsSuggestions();
+                loadOrgsForWorkspace(w);
+                // a chosen workspace is enough for a workspace comp.
+                if (wsSetBtn) { wsSetBtn.disabled = false; }
+            });
+            wsSuggestEl.appendChild(li);
+        });
+        wsSuggestEl.hidden = false;
+        wsInput.setAttribute('aria-expanded', 'true');
+    }
+
+    if (wsInput && orgSelect && orgSetBtn) {
+        var wsTimer = null;
+        wsInput.addEventListener('input', function () {
+            // Editing the workspace invalidates a previously-loaded org list.
+            chosenWs = null;
+            orgSelect.innerHTML = '<option value="">Select a workspace first…</option>';
+            orgSelect.disabled = true;
+            syncOrgSetBtn();
+            if (wsSetBtn) { wsSetBtn.disabled = true; }
+            var q = (wsInput.value || '').trim();
+            if (wsTimer) { clearTimeout(wsTimer); }
+            if (q.length < 2) { closeWsSuggestions(); return; }
+            wsTimer = setTimeout(function () {
+                fetch(wsSearchUrl + '?q=' + encodeURIComponent(q), { headers: { 'Accept': 'application/json' } })
+                    .then(function (r) { return r.ok ? r.json() : { results: [] }; })
+                    .then(function (data) { renderWsSuggestions(data.results || []); })
+                    .catch(function () { closeWsSuggestions(); });
+            }, 200);
+        });
+        document.addEventListener('click', function (e) {
+            if (!wsSuggestEl.contains(e.target) && e.target !== wsInput) { closeWsSuggestions(); }
+        });
+        orgSelect.addEventListener('change', syncOrgSetBtn);
+        orgSetBtn.addEventListener('click', function () {
+            var orgEsid = orgSelect.value;
+            if (!orgEsid) { showResult('Pick an organization to comp.', false); return; }
+            var label = orgSelect.options[orgSelect.selectedIndex].textContent;
+            doComp('', 'set', orgEsid, label);
+        });
+    }
+
+    // comp the whole workspace: workspace billing record + an
+    // explicit cascaded comp on every org under it (route does both).
+    if (wsSetBtn) {
+        wsSetBtn.addEventListener('click', function () {
+            if (!chosenWs) { showResult('Pick a workspace to comp.', false); return; }
+            var wsLabel = chosenWs.workspace_title || chosenWs.workspace_esid;
+            resultEl.textContent = '';
+            fetch(compUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                body: JSON.stringify({ action: 'set', workspace_esid: chosenWs.workspace_esid })
+            }).then(function (resp) {
+                return resp.json().then(function (data) { return { ok: resp.ok, data: data }; });
+            }).then(function (res) {
+                if (res.ok && res.data.status === 'ok') {
+                    var n = res.data.orgs_comped || 0;
+                    var failed = (res.data.orgs_failed || []).length;
+                    showResult(
+                        'Comped workspace ' + wsLabel + ' and ' + n + ' organization' + (n === 1 ? '' : 's') + ' under it.'
+                        + (failed ? ' (' + failed + ' org comp' + (failed === 1 ? '' : 's') + ' FAILED — check the audit log.)' : ''),
+                        !failed
+                    );
+                    resetOrgPicker();
+                    loadComped();
+                } else {
+                    showResult((res.data && res.data.message) || 'Workspace comp failed.', false);
+                }
+            }).catch(function () {
+                showResult('Something went wrong. Please try again.', false);
+            });
+        });
+    }
+
+    // ── Currently-comped roster: load on init + after each comp/clear ────
+    var listUrl = form.getAttribute('data-list-url');
+    var listEl = document.getElementById('billing-comped-list');
+    var emptyEl = document.getElementById('billing-comped-empty');
+
+    function fmtWhen(iso) {
+        if (!iso) { return ''; }
+        try {
+            var d = new Date(iso);
+            if (isNaN(d.getTime())) { return ''; }
+            return d.toLocaleDateString();
+        } catch (e) { return ''; }
+    }
+    function renderComped(rows) {
+        listEl.innerHTML = '';
+        if (!rows || !rows.length) { emptyEl.hidden = false; return; }
+        emptyEl.hidden = true;
+        rows.forEach(function (u) {
+            var li = document.createElement('li');
+            li.className = 'billing-comped-item';
+            li.setAttribute('data-testid', 'billing-comped-item');
+
+            var who = document.createElement('div');
+            who.className = 'billing-comped-who';
+            var name = document.createElement('div');
+            name.className = 'billing-comped-name';
+            // Comp is per-ORG: lead with the org, then its owner —
+            // shown for context only; the clear targets the org itself.
+            var ownerLabel = u.email ? (u.username + ' — ' + u.email) : u.username;
+            var title = u.org_title || u.org_esid || '';
+            if (title && ownerLabel) {
+                name.textContent = title + ' (' + ownerLabel + ')';
+            } else {
+                name.textContent = title || ownerLabel || '(unknown organization)';
+            }
+            who.appendChild(name);
+            var meta = document.createElement('div');
+            meta.className = 'billing-comped-meta';
+            var by = u.comped_by ? ('by ' + u.comped_by) : '';
+            var when = fmtWhen(u.comped_at);
+            meta.textContent = [by, when].filter(Boolean).join(' · ');
+            if (meta.textContent) { who.appendChild(meta); }
+            li.appendChild(who);
+
+            var clearBtn = document.createElement('button');
+            clearBtn.type = 'button';
+            clearBtn.className = 'billing-btn billing-btn-ghost billing-comped-clear';
+            clearBtn.textContent = 'Clear';
+            if (!u.org_esid && !u.username) {
+                // Nothing the endpoint can resolve. Show the row (so the comp is
+                // visible) but there is no handle to clear it by.
+                clearBtn.disabled = true;
+                clearBtn.title = 'This row has no organization to target — it cannot be cleared from here.';
+            } else {
+                clearBtn.addEventListener('click', function () {
+                    // Warn before removing complimentary access (
+                    // 2026-06-05) — destructive: the workspace loses free access
+                    // and the owner is emailed.
+                    if (!window.confirm(
+                        'Remove complimentary access for ' + (title || ownerLabel) + '? Everyone in the '
+                        + 'organization loses free access and the owner is notified by email. You can re-comp later.'
+                    )) {
+                        return;
+                    }
+                    // clear by org_esid, the row's own identity.
+                    // The owner-keyed clear could not target an ownerless org at
+                    // all, and for a multi-org owner it routed through
+                    // resolve_primary_org_esid to their PRIMARY org rather than
+                    // this row's. org_esid is the comped org's document id, so it
+                    // is always present; username stays as the fallback.
+                    doComp(u.username || '', 'clear', u.org_esid, title || ownerLabel);
+                });
+            }
+            li.appendChild(clearBtn);
+
+            listEl.appendChild(li);
+        });
+    }
+    function loadComped() {
+        if (!listUrl) { return; }
+        fetch(listUrl, { headers: { 'Accept': 'application/json' } })
+            .then(function (r) { return r.ok ? r.json() : { results: [] }; })
+            .then(function (data) { renderComped(data.results || []); })
+            .catch(function () { /* leave the roster as-is on a transient error */ });
+    }
+    loadComped();
+})();
+</script>
+{% endif %}
+
+{# Cancel subscription (Current Plan, any billing user). Confirms,
+   then POSTs to /billing/cancel; on success tells the user it cancels at
+   period end (paid) or is removed (comped) and refreshes the page. #}
+{% if active == 'current' %}
+<script nonce="{{ csp_nonce }}">
+(function () {
+    var btn = document.getElementById('billing-cancel-btn');
+    if (!btn) { return; }
+    var cancelUrl = btn.getAttribute('data-cancel-url');
+    var csrfToken = {{ csrf_token | tojson }};
+    var resultEl = document.getElementById('billing-cancel-result');
+
+    function showResult(msg, ok) {
+        resultEl.textContent = msg;
+        resultEl.className = 'billing-cancel-result ' + (ok ? 'is-ok' : 'is-error');
+    }
+
+    btn.addEventListener('click', function () {
+        if (!window.confirm('Cancel your subscription? You\'ll keep access until the end of the period you\'ve paid for, then it won\'t renew.')) {
+            return;
+        }
+        btn.disabled = true;
+        resultEl.textContent = '';
+        fetch(cancelUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+            body: '{}'
+        }).then(function (resp) {
+            return resp.json().then(function (data) { return { ok: resp.ok, data: data }; });
+        }).then(function (res) {
+            if (res.ok && res.data.status === 'ok') {
+                showResult(
+                    res.data.mode === 'comp_cleared'
+                        ? 'Your comped access has been removed.'
+                        : 'Your subscription will cancel at the end of the current billing period.',
+                    true
+                );
+                setTimeout(function () { window.location.reload(); }, 1200);
+            } else {
+                showResult((res.data && res.data.message) || 'Could not cancel. Please try again.', false);
+                btn.disabled = false;
+            }
+        }).catch(function () {
+            showResult('Something went wrong. Please try again.', false);
+            btn.disabled = false;
+        });
+    });
+})();
+
+// Resume ("uncancel") — only present while a cancel is scheduled.
+(function () {
+    var btn = document.getElementById('billing-resume-btn');
+    if (!btn) { return; }
+    var resumeUrl = btn.getAttribute('data-resume-url');
+    var csrfToken = {{ csrf_token | tojson }};
+    var resultEl = document.getElementById('billing-resume-result');
+
+    function showResult(msg, ok) {
+        resultEl.textContent = msg;
+        resultEl.className = 'billing-cancel-result ' + (ok ? 'is-ok' : 'is-error');
+    }
+
+    btn.addEventListener('click', function () {
+        btn.disabled = true;
+        resultEl.textContent = '';
+        fetch(resumeUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+            body: '{}'
+        }).then(function (resp) {
+            return resp.json().then(function (data) { return { ok: resp.ok, data: data }; });
+        }).then(function (res) {
+            if (res.ok && res.data.status === 'ok') {
+                showResult('Your subscription will continue and renew as normal.', true);
+                setTimeout(function () { window.location.reload(); }, 1200);
+            } else {
+                showResult((res.data && res.data.message) || 'Could not resume. Please try again.', false);
+                btn.disabled = false;
+            }
+        }).catch(function () {
+            showResult('Something went wrong. Please try again.', false);
+            btn.disabled = false;
+        });
+    });
+})();
+
+// add a coupon to the EXISTING paid subscription (Current Plan page).
+// Validates server-side + attaches to the live sub; the discount hits the next
+// bill. On success the result shows the discount + next-bill note and reloads.
+(function () {
+    var wrap = document.getElementById('sub-coupon');
+    var applyBtn = document.getElementById('sub-coupon-apply');
+    if (!wrap || !applyBtn) { return; }
+    var container = applyBtn.closest('.billing-sub-coupon');
+    var applyUrl = container.getAttribute('data-apply-url');
+    var csrfToken = {{ csrf_token | tojson }};
+    var statusEl = document.getElementById('sub-coupon-status');
+
+    // Inline coupon char-filter (the shared filter only runs on the Payment
+    // page script): strip anything outside [A-Za-z0-9_-] as the user types.
+    var rx = new RegExp("[^A-Za-z0-9_\\-]", "g");
+    wrap.addEventListener('input', function () {
+        var cleaned = wrap.value.replace(rx, '');
+        if (cleaned !== wrap.value) { wrap.value = cleaned; }
+    });
+
+    function setStatus(msg, kind) {
+        statusEl.textContent = msg || '';
+        statusEl.className = 'billing-coupon-status' + (kind ? (kind === 'ok' ? ' is-ok' : ' is-error') : '');
+    }
+
+    function submitCoupon(code, confirm) {
+        return fetch(applyUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+            body: JSON.stringify({ coupon: code, confirm: !!confirm })
+        }).then(function (resp) {
+            return resp.json().then(function (data) { return { ok: resp.ok, data: data }; });
+        }).then(function (res) {
+            var d = res.data || {};
+            if (res.ok && d.status === 'ok') {
+                setStatus(d.message || 'Coupon applied to your next bill.', 'ok');
+                // Reload so every discount-dependent part of the page reflects
+                // the change without the user refreshing (user request
+                // 2026-06-16) — the brief delay lets the "applied" message show
+                // first. (Was an in-place price rewrite that missed other
+                // discount-derived UI.)
+                setTimeout(function () { window.location.reload(); }, 1200);
+            } else if (d.status === 'confirm_downgrade') {
+                // The new code is a SMALLER discount than the current one — make
+                // the user confirm before replacing it (avoids an accidental
+                // downgrade), then re-submit with confirm=true.
+                if (window.confirm(d.message)) {
+                    setStatus('Applying…', null);
+                    return submitCoupon(code, true);
+                }
+                setStatus('', null);
+                applyBtn.disabled = false;
+            } else {
+                setStatus(d.message || 'Invalid code.', 'error');
+                applyBtn.disabled = false;
+            }
+        }).catch(function () {
+            setStatus('Could not apply that code. Please try again.', 'error');
+            applyBtn.disabled = false;
+        });
+    }
+
+    applyBtn.addEventListener('click', function () {
+        var code = (wrap.value || '').trim();
+        if (!code) { setStatus('Enter a coupon code.', 'error'); return; }
+        applyBtn.disabled = true;
+        setStatus('Checking…', null);
+        submitCoupon(code, false);
+    });
+})();
+
+// ── (2026-06-16) — single "Extra data connections" stepper ─────────
+// Replaces the old separate Add / Remove boxes with ONE numeric control. The
+// user sets a TARGET total of extra connections; the JS computes the delta off
+// the effective owned count and routes by DIRECTION — both backend paths are
+// unchanged, this is a UI consolidation:
+//   • target > owned → ADD: prorated charge previewed live, confirm charges now.
+//   • target < owned → REDUCE: scheduled to period end (no refund); confirm
+//     warns + carries the over-cap "will stop importing" warning (#7).
+//   • target = owned → no-op (Update disabled).
+// No coupon field here — the "Have a coupon for your add-ons?" box above is the
+// single coupon surface (item-level; the mission/$5 rate is never named in UI).
+(function () {
+    var ctrl = document.querySelector('[data-testid="billing-addon-control"]');
+    if (!ctrl) { return; }
+    var qtyEl = document.getElementById('addon-qty');
+    var updateBtn = document.getElementById('addon-update-btn');
+    if (!qtyEl || !updateBtn) { return; }
+    var statusEl = document.getElementById('addon-status');
+    var buyUrl = ctrl.getAttribute('data-buy-url');
+    // the proration-preview endpoint + the next billing date. The
+    // ADD confirm dialog calls preview to show the EXACT prorated charge due
+    // now (Stripe-finalized, net of any add-on coupon — the server computes it
+    // discount-aware) and names when the new monthly rate starts. Both are
+    // best-effort: a missing preview-url or a failed call falls back to the
+    // monthly-only wording, preserving the staging/offline behavior (the
+    // /preview endpoint needs a live Stripe subscription).
+    var previewUrl = ctrl.getAttribute('data-preview-url');
+    var nextBill = (ctrl.getAttribute('data-next-bill') || '').slice(0, 10);
+    // EFFECTIVE owned = paid count minus anything marked to cancel; a target
+    // above it nets against the paid capacity and cancels a pending schedule
+    // (the buy route's netting path). Cap + price come from the control.
+    var owned = parseInt(ctrl.getAttribute('data-owned') || '0', 10) || 0;
+    var max = parseInt(ctrl.getAttribute('data-max') || '0', 10) || 0;
+    var price = parseFloat(ctrl.getAttribute('data-price') || '0') || 0;  // $ per extra/mo
+    // #7 over-cap inputs: reducing capacity below what's IN USE warns how many
+    // connections stop importing (count-based — capacity is fungible, not tied
+    // to specific connections). used/cap are the live figures shown above.
+    var used = parseInt(ctrl.getAttribute('data-connections-used') || '0', 10) || 0;
+    var cap = parseInt(ctrl.getAttribute('data-connection-cap') || '0', 10) || 0;
+    var csrfToken = {{ csrf_token | tojson }};
+
+    qtyEl.addEventListener('input', sync);
+    qtyEl.addEventListener('change', sync);
+
+    // The TARGET total of extra connections, clamped to [0, max]. null only
+    // when the field is non-numeric (mid-edit) — treated as no-op.
+    function target() {
+        var q = parseInt(qtyEl.value, 10);
+        if (isNaN(q)) { return null; }
+        if (q < 0) { q = 0; }
+        if (q > max) { q = max; }
+        return q;
+    }
+    function delta() { var t = target(); return t === null ? null : t - owned; }
+    // How many connections would exceed the cap after reducing to the target.
+    // Each removed add-on lowers the effective cap by one; over = used - newCap.
+    function overCapAfter(removed) {
+        var newCap = cap - removed;
+        var over = used - newCap;
+        return over > 0 ? over : 0;
+    }
+    // Flat monthly cost of the requested TOTAL extra connections (target × rate),
+    // computed locally — mirrors the Payment page's catalog price. NOT the
+    // prorated amount charged today (Stripe finalizes that at checkout); this is
+    // the recurring monthly figure, shown instantly and independent of any live
+    // subscription so it works on staging and prod alike.
+    function priceText() {
+        var t = target();
+        if (t === null) { return ''; }
+        return '$' + (t * price).toFixed(2) + '/mo';
+    }
+    function setStatus(msg, kind) {
+        statusEl.textContent = msg || '';
+        statusEl.className = 'billing-coupon-status' + (kind ? (kind === 'ok' ? ' is-ok' : ' is-error') : '');
+    }
+    // ask the server for the exact prorated charge for a target
+    // total, so the ADD confirm dialog can name it. Resolves to the formatted
+    // "$X.XX" string on success, or '' on ANY failure (no preview-url, network
+    // error, non-ok/non-"ok" response) — the caller falls back to monthly-only
+    // wording then. The amount is computed server-side net of any applied
+    // add-on coupon, so it matches what the buy will actually charge.
+    function previewProration(totalTarget) {
+        if (!previewUrl) { return Promise.resolve(''); }
+        return fetch(previewUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+            body: JSON.stringify({ quantity: totalTarget, coupon: '', action: 'add' })
+        }).then(function (resp) {
+            return resp.json().then(function (data) {
+                return (resp.ok && data && data.status === 'ok' && data.amount_due) ? data.amount_due : '';
+            });
+        }).catch(function () { return ''; });
+    }
+    // The button always reads "Update" and carries the flat NEW monthly total
+    // for the requested target whenever it differs from the current count — in
+    // BOTH directions (mirroring the Payment "Pay $X" button). The "$X/mo" is
+    // the resulting monthly bill, not an amount charged now: an increase is
+    // charged prorated at checkout; a reduction is scheduled (no charge), the
+    // bill drops to this figure at period end. Disabled at no-op.
+    function sync() {
+        var d = delta();
+        updateBtn.disabled = (d === null || d === 0);
+        updateBtn.textContent = (d !== null && d !== 0) ? ('Update ' + priceText()) : 'Update';
+        setStatus('', null);
+    }
+
+    function post(url, total, action) {
+        return fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+            body: JSON.stringify({ quantity: total, coupon: '', action: action })
+        }).then(function (resp) { return resp.json().then(function (data) { return { ok: resp.ok, data: data }; }); });
+    }
+
+    sync();
+
+    updateBtn.addEventListener('click', function () {
+        var d = delta();
+        if (d === null || d === 0) { return; }
+        var t = target();
+        if (d > 0) {
+            // ADD — fetch the EXACT prorated charge due now, then
+            // confirm with it spelled out: what's charged today, WHY it's
+            // prorated, and the new monthly rate + when it starts. The preview
+            // is best-effort — on any failure (no live sub on staging, network
+            // error, non-ok response) we fall back to the monthly-only wording
+            // so the flow still works. The actual buy is unchanged.
+            var added = d;
+            updateBtn.disabled = true;
+            setStatus('Pricing…', null);
+            previewProration(t).then(function (proratedText) {
+                setStatus('', null);
+                var monthly = priceText();
+                var lead = 'Add ' + added + ' data connection' + (added === 1 ? '' : 's') + ' (new total ' + t + ').';
+                var charge = proratedText
+                    // proratedText is "$X.XX" — name it as prorated + the reason.
+                    ? ' You\'ll be charged ' + proratedText + ' now — the prorated amount for the rest of your current billing period.'
+                    // Fallback: amount unknown (offline/staging), keep it honest.
+                    : ' You\'ll be charged the prorated amount for the rest of your current billing period now.';
+                var recurring = ' After that, your rate is ' + monthly
+                    + (nextBill ? ', starting on your next bill (' + nextBill + ').' : '.');
+                if (!window.confirm(lead + charge + recurring)) { updateBtn.disabled = false; sync(); return; }
+                setStatus('Applying…', null);
+                post(buyUrl, t, 'add').then(function (res) {
+                    var rd = res.data || {};
+                    if (res.ok && rd.status === 'ok') {
+                        setStatus('Done — your connections are updated.', 'ok');
+                        window.location.reload();
+                    } else {
+                        setStatus(rd.message || 'Could not update your connections.', 'error');
+                        sync();
+                    }
+                }).catch(function () { setStatus('Could not update your connections. Please try again.', 'error'); sync(); });
+            });
+            return;
+        }
+        // REDUCE — scheduled to period end. -d connections leave; warn over-cap.
+        var removed = -d;
+        var over = overCapAfter(removed);
+        var overWarn = over > 0
+            ? ' Heads up: you\'re using ' + used + ' of ' + cap + ' connections — after this you\'ll be able to import on only ' + (cap - removed) + ', so ' + over + ' connection' + (over === 1 ? '' : 's') + ' will stop importing until you re-add capacity or reduce what you use.'
+            : '';
+        var what = t === 0 ? 'all ' + owned + ' extra connection' + (owned === 1 ? '' : 's') : 'to ' + t + ' extra connection' + (t === 1 ? '' : 's');
+        if (!window.confirm('Reduce ' + what + ' (' + priceText() + ')? The change takes effect at the end of the period you’ve paid for — your connections stay usable until then, your bill drops to ' + priceText() + ', and your data is not deleted.' + overWarn)) { return; }
+        updateBtn.disabled = true;
+        setStatus('Scheduling reduction…', null);
+        post(buyUrl, t, 'remove').then(function (res) {
+            var rd = res.data || {};
+            if (res.ok && rd.status === 'ok') {
+                setStatus('Scheduled for ' + String(rd.remove_at || '').slice(0, 10) + '.', 'ok');
+                window.location.reload();
+            } else {
+                setStatus(rd.message || 'Could not schedule the reduction.', 'error');
+                sync();
+            }
+        }).catch(function () { setStatus('Could not schedule the reduction. Please try again.', 'error'); sync(); });
+    });
+
+})();
+
+// ── "Have a coupon for your add-ons?" (the single coupon surface) ──
+// Applies a code to the owned add-on connections; item-level, so it covers
+// ALL of them — current and later-added — from the next bill (no charge now).
+// Invalid / wrong-product / already-applied are rejected server-side.
+(function () {
+    var wrap = document.getElementById('addon-have-coupon');
+    var applyBtn = document.getElementById('addon-coupon-apply');
+    if (!wrap || !applyBtn) { return; }
+    var container = applyBtn.closest('.billing-sub-coupon');
+    var applyUrl = container.getAttribute('data-apply-url');
+    var csrfToken = {{ csrf_token | tojson }};
+    var statusEl = document.getElementById('addon-coupon-status');
+
+    var rx = new RegExp("[^A-Za-z0-9_\\-]", "g");
+    wrap.addEventListener('input', function () {
+        var cleaned = wrap.value.replace(rx, '');
+        if (cleaned !== wrap.value) { wrap.value = cleaned; }
+    });
+    function setStatus(msg, kind) {
+        statusEl.textContent = msg || '';
+        statusEl.className = 'billing-coupon-status' + (kind ? (kind === 'ok' ? ' is-ok' : ' is-error') : '');
+    }
+    function doApply(code, confirm) {
+        applyBtn.disabled = true;
+        setStatus('Checking…', null);
+        fetch(applyUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+            body: JSON.stringify({ coupon: code, confirm: !!confirm })
+        }).then(function (resp) { return resp.json().then(function (d) { return { ok: resp.ok, data: d }; }); })
+        .then(function (res) {
+            var d = res.data || {};
+            if (res.ok && d.status === 'ok') {
+                setStatus(d.message || 'Coupon applied — it discounts all your add-ons from your next bill.', 'ok');
+                // Reload so the applied discount is reflected without a manual
+                // refresh (user request 2026-06-16); the delay lets the message show.
+                setTimeout(function () { window.location.reload(); }, 1200);
+            } else if (d.status === 'confirm_downgrade') {
+                // Worse-value warning (parity with the plan box): the new code
+                // is a smaller add-on discount — confirm before replacing.
+                applyBtn.disabled = false;
+                if (window.confirm(d.message)) { doApply(code, true); }
+                else { setStatus('Kept your current add-on discount.', null); }
+            } else {
+                setStatus(d.message || 'Invalid code.', 'error');
+                applyBtn.disabled = false;
+            }
+        }).catch(function () { setStatus('Could not apply that code. Please try again.', 'error'); applyBtn.disabled = false; });
+    }
+    applyBtn.addEventListener('click', function () {
+        var code = (wrap.value || '').trim();
+        if (!code) { setStatus('Enter a coupon code.', 'error'); return; }
+        doApply(code, false);
+    });
+})();
+
+// ── (2026-06-16) — the separate "Remove data connections" IIFE was
+// folded into the single stepper above (reduce = target < owned). Removed.
+
+// ── (#5 escape hatch, 2026-06-16) — "Undo scheduled removal" ─────────
+// On a FULL removal the Add + Remove boxes are hidden, so this button (in the
+// cancellation note) is the only way to cancel before it expires. It re-adds to
+// the already-paid count (action=add, quantity=owned) — free netting that
+// restores the Stripe item and clears the schedule (set_addon_connections wipes
+// addon_remove_at/pending). No new charge.
+(function () {
+    var btn = document.getElementById('addon-undo-removal-btn');
+    if (!btn) { return; }
+    var note = btn.closest('[data-testid="billing-addon-removal-note"]');
+    var buyUrl = note.getAttribute('data-buy-url');
+    var owned = parseInt(note.getAttribute('data-owned') || '0', 10) || 0;
+    var statusEl = document.getElementById('addon-undo-status');
+    var csrfToken = {{ csrf_token | tojson }};
+
+    function setStatus(msg, kind) {
+        statusEl.textContent = msg || '';
+        statusEl.className = 'billing-coupon-status' + (kind ? (kind === 'ok' ? ' is-ok' : ' is-error') : '');
+    }
+    btn.addEventListener('click', function () {
+        if (owned < 1) { return; }
+        if (!window.confirm('Cancel the scheduled removal and keep all ' + owned + ' extra connection' + (owned === 1 ? '' : 's') + '? You won\'t be charged now — they\'re already paid through the current period.')) { return; }
+        btn.disabled = true;
+        setStatus('Canceling the scheduled removal…', null);
+        fetch(buyUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+            // Re-add to the paid count; action=add so the route nets (free) and
+            // clears the schedule rather than treating owned-as-target as a reduce.
+            body: JSON.stringify({ quantity: owned, coupon: '', action: 'add' })
+        }).then(function (resp) { return resp.json().then(function (d) { return { ok: resp.ok, data: d }; }); })
+        .then(function (res) {
+            var d = res.data || {};
+            if (res.ok && d.status === 'ok') {
+                setStatus('Scheduled removal canceled — your connections are kept.', 'ok');
+                window.location.reload();
+            } else {
+                setStatus(d.message || 'Could not cancel the scheduled removal.', 'error');
+                btn.disabled = false;
+            }
+        }).catch(function () { setStatus('Could not cancel the scheduled removal. Please try again.', 'error'); btn.disabled = false; });
+    });
+})();
+
+</script>
+{% endif %}
+{% endblock %}

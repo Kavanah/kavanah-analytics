@@ -1,0 +1,88 @@
+{
+  "connector_id": "meta_ads",
+  "created_at": "2026-05-27T14:02:57.884839+00:00",
+  "description": "Shows total followers, reach, profile visits and ad spend",
+  "echarts_config": {
+    "charts": [
+      {
+        "aggregation": "sum",
+        "breakdown": null,
+        "cell_gradient_color": "#006d2c",
+        "cell_gradient_enabled": true,
+        "chart_id": "c1779890091791",
+        "chart_type": "table",
+        "data_view": "*_ig_insights",
+        "date_format": "",
+        "display_toggles": {},
+        "filters": [],
+        "height": "336.951px",
+        "hide_title": true,
+        "max_columns": 2,
+        "max_rows": 10,
+        "other_bucket": false,
+        "position": {
+          "col": 0,
+          "h": 4,
+          "row": 0,
+          "w": 6
+        },
+        "table_columns": [
+          {
+            "aggregation": "max",
+            "data_view": "*_ig_insights",
+            "field": "ig_user_followers_count",
+            "format": "000,",
+            "label": "IG Followers"
+          },
+          {
+            "aggregation": "sum",
+            "data_view": "*_ig_insights",
+            "field": "ig_insight_reach",
+            "format": "000,",
+            "label": "Total Reach"
+          },
+          {
+            "aggregation": "sum",
+            "field": "ig_insight_profile_views",
+            "format": "000,",
+            "label": "Profile Visits"
+          },
+          {
+            "aggregation": "sum",
+            "data_view": "*_fb_insights",
+            "field": "insight_spend",
+            "format": "$0.00",
+            "label": "Ad Spend"
+          }
+        ],
+        "table_font_size": 12,
+        "title": "Table",
+        "width": "856.081px",
+        "x_field": "kibana_date",
+        "x_field_type": "date",
+        "x_label": "Date",
+        "y_fields": [
+          "ig_user_followers_count",
+          "ig_insight_reach",
+          "ig_insight_profile_views",
+          "insight_spend"
+        ],
+        "y_max": "",
+        "y_min": ""
+      }
+    ],
+    "filters": [],
+    "global_date_range": null
+  },
+  "frozen_from_dashboard_id": null,
+  "menu_position": 0,
+  "menu_title": "Meta",
+  "name": "Key Performance Indicators",
+  "pack_id": "meta",
+  "placeholder_field": null,
+  "required_sources": [
+    "meta_ads"
+  ],
+  "template_id": "meta_kpi",
+  "updated_at": "2026-05-27T20:08:46.799272+00:00"
+}

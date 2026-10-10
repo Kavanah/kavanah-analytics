@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign in - Kavanah Analytics</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" integrity="sha384-/o6I2CkkWC//PSjvWC/eYN7l3xM3tJm8ZzVkCOfp//W05QcE3mlGskpoHB6XqI+B" crossorigin="anonymous">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/cloudscape.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/password-toggle.css') }}?v=20260504b">
+    <script src="{{ url_for('static', filename='js/password-toggle.js') }}?v=20260504a" defer></script>
+    <style>
+        body {
+            background: var(--cs-bg-page);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        /* ── Top bar ── */
+        .login-topbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 56px;
+            background: var(--cs-nav-bg);
+            display: flex;
+            align-items: center;
+            padding: 0 24px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+            z-index: 10;
+        }
+
+        .login-topbar-logo {
+            height: 24px;
+            width: auto;
+            margin-right: 12px;
+        }
+
+        .login-topbar-title {
+            font-size: 17px;
+            font-weight: 700;
+            color: #FFFFFF;
+            letter-spacing: -0.01em;
+        }
+
+        /* ── Card ── */
+        .login-container {
+            width: 100%;
+            max-width: 400px;
+            margin-top: 28px;
+        }
+
+        .login-card {
+            background: var(--cs-bg-primary);
+            border: 1px solid var(--cs-border-default);
+            border-radius: var(--cs-radius-l);
+            box-shadow: var(--cs-shadow-m);
+            padding: 40px 36px 32px;
+        }
+
+        /* ── Header ── */
+        .login-header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .login-header h1 {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--cs-text-heading);
+        }
+
+        /* ── Alerts ── */
+        .login-alert {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 12px 14px;
+            margin-bottom: 20px;
+            border-radius: var(--cs-radius-m);
+            border: 1px solid;
+            font-size: var(--cs-font-size-m);
+            line-height: 1.5;
+        }
+
+        .login-alert-icon {
+            flex-shrink: 0;
+            font-size: 15px;
+            margin-top: 1px;
+        }
+
+        .login-alert-success {
+            background: var(--cs-success-bg);
+            border-color: var(--cs-success);
+            color: var(--cs-text-primary);
+        }
+        .login-alert-success .login-alert-icon { color: var(--cs-success); }
+
+        .login-alert-error {
+            background: var(--cs-error-bg);
+            border-color: var(--cs-error);
+            color: var(--cs-text-primary);
+        }
+        .login-alert-error .login-alert-icon { color: var(--cs-error); }
+
+        /* ── Form ── */
+        .login-form-group {
+            margin-bottom: 20px;
+        }
+
+        .login-form-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 700;
+            color: var(--cs-text-label);
+            font-size: var(--cs-font-size-m);
+        }
+
+        .login-input {
+            width: 100%;
+            height: 40px;
+            padding: 0 12px;
+            border: 1px solid var(--cs-border-input);
+            border-radius: var(--cs-radius-s);
+            font-size: var(--cs-font-size-m);
+            font-family: var(--cs-font);
+            color: var(--cs-text-primary);
+            background: var(--cs-bg-primary);
+            transition: border-color 90ms ease-out, box-shadow 90ms ease-out;
+        }
+
+        .login-input:hover {
+            border-color: var(--cs-text-secondary);
+        }
+
+        .login-input:focus {
+            outline: none;
+            border-color: var(--cs-border-input-focus);
+            box-shadow: 0 0 0 2px rgba(9, 114, 211, 0.25);
+        }
+
+        .login-input::placeholder {
+            color: var(--cs-text-disabled);
+        }
+
+        /* ── Submit button ── */
+        .login-btn {
+            display: block;
+            width: 100%;
+            height: 40px;
+            background: var(--cs-btn-primary-bg);
+            color: #FFFFFF;
+            border: none;
+            border-radius: var(--cs-radius-s);
+            font-size: var(--cs-font-size-l);
+            font-weight: 700;
+            font-family: var(--cs-font);
+            cursor: pointer;
+            transition: background 90ms ease-out;
+            margin-top: 8px;
+        }
+
+        .login-btn:hover {
+            background: var(--cs-btn-primary-bg-hover);
+        }
+        /* visible disabled state (the button is disabled while a
+           login submit is in flight) so it doesn't read as still-clickable. */
+        .login-btn:disabled,
+        .login-btn:disabled:hover {
+            background: var(--cs-btn-primary-bg);
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .login-btn:focus-visible {
+            outline: none;
+            box-shadow: 0 0 0 2px #FFFFFF, 0 0 0 4px var(--cs-btn-primary-bg);
+        }
+
+        .login-btn:active {
+            background: #022D5E;
+        }
+
+        /* ── Footer ── */
+        /* "Sign in with Microsoft" —. Same shell as the
+           .sso-btn in onboarding_start.html; kept
+           visually identical so the two surfaces read as one system.
+           The white background is Microsoft's brand requirement for
+           the official button, so it is intentionally NOT themed. */
+        .sso-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            width: 100%;
+            height: 36px;
+            background: #FFFFFF;
+            color: #1F1F1F;
+            border: 1px solid var(--cs-border-input);
+            border-radius: var(--cs-radius-s);
+            font-size: var(--cs-font-size-m);
+            font-weight: 500;
+            font-family: var(--cs-font);
+            cursor: pointer;
+            text-decoration: none;
+            transition: background 90ms ease-out, border-color 90ms ease-out;
+        }
+        .sso-btn:hover { background: #F5F5F5; border-color: var(--cs-text-secondary); }
+        .sso-btn:focus-visible {
+            outline: none;
+            box-shadow: 0 0 0 2px #FFFFFF, 0 0 0 4px var(--cs-btn-primary-bg);
+        }
+        .sso-btn svg { width: 18px; height: 18px; flex-shrink: 0; }
+
+        .sso-divider {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 16px 0;
+            color: var(--cs-text-secondary);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .sso-divider::before, .sso-divider::after {
+            content: "";
+            flex: 1;
+            height: 1px;
+            background: var(--cs-border-divider);
+        }
+
+        .login-footer {
+            margin-top: 24px;
+            padding-top: 20px;
+            border-top: 1px solid var(--cs-border-divider);
+            text-align: center;
+        }
+
+        .login-footer p {
+            color: var(--cs-text-secondary);
+            font-size: var(--cs-font-size-s);
+            margin: 6px 0;
+            line-height: 1.5;
+        }
+
+        .login-footer a {
+            color: var(--cs-text-link);
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .login-footer a:hover {
+            text-decoration: underline;
+            color: var(--cs-text-link-hover);
+        }
+
+        .login-forgot {
+            display: block;
+            text-align: center;
+            margin-top: 12px;
+            color: var(--cs-text-link);
+            font-size: var(--cs-font-size-s);
+            text-decoration: none;
+        }
+
+        .login-forgot:hover {
+            text-decoration: underline;
+            color: var(--cs-text-link-hover);
+        }
+
+        /* ── Powered by footer ── */
+        .login-powered {
+            margin-top: 24px;
+            text-align: center;
+            font-size: 12px;
+            color: var(--cs-text-disabled);
+        }
+
+        /* ── Responsive ── */
+        @media (max-width: 480px) {
+            .login-card {
+                padding: 32px 24px 24px;
+            }
+            .login-header h1 {
+                font-size: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <script nonce="{{ csp_nonce }}">
+    // When the login page is rendered inside the dashboard iframe
+    // (e.g. after a session expires mid-use), break out so the user sees a
+    // full-page login instead of a tiny embedded one. The dashboard iframe
+    // is sandboxed without `allow-top-navigation`, so we cannot set
+    // window.top.location directly from here — postMessage the parent
+    // (same-origin only) and let dashboards.html do the navigation. Run as
+    // the first thing in <body> to minimize the flash of nested login content.
+    //
+    // The default `next=` carries the iframe content URL
+    // (/assets/dashboard-builder/view/<id>...), which would land the user
+    // on a chrome-less dashboard after re-auth. Rewrite next= to the
+    // parent's path+search so post-login redirect lands on /dashboard with
+    // full chrome. Same-origin parent access is allowed because the iframe
+    // and parent are both served from the DEAM origin.
+    (function () {
+        if (window.top === window.self) return;
+        try {
+            var loginUrl = new URL(window.location.href);
+            try {
+                var parentLoc = window.parent.location;
+                loginUrl.searchParams.set("next", parentLoc.pathname + parentLoc.search);
+            } catch (e) { /* same-origin access blocked — keep original next= */ }
+            window.parent.postMessage(
+                { type: "deam-session-expired", url: loginUrl.href },
+                window.location.origin
+            );
+        } catch (e) { /* best-effort — fall through to silent in-frame render */ }
+    })();
+    </script>
+    <div class="login-topbar">
+        <img src="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5" alt="" class="login-topbar-logo">
+        <span class="login-topbar-title">Kavanah Analytics</span>
+    </div>
+
+    <div class="login-container">
+        <div class="login-card">
+            <div class="login-header">
+                <h1>Sign in</h1>
+            </div>
+
+            {% if success_message %}
+            <div class="login-alert login-alert-success">
+                <span class="login-alert-icon"><i class="fas fa-check-circle"></i></span>
+                <span>{{ success_message }}</span>
+            </div>
+            <script nonce="{{ csp_nonce }}">
+            // Strip ?message= and ?next= from the URL bar after the success
+            // alert renders. The form below already carries next= server-side
+            // in its action attribute, so the user still lands back on the
+            // surface they signed out from after re-auth — but the URL bar
+            // shows a clean /login that matches what the back button would
+            // surface (the user's previous bare /login history entry).
+            if (window.history.replaceState) {
+                const u = new URL(window.location);
+                u.searchParams.delete('message');
+                u.searchParams.delete('next');
+                window.history.replaceState({}, '', u);
+            }
+            </script>
+            {% endif %}
+
+            {% if error_message %}
+            <div class="login-alert login-alert-error">
+                <span class="login-alert-icon"><i class="fas fa-exclamation-circle"></i></span>
+                <span>{{ error_message }}</span>
+            </div>
+            {% endif %}
+
+            {% if microsoft_sso_enabled %}
+            {# "Sign in with Microsoft". Placed ABOVE the
+               password form because for admin-created accounts this is the
+               intended primary path — the signup wizard (the only other
+               surface carrying this button) is never visited. ?origin=login keeps a failed or
+               already-authenticated flow returning here instead of the
+               signup page. Official 4-square logo. #}
+            <a href="{{ url_for('analytics.onboarding_microsoft_start', origin='login') }}"
+               class="sso-btn sso-btn-microsoft" id="microsoft-sso-btn">
+                <svg viewBox="0 0 21 21" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <rect x="1" y="1" width="9" height="9" fill="#F25022"/>
+                    <rect x="1" y="11" width="9" height="9" fill="#00A4EF"/>
+                    <rect x="11" y="1" width="9" height="9" fill="#7FBA00"/>
+                    <rect x="11" y="11" width="9" height="9" fill="#FFB900"/>
+                </svg>
+                Sign in with Microsoft
+            </a>
+            {% endif %}
+
+            {% if google_sso_enabled %}
+            {# Google sibling of the Microsoft button — same
+               ?origin=login contract, same fail-closed gating (an
+               unconfigured client hides the button and 404s the route).
+               Official multi-color G mark. #}
+            <a href="{{ url_for('analytics.onboarding_google_start', origin='login') }}"
+               class="sso-btn sso-btn-google" id="google-sso-btn">
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.76h3.57c2.08-1.92 3.27-4.74 3.27-8.09z" fill="#4285F4"/>
+                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.76c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z" fill="#34A853"/>
+                    <path d="M5.84 14.11a6.6 6.6 0 0 1 0-4.22V7.05H2.18a11 11 0 0 0 0 9.9l3.66-2.84z" fill="#FBBC05"/>
+                    <path d="M12 5.36c1.62 0 3.06.56 4.21 1.64l3.15-3.15A11 11 0 0 0 2.18 7.05l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                </svg>
+                Sign in with Google
+            </a>
+            {% endif %}
+
+            {% if microsoft_sso_enabled or google_sso_enabled %}
+            <div class="sso-divider"><span>or</span></div>
+            {% endif %}
+
+            <form method="POST" action="/login{% if next_url %}?next={{ next_url|urlencode }}{% endif %}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+                <div class="login-form-group">
+                    <label for="username">Username or email</label>
+                    {# pre-fill from ?email= (the wizard's
+                       duplicate-email link) OR ?username= (legacy /
+                       direct-link). login_post resolves an emailish
+                       credential to the ES username via the same
+                       enumeration the signup duplicate-check uses, so
+                       either parameter can populate this single field.
+                       maxlength widened to 254 (RFC email limit) since
+                       the field now accepts an email shape. #}
+                    <input
+                        type="text"
+                        id="username"
+                        name="username"
+                        class="login-input"
+                        required
+                        {% if not (request.args.get('email') or request.args.get('username')) %}autofocus{% endif %}
+                        maxlength="254"
+                        placeholder="Enter your username or email"
+                        autocomplete="username email"
+                        {# ES Security usernames are case-sensitive;
+                           stop mobile keyboards mangling the username (leading
+                           capital / autocorrect rewrite / trailing space). #}
+                        autocapitalize="none"
+                        autocorrect="off"
+                        spellcheck="false"
+                        value="{{ request.args.get('email') or request.args.get('username', '') }}"
+                    >
+                </div>
+
+                <div class="login-form-group">
+                    <label for="password">Password</label>
+                    <div class="pw-wrap">
+                        <input
+                            type="password"
+                            id="password"
+                            name="password"
+                            class="login-input pw-input"
+                            required
+                            {% if request.args.get('email') or request.args.get('username') %}autofocus{% endif %}
+                            maxlength="128"
+                            placeholder="Enter your password"
+                            autocomplete="current-password"
+                        >
+                        {% with pw_target="password" %}{% include "_pw_toggle.html" %}{% endwith %}
+                    </div>
+                </div>
+
+                <button type="submit" class="login-btn">Sign in</button>
+            </form>
+
+            <script nonce="{{ csp_nonce }}">
+            (function() {
+                var form = document.querySelector('form');
+                var csrfInput = document.querySelector('input[name="csrf_token"]');
+                var csrfOnLoad = csrfInput ? csrfInput.value : 'MISSING';
+                if (form) {
+                    var submitted = false;
+                    form.addEventListener('submit', function(e) {
+                        var csrfAtSubmit = csrfInput ? csrfInput.value : 'MISSING';
+                        console.log('[DEAM Login] CSRF token prefix:', csrfAtSubmit.substring(0, 8),
+                            '| same as on load:', csrfAtSubmit === csrfOnLoad);
+                        // Guard against double-submission (double-click, Enter spam):
+                        // disable the submit button once the form is on its way.
+                        if (submitted) { e.preventDefault(); return; }
+                        submitted = true;
+                        form.querySelectorAll('button[type="submit"]').forEach(function(b) {
+                            b.disabled = true;
+                        });
+                    });
+                }
+            })();
+            </script>
+
+            <div class="login-footer">
+                <a href="/reset-password/" class="login-forgot">Forgot your password?</a>
+            </div>
+        </div>
+    </div>
+<script nonce="{{ csp_nonce }}">
+(function() {
+    var loadTime = Date.now().toString();
+
+    // Cross-tab login: if another tab logs in, redirect to dashboard
+    window.addEventListener('storage', function(e) {
+        if (e.key === 'login' && e.newValue && e.newValue > loadTime) {
+            window.location.href = '/dashboard';
+        }
+    });
+    document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'visible') {
+            var lastLogin = localStorage.getItem('login');
+            if (lastLogin && lastLogin > loadTime) {
+                window.location.href = '/dashboard';
+            }
+        }
+    });
+})();
+</script>
+</body>
+</html>

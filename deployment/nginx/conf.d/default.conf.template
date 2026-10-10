@@ -1,0 +1,920 @@
+# per-IP request rate limits for the unauthenticated / credential
+# surfaces. This file is included from nginx.conf's http{} block, so the
+# limit_req_zone and map directives below are at http scope as required.
+#
+# Key: $binary_remote_addr is the real client — nothing sits in front of this
+# container (UFW 80/443 straight to it; no CDN, no LB), so the peer address IS
+# the user. If a proxy/CDN ever lands in front, switch to the real_ip module
+# BEFORE trusting these zones or every client shares one bucket.
+#
+# $deam_post_ip is the same address for POST requests and "" otherwise; nginx
+# does not account requests whose key is empty, so zones keyed on it limit
+# credential submissions (login, MFA code, signup, reset) while GET page
+# renders and redirects stay unlimited. Form pages are cheap; the POST is
+# where the guessing and the mail-sending happen.
+#
+# Rates are the volume cap; the credential guard is the lockout in
+# Flask (5 failures / username, 20 / IP). Tune here, never in Flask:
+#   * observe first: add `limit_req_dry_run on;` to a location to log
+#     would-be rejections without enforcing them;
+#   * `limit_req_log_level warn` writes each rejection to error.log
+#     ("limiting requests, excess: …"), which is also how to tell a real
+#     user tripped a zone.
+# Rejections return 429 via `error_page 429 = @ratelimited` in the main server.
+map $request_method $deam_post_ip {
+    default "";
+    POST    $binary_remote_addr;
+}
+
+# Public report viewer + its data API: one unauthenticated ES query per request,
+# so it is both the token-guessing surface and the cheapest DoS. A legacy
+# 20-chart report issues ~21 requests on load and again on every filter change
+# — the two-stage burst below (30 immediate, next 30 smoothed to the rate,
+# then 429) leaves that untouched and caps a flood at 10 r/s per address.
+limit_req_zone $binary_remote_addr zone=deam_public:10m   rate=10r/s;
+# passcode unlock POST — a second factor guessed online.
+limit_req_zone $binary_remote_addr zone=deam_passcode:2m  rate=6r/m;
+# Credential submissions (POST only).
+limit_req_zone $deam_post_ip       zone=deam_login:2m     rate=30r/m;
+limit_req_zone $deam_post_ip       zone=deam_mfa:2m       rate=30r/m;
+limit_req_zone $deam_post_ip       zone=deam_signup:2m    rate=6r/m;
+limit_req_zone $deam_post_ip       zone=deam_reset:2m     rate=6r/m;
+# /verify-email/<token> is a GET — the token IS the credential, so count every method.
+limit_req_zone $binary_remote_addr zone=deam_verify:2m    rate=10r/m;
+# the OAuth vhost (${FB_SERVER_NAME}) — initiate legs + provider
+# callbacks, GETs only, each one ES lookup + one provider round-trip. A human
+# does a handful per authorization; 30/min with a burst covers a NAT'd office
+# and caps a flood of state guesses / code exchanges per address.
+limit_req_zone $binary_remote_addr zone=deam_oauth:2m     rate=30r/m;
+
+# Default server block - reject requests to IP address or unknown hosts
+server {
+    listen 80 default_server;
+    listen 443 ssl default_server;
+    server_name _;
+
+    ssl_certificate /etc/letsencrypt/live/${SERVER_NAME}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${SERVER_NAME}/privkey.pem;
+
+    return 444;
+}
+
+# HTTP redirect to HTTPS
+server {
+    listen 80;
+    server_name ${SERVER_NAME};
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# HTTP redirect for FB OAuth subdomain
+server {
+    listen 80;
+    server_name ${FB_SERVER_NAME};
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# FB OAuth server
+server {
+    listen 443 ssl;
+    server_name ${FB_SERVER_NAME};
+
+    ssl_certificate /etc/letsencrypt/live/${SERVER_NAME}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${SERVER_NAME}/privkey.pem;
+
+    # same 429 contract as the main server — answer 429,
+    # log the rejection, serve a fixed body with the security header set.
+    limit_req_status 429;
+    limit_req_log_level warn;
+    error_page 429 = @oauth_ratelimited;
+
+    location / {
+        limit_req zone=deam_oauth burst=20 nodelay;
+        proxy_pass http://imports_container:8083;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host;  # never pass the client's value through to ProxyFix
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location @oauth_ratelimited {
+        default_type text/plain;
+        add_header Retry-After 60 always;
+        add_header Cache-Control "no-store" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header Content-Security-Policy "default-src 'none'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" always;
+        return 429 "Too many requests. Please wait a moment and try again.\n";
+    }
+}
+
+# Main application server (HTTPS only)
+server {
+    listen 443 ssl;
+    server_name ${SERVER_NAME};
+
+    ssl_certificate /etc/letsencrypt/live/${SERVER_NAME}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${SERVER_NAME}/privkey.pem;
+
+    # nginx-generated 404s (no location match, `return 404`,
+    # `try_files ... =404`) bypass every per-location add_header block, so they
+    # shipped without CSP / X-Frame-Options / HSTS etc. (flagged by ZAP on
+    # /assets/dashboards, /register, /password-reset, …). Route them through a
+    # named @notfound location that re-applies the headers. proxy_intercept_errors
+    # stays OFF (default), so 404s from the Flask upstream pass through untouched
+    # — Flask already adds these headers via @app.after_request.
+    error_page 404 = @notfound;
+
+    # limit_req rejects with 503 by default — say what happened
+    # (429) and route it through @ratelimited so the response carries the
+    # security headers and a fixed body instead of the stock openresty page.
+    # Flask-origin 429s are untouched:
+    # proxy_intercept_errors stays off, so error_page never sees them.
+    limit_req_status 429;
+    limit_req_log_level warn;
+    error_page 429 = @ratelimited;
+
+    # Block /assets/examples/ — examples are only accessible at /examples/
+    location /assets/examples/ {
+        return 404;
+    }
+
+    # /change-password is the forced-password-change route and
+    # is part of the sign-in surface. It lives at the bare path (matching
+    # /login, /mfa/*); the legacy /assets/change-password URL gets bounced
+    # back to bare via canonicalise_assets_prefix_for_sign_in_surface.
+    # originally 301'd bare → /assets/change-password because the
+    # bare path was not proxied; this is the inverse of that decision now
+    # that the rest of the auth-flow surface is canonical at the bare path.
+    location = /change-password {
+        proxy_pass http://imports_container:8084;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host; # never pass the client's value through to ProxyFix
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Sibling prefix block — preempts the nginx gotcha: an
+    # exact-match `location = /foo` does NOT catch /foo/bar sub-paths,
+    # so adding a new route under this prefix would 404 at nginx
+    # before reaching Flask. No sub-paths exist today.
+    location /change-password/ {
+        proxy_pass http://imports_container:8084;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host; # never pass the client's value through to ProxyFix
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Flask asset management web app
+    # canvas AI chat calls Bedrock synchronously; complex-mode
+    # edit turns (full dashboard config as context) can run past nginx's
+    # 60s default proxy_read_timeout and 504. Longest-prefix match wins
+    # over /assets/, so only the AI endpoints get the long timeout.
+    location /assets/dashboard-builder/api/ai/ {
+        proxy_pass http://imports_container:8084;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host; # never pass the client's value through to ProxyFix
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300s;
+    }
+
+    location /assets/ {
+        proxy_pass http://imports_container:8084;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host; # never pass the client's value through to ProxyFix
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Explicit 404 for bare legacy URLs (override nginx's automatic trailing-slash
+    # redirect and block Flask-level handling of the old paths).
+    location = /dashboards        { return 404; }
+    location = /assets/dashboards { return 404; }
+    location = /docs/index        { return 404; }
+
+    # Proxy /dashboards/* to Flask. /dashboards/login is a 301/308
+    # redirect to bare /login (the single canonical sign-in URL); the rest of
+    # /dashboards/* is the read-only dashboards surface.
+    location /dashboards/ {
+        proxy_pass http://imports_container:8084;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host; # never pass the client's value through to ProxyFix
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Dashboards API endpoints
+    location /api/dashboards/ {
+        proxy_pass http://imports_container:8084;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host; # never pass the client's value through to ProxyFix
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Maintenance alert API. Three Flask routes share this prefix:
+    #   GET  /api/maintenance-alert            — read state (any auth user)
+    #   POST /api/maintenance-alert/publish    — superuser only
+    #   POST /api/maintenance-alert/hide       — superuser only
+    # The dashboards.html banner JS reads /api/maintenance-alert on every
+    # page load; without this proxy block the call 404s and the banner
+    # never shows even when an alert is published.
+    location /api/maintenance-alert {
+        proxy_pass http://imports_container:8084;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host; # never pass the client's value through to ProxyFix
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Public (login-free) Impact Report share URLs —.
+    # /public/report/<token> renders the viewer; /public/api/query and
+    # /public/api/dashboards/<token> serve its data. Auth bypass lives in
+    # the Flask layer (verify_auth skips /public/ by path prefix), so this
+    # block is purely a routing rule to get the requests into Flask.
+    # rate-limited per address — see the deam_public zone comment
+    # at the top of this file for the sizing.
+    location /public/ {
+        limit_req zone=deam_public burst=60 delay=30;
+        proxy_pass http://imports_container:8084;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host; # never pass the client's value through to ProxyFix
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # the passcode prompt POSTs here. A regex location
+    # wins over the /public/ prefix above, so this one path gets the tight
+    # deam_passcode zone instead of the viewer's; the route is POST-only in
+    # Flask, so every method is counted. Same proxy contract as /public/.
+    location ~ ^/public/report/[^/]+/unlock$ {
+        limit_req zone=deam_passcode burst=5 nodelay;
+        proxy_pass http://imports_container:8084;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host; # never pass the client's value through to ProxyFix
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # UI redesign example pages (superuser-only)
+    location /examples/ {
+        proxy_pass http://imports_container:8084;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host; # never pass the client's value through to ProxyFix
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Static files for Flask web app
+    location /static/ {
+        proxy_pass http://imports_container:8084;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host; # never pass the client's value through to ProxyFix
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Bare /docs -> /docs/ (nginx won't auto-redirect for alias'd locations,
+    # so typing the URL without a trailing slash would otherwise 404)..
+    location = /docs {
+        return 301 /docs/;
+    }
+
+    # HTML documentation (built with Sphinx dirhtml for clean URLs)
+    location /docs/ {
+        alias /var/www/deam-docs/;
+        index index.html;
+        try_files $uri $uri/ $uri.html =404;
+
+        # Force revalidation so role-based nav filtering
+        # picks up new section markup after a docs rebuild. Applied
+        # to everything under /docs/ — static assets already carry
+        # ?v=HASH so they'll 304 quickly.
+        add_header Cache-Control "no-cache, must-revalidate" always;
+        # Security headers: /docs/ is nginx-served
+        # static, doesn't go through Flask's @app.after_request, so we
+        # apply the headers explicitly. Repeating them in the same
+        # block because nginx drops parent add_header values when a
+        # child block declares its own.
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com; connect-src 'self' https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com; frame-ancestors 'self'; frame-src https://www.googletagmanager.com; object-src 'none'; base-uri 'self'; form-action 'self'" always;
+    }
+
+    # Elasticsearch API endpoint
+    #
+    # Phase 1: IP allowlist. ES is auth-gated on the upstream side, but
+    # /elasticsearch/ is reachable from anywhere on the public internet, which
+    # is unnecessary attack surface. Only known callers should reach ES at all.
+    #
+    # The allow-list is deployment-specific and lives OUTSIDE this template
+    #: one `allow <IP>;` file per
+    # caller under conf.d/es-allow/*.conf on the host (bind-mounted with conf.d).
+    # step6 seeds that directory from internal/deployment/nginx/es-allow/ when the
+    # private submodule is present. A glob that matches no file is legal nginx, so
+    # with no callers configured this location is `deny all`. To add a caller:
+    # drop a new file in es-allow/ and reload nginx; to confirm an IP, check
+    # `docker logs nginx-reverse-proxy` for the source of /elasticsearch/ traffic,
+    # or call the caller's owner directly.
+    location /elasticsearch/ {
+        include /etc/nginx/conf.d/es-allow/*.conf;
+        deny all;
+
+        rewrite ^/elasticsearch/(.*) /$1 break;
+        proxy_pass https://${ES_HOST}:9200;
+        proxy_ssl_verify off;
+        proxy_pass_request_headers on;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host; # never pass the client's value through to ProxyFix
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300s;
+        proxy_connect_timeout 75s;
+    }
+
+    # Serve static JS for login page password reset link
+    location = /km-pw-reset.js {
+        root /usr/local/openresty/nginx/html;
+        add_header Content-Type application/javascript;
+        add_header Cache-Control "public, max-age=3600";
+    }
+
+    # Password Reset App
+    # /request POST sends mail and probes usernames, /reset/<token>
+    # POST sets a password — both throttled per address (POST only).
+    location /reset-password/ {
+        limit_req zone=deam_reset burst=5 nodelay;
+        proxy_pass http://imports_container:8085;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host; # never pass the client's value through to ProxyFix
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # internal auth-backend for the /kibana auth_request gate.
+    # Not reachable from the outside (internal; directive) — only nginx's
+    # own auth_request module hits it as a subrequest. The Flask endpoint
+    # at imports_container:8084 reads the DEAM session and returns
+    # 204 (allow) / 401 (anonymous → redirect to login) / 403 (logged in
+    # but not superuser → render forbidden). proxy_pass_request_body off
+    # is the auth_request convention — the subrequest only needs cookies.
+    location = /_kibana_auth {
+        internal;
+        proxy_pass http://imports_container:8084/api/internal/kibana-gate;
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host; # never pass the client's value through to ProxyFix
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # Fail-closed on any non-2xx from the auth backend (including
+        # connection errors when imports_container is stopped). The
+        # auth_request module already treats 5xx as deny, but listing
+        # it here is the documented convention.
+    }
+
+    # Kibana (moved from / to /kibana — requires SERVER_BASEPATH=/kibana in kib01).
+    # gated by auth_request to /_kibana_auth — only DEAM superusers
+    # reach the upstream. 401 from the backend → redirect to /assets/login
+    # so the user lands back on Kibana after signing in; 403 → render the
+    # DEAM "not authorized" page (no redirect — the user is already logged
+    # in, redirecting them would loop). Server-side Kibana API consumers
+    # (KibanaService, dashboard_builder, etc.) go container-to-container
+    # via http://kib01:5601/kibana and don't touch this block.
+    location /kibana {
+        auth_request /_kibana_auth;
+        error_page 401 = @kibana_login_redirect;
+        error_page 403 = @kibana_forbidden;
+        # the gate mints a per-user Elasticsearch API key (owned by
+        # the session user via run_as) and returns it on its 204 as
+        # X-Kibana-Authorization. Forward it to Kibana as Authorization so
+        # Kibana authenticates the request itself (HTTP auth, Basic-license
+        # feature) and never shows its native login form. When the gate sends
+        # no header (feature off / mint failed) the variable is empty and
+        # nginx omits the Authorization header entirely — Kibana falls back to
+        # its own login. Side effect, intended: a client-supplied Authorization
+        # header is never forwarded on this path; the gate is the only source
+        # of Kibana credentials here.
+        auth_request_set $kibana_gate_auth $upstream_http_x_kibana_authorization;
+        proxy_set_header Authorization $kibana_gate_auth;
+        proxy_pass http://kib01:5601;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host; # never pass the client's value through to ProxyFix
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Accept-Encoding "";
+        sub_filter '</head>' '<script src="/km-pw-reset.js"></script></head>';
+        sub_filter_once on;
+        sub_filter_types text/html;
+    }
+
+    # `/` when no marketing site is deployed (see `location = /`).
+    location @no_marketing {
+        return 302 /assets/;
+    }
+
+    # auth_request 401 handler — bounce to the DEAM sign-in page
+    # with ?next=/kibana so the user lands back on Kibana after login.
+    # Using a named location instead of inline `return 302` keeps the
+    # /kibana block readable.
+    location @kibana_login_redirect {
+        return 302 /assets/login?next=/kibana;
+    }
+
+    # auth_request 403 handler — bounce to /forbidden, which
+    # the internal_auth blueprint serves as a Kibana-aware "Access Denied"
+    # page (renders the existing error.html template with a message
+    # explaining the user needs the superuser role).
+    location @kibana_forbidden {
+        return 302 /forbidden?next=/kibana;
+    }
+
+    # bare /forbidden route for the auth_request 403 handler.
+    # Same proxy contract as /login / /logout / /profile — Flask owns the
+    # template render; nginx is just routing the prefix.
+    location = /forbidden {
+        proxy_pass http://imports_container:8084;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host; # never pass the client's value through to ProxyFix
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Sibling prefix block — gotcha defense. No sub-paths today.
+    location /forbidden/ {
+        proxy_pass http://imports_container:8084;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host; # never pass the client's value through to ProxyFix
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # bare /admin/elevate POST route. The Kibana auth_request
+    # gate checks session['elevated_until'] in addition to the
+    # superuser role; this is the only endpoint that sets that flag.
+    # Lives at /admin/elevate (not /api/admin/elevate) because the
+    # /api/admin/* surface already exists for other admin endpoints
+    # which are inside the /assets prefix; this one is bare so the
+    # internal_auth blueprint can co-locate it with /api/internal/* and
+    # /forbidden under one blueprint. PrefixMiddleware allow-listing
+    # added in the same commit.
+    location = /admin/elevate {
+        proxy_pass http://imports_container:8084;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host; # never pass the client's value through to ProxyFix
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Sibling prefix block — gotcha defense. No sub-paths today.
+    location /admin/elevate/ {
+        proxy_pass http://imports_container:8084;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host; # never pass the client's value through to ProxyFix
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Kavanah Analytics marketing pages — served as static files
+    # from /var/www/marketing/ (synced from the private docs
+    # in the digital-engagement-internal submodule). See
+    # the private docs for deploy details.
+    #
+    # Security headers (KAN ZAP-hardening): static locations don't go through
+    # Flask's @app.after_request, so we add the same set here. Per nginx,
+    # add_header at a child location drops parent-level headers — list all
+    # required headers in each location below.
+    #
+    # Cache-Control: marketing HTML pages use "no-cache, must-revalidate"
+    # so every pageload sends a conditional request and 304s on a hit
+    # but immediately picks up newly-deployed copy on a miss. Without
+    # this nginx sends only Last-Modified, browsers heuristic-cache, and
+    # users see stale HTML for hours after a deploy until they hard
+    # refresh or open Incognito.
+
+    # Home -> landing
+    #
+    # landing AND pricing pages embed the Google Form
+    # for "Request Info" inline, so frame-src allows docs.google.com on
+    # both. Feature pages (/features/*) still keep docs.google.com out of
+    # frame-src — they have no inline form. The CSP is intentionally not
+    # factored into a shared snippet — nginx drops parent add_header
+    # values when a child block declares its own, and each location's
+    # allowance differs.
+    location = / {
+        root /var/www/marketing;
+        # the marketing site is optional (it lives in the private
+        # submodule). With no index.html deployed, send / to the app instead of
+        # a bare 404 so a public deployer lands somewhere useful.
+        try_files /index.html @no_marketing;
+        add_header Cache-Control "no-cache, must-revalidate" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com; connect-src 'self' https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com; frame-ancestors 'self'; frame-src https://docs.google.com https://www.googletagmanager.com; object-src 'none'; base-uri 'self'; form-action 'self'" always;
+    }
+
+    # Pricing
+    location = /pricing {
+        root /var/www/marketing;
+        try_files /pricing.html =404;
+        add_header Cache-Control "no-cache, must-revalidate" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com; connect-src 'self' https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com; frame-ancestors 'self'; frame-src https://docs.google.com https://www.googletagmanager.com; object-src 'none'; base-uri 'self'; form-action 'self'" always;
+    }
+
+    # About and Security — new-tab links to the sponsorship
+    # Google Form, no inline embed, so frame-src stays without docs.google.com
+    # (same CSP as feature pages).
+    location = /about {
+        root /var/www/marketing;
+        try_files /about.html =404;
+        add_header Cache-Control "no-cache, must-revalidate" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com; connect-src 'self' https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com; frame-ancestors 'self'; frame-src https://www.googletagmanager.com; object-src 'none'; base-uri 'self'; form-action 'self'" always;
+    }
+
+    location = /security {
+        root /var/www/marketing;
+        try_files /security.html =404;
+        add_header Cache-Control "no-cache, must-revalidate" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com; connect-src 'self' https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com; frame-ancestors 'self'; frame-src https://www.googletagmanager.com; object-src 'none'; base-uri 'self'; form-action 'self'" always;
+    }
+
+    # Feature detail pages: /features/dashboard, /features/navigation, etc.
+    location ~ ^/features/([a-z0-9_-]+)$ {
+        root /var/www/marketing;
+        try_files /features/$1.html =404;
+        add_header Cache-Control "no-cache, must-revalidate" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com; connect-src 'self' https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com; frame-ancestors 'self'; frame-src https://www.googletagmanager.com; object-src 'none'; base-uri 'self'; form-action 'self'" always;
+    }
+
+    # Legal pages: /legal/privacy, /legal/terms, /legal/data-deletion.
+    # Required public URLs for Meta App Review (Privacy Policy, ToS, Data
+    # Deletion Instructions). Must be reachable with no auth and indexable
+    # by Meta's crawler. Same CSP as feature pages (no inline Google Form),
+    # so frame-src does not include docs.google.com.
+    location ~ ^/legal/([a-z0-9_-]+)$ {
+        root /var/www/marketing;
+        try_files /legal/$1.html =404;
+        add_header Cache-Control "no-cache, must-revalidate" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com; connect-src 'self' https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com; frame-ancestors 'self'; frame-src https://www.googletagmanager.com; object-src 'none'; base-uri 'self'; form-action 'self'" always;
+    }
+
+    # Coming-soon placeholder (no cache — swap is instant at launch).
+    location = /coming-soon {
+        root /var/www/marketing;
+        try_files /coming-soon.html =404;
+        add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com; connect-src 'self' https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com; frame-ancestors 'self'; frame-src https://www.googletagmanager.com; object-src 'none'; base-uri 'self'; form-action 'self'" always;
+    }
+
+    # robots.txt and sitemap.xml — served from marketing root if present.
+    # Security headers added so ZAP doesn't flag these as missing CSP/X-Frame.
+    location = /robots.txt {
+        root /var/www/marketing;
+        try_files /robots.txt =404;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header Content-Security-Policy "default-src 'none'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" always;
+    }
+
+    location = /sitemap.xml {
+        root /var/www/marketing;
+        try_files /sitemap.xml =404;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header Content-Security-Policy "default-src 'none'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" always;
+    }
+
+    # Marketing-only static assets (logos, screenshots).
+    location /marketing-assets/ {
+        alias /var/www/marketing/assets/;
+        expires 7d;
+        add_header Cache-Control "public, max-age=604800";
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    }
+
+    # credential POSTs throttled per address; GET renders unlimited.
+    location = /login {
+        limit_req zone=deam_login burst=20 nodelay;
+        proxy_pass http://imports_container:8084;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host; # never pass the client's value through to ProxyFix
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Sibling prefix block — gotcha defense. No sub-paths today.
+    location /login/ {
+        limit_req zone=deam_login burst=20 nodelay;
+        proxy_pass http://imports_container:8084;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host; # never pass the client's value through to ProxyFix
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location = /logout {
+        proxy_pass http://imports_container:8084;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host; # never pass the client's value through to ProxyFix
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Sibling prefix block — gotcha defense. No sub-paths today.
+    location /logout/ {
+        proxy_pass http://imports_container:8084;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host; # never pass the client's value through to ProxyFix
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location = /dashboard {
+        proxy_pass http://imports_container:8084;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host; # never pass the client's value through to ProxyFix
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # dashboard sub-paths (/dashboard/checklist/dismiss,
+    # /dashboard/checklist/undismiss). The `location = /dashboard`
+    # exact match above only handles the bare /dashboard surface; the
+    # new checklist-card dismiss endpoints live under it and need
+    # their own proxy block.
+    location /dashboard/ {
+        proxy_pass http://imports_container:8084;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host; # never pass the client's value through to ProxyFix
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # MFA challenge + setup pages are part of the sign-in surface
+    # and live at bare /mfa/* (matching the bare /login URL). The
+    # PrefixMiddleware allow-list lets the bare path resolve inside Flask;
+    # /assets/mfa/* is a permanent redirect to bare /mfa/* (301 GET / 308
+    # POST), handled by the canonicalise_assets_prefix_for_sign_in_surface
+    # before_request hook.
+    # code / recovery-code / setup-confirm POSTs throttled per address.
+    location /mfa/ {
+        limit_req zone=deam_mfa burst=20 nodelay;
+        proxy_pass http://imports_container:8084;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host; # never pass the client's value through to ProxyFix
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Self-service profile. Reachable from both the
+    # management-console side (/assets/profile) and the dashboards side
+    # (/profile) so users without a management-console role can still
+    # update their name, email, password, and 2FA.
+    location = /profile {
+        proxy_pass http://imports_container:8084;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host; # never pass the client's value through to ProxyFix
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /profile/ {
+        proxy_pass http://imports_container:8084;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host; # never pass the client's value through to ProxyFix
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Self-service account-type flip. Sibling to
+    # /profile — same self-service auth posture; the Profile-card form
+    # at /profile posts here.
+    location = /settings/account-type {
+        proxy_pass http://imports_container:8084;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host; # never pass the client's value through to ProxyFix
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Sibling prefix block — gotcha defense. No sub-paths today.
+    location /settings/account-type/ {
+        proxy_pass http://imports_container:8084;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host; # never pass the client's value through to ProxyFix
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # registration POSTs throttled per address (creates accounts,
+    # sends verification mail). Flask keeps its own per-IP registration cap.
+    location /signup {
+        limit_req zone=deam_signup burst=5 nodelay;
+        proxy_pass http://imports_container:8084;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host; # never pass the client's value through to ProxyFix
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # the token in the path is the credential — every method counted.
+    location /verify-email/ {
+        limit_req zone=deam_verify burst=10 nodelay;
+        proxy_pass http://imports_container:8084;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host; # never pass the client's value through to ProxyFix
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # onboarding wizard step 1 + downstream step routes.
+    # Same proxy contract as /signup. The wizard routes are unconditional
+    # retired the feature flag; nginx just routes
+    # the prefix.
+    location /onboarding/ {
+        proxy_pass http://imports_container:8084;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host; # never pass the client's value through to ProxyFix
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # billing-upgrade landing page reached from the step-4
+    # "Upgrade to add more sources" CTA. Same proxy contract as the
+    # other authenticated app routes.
+    location = /billing {
+        proxy_pass http://imports_container:8084;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host; # never pass the client's value through to ProxyFix
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Sibling prefix block — gotcha defense. No sub-paths today.
+    location /billing/ {
+        proxy_pass http://imports_container:8084;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host; # never pass the client's value through to ProxyFix
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # per-connection detail / manage page. registered the
+    # connections blueprint at a NEW top-level prefix /connections/
+    # (connections_bp, url_prefix="/connections" in app.py) and the Data
+    # Connectors "Manage connection" button deep-links to /connections/<esid>.
+    # Without this block /connections/* fell through to the default and 404'd
+    # at the proxy before reaching Flask, so the page was unreachable for
+    # every user on prod. Routes under it: GET /connections/<esid>,
+    # GET /connections/<esid>/start-reauth, POST /connections/<esid>/disconnect
+    # — all sub-paths, so a single prefix block covers them. Same proxy
+    # contract as /onboarding/; Flask owns the authz gate.
+    location /connections/ {
+        proxy_pass http://imports_container:8084;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host; # never pass the client's value through to ProxyFix
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Report Scheduler blueprint (/report-scheduler). Like
+    # /connections/, this is a top-level app path NOT under /assets/, so it
+    # needs its own prefix block or nginx 404s it before Flask sees it (the
+    # exact-match-locations gotcha). Routes: GET /report-scheduler/,
+    # GET /report-scheduler/api/list, POST .../api/<id>/status|run-now,
+    # DELETE .../api/<id> — all sub-paths, one prefix block covers them. Flask
+    # owns the authz gate (mc_dashboard_builder).
+    location /report-scheduler/ {
+        proxy_pass http://imports_container:8084;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host; # never pass the client's value through to ProxyFix
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # 404 handler (target of `error_page 404 = @notfound` above).
+    # Re-applies the security headers the per-location blocks carry, since
+    # nginx's default 404 path runs none of them. The error body is a tiny
+    # static nginx page with no scripts, styles, frames, or forms, so the CSP
+    # is locked all the way down (matches the robots.txt / sitemap.xml blocks).
+    location @notfound {
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header Content-Security-Policy "default-src 'none'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" always;
+        return 404;
+    }
+
+    # 429 handler (target of `error_page 429 = @ratelimited` and
+    # `limit_req_status 429` above). Same header discipline as @notfound. The
+    # body is a fixed sentence — no path, no zone name, no server string, no
+    # nginx variables — so a probe learns only that it was throttled.
+    # Retry-After matches the slowest zone (6 r/m) so a well-behaved client
+    # backs off far enough to succeed on its next try.
+    location @ratelimited {
+        default_type text/plain;
+        add_header Retry-After 60 always;
+        add_header Cache-Control "no-store" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header Content-Security-Policy "default-src 'none'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" always;
+        return 429 "Too many requests. Please wait a moment and try again.\n";
+    }
+
+    # Note: root `location = /` is defined earlier in the marketing-pages
+    # block — it serves the static landing page from /var/www/marketing/.
+    # Users reach the app at /dashboard after signing in.
+}

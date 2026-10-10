@@ -1,0 +1,226 @@
+{% extends "base_v2.html" %}
+
+{% block title %}Report Snapshot - Kavanah Analytics Management Console{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js" integrity="sha384-pPi0zxBAoDu6+JXW/C68UZLvBUUtU+7zonhif43rqj7pxsGyqyqzcian2Rj37Rss" crossorigin="anonymous"></script>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .sv-page { padding: var(--cs-space-l) var(--cs-space-xl); max-width: var(--cs-content-max-width); }
+    .sv-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--cs-space-m); margin-bottom: var(--cs-space-m); }
+    .sv-title { font-size: 24px; font-weight: var(--cs-font-weight-bold); color: var(--cs-text-primary); margin: 0; }
+    .sv-sub { font-size: var(--cs-font-size-s); color: var(--cs-text-secondary); margin: var(--cs-space-xxs) 0 0; }
+    .sv-actions { display: flex; gap: var(--cs-space-xs); flex-shrink: 0; }
+    .sv-summary { display: flex; flex-wrap: wrap; gap: var(--cs-space-m); margin: var(--cs-space-m) 0; }
+    .sv-kpi { background: var(--cs-bg-primary); border: 1px solid var(--cs-border-default); border-radius: var(--cs-radius-m); padding: var(--cs-space-m) var(--cs-space-l); min-width: 160px; }
+    .sv-kpi-label { font-size: var(--cs-font-size-xs); color: var(--cs-text-tertiary); text-transform: uppercase; letter-spacing: 0.04em; }
+    .sv-kpi-value { font-size: 22px; font-weight: var(--cs-font-weight-bold); color: var(--cs-text-primary); }
+    .db-chart-grid { display: grid; gap: 16px; margin-top: var(--cs-space-m); }
+    .chart-slot { background: var(--cs-bg-primary); border: 1px solid var(--cs-border-default); border-radius: var(--cs-radius-m); padding: var(--cs-space-m); }
+    .chart-render-area { min-height: 320px; width: 100%; }
+    .chart-slot.chart-type-table .chart-render-area, .chart-slot.chart-type-metric .chart-render-area { min-height: auto; }
+    .sv-status { padding: var(--cs-space-xxl); text-align: center; color: var(--cs-text-secondary); }
+    .sv-empty { padding: var(--cs-space-l); text-align: center; color: var(--cs-text-tertiary); font-size: var(--cs-font-size-s); }
+    .sv-empty-error { color: var(--cs-status-error, #b00020); }
+
+    /* clean static styling for the table charts.js renders into a
+       snapshot. The renderer emits the dashboard's interactive table markup
+       (.gt-table with per-column sort ⋮ buttons + resize handles); a frozen
+       snapshot has no dashboard CSS loaded, so those rendered as bare ⋮ glyphs
+       and the table came out unstyled/cramped. Style the table for reading and
+       suppress the interactive affordances (non-functional on a snapshot). */
+    .chart-slot h3 { margin: 0 0 var(--cs-space-s); font-size: var(--cs-font-size-m); font-weight: var(--cs-font-weight-bold); color: var(--cs-text-primary); }
+    .sv-grid-scroll, .chart-render-area { overflow-x: auto; }
+    .gt-table { width: 100%; border-collapse: collapse; font-size: var(--cs-font-size-s); }
+    .gt-table th, .gt-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--cs-border-default); white-space: nowrap; }
+    .gt-table thead th { position: sticky; top: 0; font-weight: var(--cs-font-weight-bold); }
+    .gt-table tbody tr:nth-child(even) { background: var(--cs-bg-secondary, #f6f8fa); }
+    .gt-table tbody tr:hover { background: var(--cs-bg-hover, #eef2f6); }
+    /* Hide the interactive affordances — a snapshot is read-only. */
+    .gt-sort-btn, .gt-col-resize-handle { display: none !important; }
+    .gt-col-header-wrap { display: flex; align-items: center; }
+</style>
+{% endblock %}
+
+{% block page_content %}
+<div class="cs-content sv-page">
+    <div class="sv-header">
+        <div>
+            <h1 class="sv-title" id="sv-title">Report snapshot</h1>
+            <p class="sv-sub" id="sv-sub"></p>
+        </div>
+        <div class="sv-actions">
+            <a class="cs-btn cs-btn-normal cs-btn-sm" id="sv-export-csv">Export CSV</a>
+            <a class="cs-btn cs-btn-normal cs-btn-sm" id="sv-export-xlsx">Export Excel</a>
+        </div>
+    </div>
+    <div class="sv-summary" id="sv-summary"></div>
+    <div class="db-chart-grid" id="sv-grid"></div>
+    <div class="sv-status" id="sv-status"><i class="fas fa-spinner fa-spin"></i> Loading snapshot…</div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- charts.js render functions (renderEChart/renderTable/renderMetric) read a
+     per-chart config from DASHBOARD_STATE.charts[id]; we seed a minimal config
+     per chart (full original config isn't stored in the snapshot — the data +
+     baked-in styling already live in each stored ``result``). -->
+<script nonce="{{ csp_nonce }}">
+    // charts.js expects these globals to exist.
+    const DASHBOARD_STATE = { id: null, charts: {}, global_date_range: null };
+    const DASHBOARD_BASE = "/report-scheduler/";
+    function populateDisplayToggles() {}
+    function populateTableToggles() {}
+    function escHtml(s) {
+        if (!s) return "";
+        return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+</script>
+<script src="{{ url_for('static', filename='dashboard_builder/charts.js') }}?v=20261007a"></script>
+<script nonce="{{ csp_nonce }}">
+(function () {
+    "use strict";
+    const SNAP_ID = {{ snapshot_id | tojson }};
+    const API_BASE = "{{ url_for('report_scheduler.index') }}".replace(/\/$/, "") + "/api/snapshots/";
+    const statusEl = document.getElementById("sv-status");
+    const grid = document.getElementById("sv-grid");
+    const summaryEl = document.getElementById("sv-summary");
+
+    function fmtTs(iso) { if (!iso) return ""; try { return new Date(iso).toLocaleString(); } catch (e) { return iso; } }
+
+    function renderSummary(summary) {
+        const keys = Object.keys(summary || {});
+        if (!keys.length) { summaryEl.style.display = "none"; return; }
+        summaryEl.innerHTML = keys.map(function (k) {
+            const v = summary[k];
+            // A KPI tile with no value in the scoped window must read as a
+            // neutral empty state, NOT the literal text "null" (a metric whose
+            // precompute found nothing stores null). A real number — including
+            // 0 — is a legitimate value and is shown as-is.
+            const hasValue = (typeof v === "number" && isFinite(v))
+                || (typeof v === "string" && v.trim() !== "" && v.trim().toLowerCase() !== "null");
+            const valueHtml = hasValue
+                ? '<div class="sv-kpi-value">' + escHtml(String(v)) + "</div>"
+                : '<div class="sv-empty">No data in scope for this date range.</div>';
+            return '<div class="sv-kpi"><div class="sv-kpi-label">' + escHtml(k) +
+                "</div>" + valueHtml + "</div>";
+        }).join("");
+    }
+
+    // a chart with no data in the schedule's resolved scope/window is
+    // NOT an error: the run worked, there was just nothing to show for the
+    // scoped team(s). Detect emptiness against the same shape charts.js uses for
+    // its "has data" hook (renderChart ~L439) so the two never disagree, and
+    // surface a neutral note instead of a bare headers-only table that reads as
+    // a bug. A chart that genuinely failed carries entry.error and takes the
+    // error path instead.
+    function isEmptyResult(entry) {
+        const result = entry.result || {};
+        const type = result.chart_type || entry.chart_type;
+        if (type === "metric") {
+            const v = result.value;
+            return !(typeof v === "number" && isFinite(v) && v !== 0);
+        }
+        if (type === "table" || type === "posts_table") {
+            const rows = result.rows || result.data || [];
+            return !(Array.isArray(rows) && rows.length > 0);
+        }
+        const series = result.series || [];
+        return !(Array.isArray(series) && series.some(function (s) {
+            return Array.isArray(s.data) && s.data.length > 0;
+        }));
+    }
+
+    function renderOne(entry) {
+        const id = entry.chart_id;
+        // Seed the per-chart config charts.js render fns read from.
+        DASHBOARD_STATE.charts[id] = { chart_id: id, chart_type: entry.chart_type, title: entry.title };
+        const slot = document.createElement("div");
+        slot.className = "chart-slot chart-type-" + entry.chart_type;
+        slot.innerHTML = (entry.title ? "<h3>" + escHtml(entry.title) + "</h3>" : "")
+            + '<div class="chart-render-area" id="chart-' + id + '"></div>';
+        grid.appendChild(slot);
+
+        const renderArea = document.getElementById("chart-" + id);
+        // Impact Report charts aren't precomputed (they render
+        // client-side only). The snapshot links out to the live report: a public
+        // token viewer when published for scope, else the login-gated dashboard.
+        if (entry.report_link) {
+            const isPublic = entry.report_link_kind === "public";
+            const note = isPublic
+                ? "This is an interactive Impact Report."
+                : "This is an interactive Impact Report (sign-in required).";
+            renderArea.innerHTML = '<div class="sv-empty">'
+                + escHtml(note) + " "
+                + '<a href="' + escHtml(entry.report_link) + '">View the full report &rarr;</a>'
+                + "</div>";
+            return;
+        }
+        // A chart that errored at compute time → show the error, not an empty note.
+        if (entry.error) {
+            renderArea.innerHTML = '<div class="sv-empty sv-empty-error">'
+                + "Could not compute this chart: " + escHtml(String(entry.error)) + "</div>";
+            return;
+        }
+        // No data in scope for this window → neutral note (not an error).
+        if (isEmptyResult(entry)) {
+            renderArea.innerHTML = '<div class="sv-empty">'
+                + "No data in scope for this date range." + "</div>";
+            return;
+        }
+
+        const result = entry.result || {};
+        try {
+            if (result.chart_type === "table") {
+                renderTable(id, result);
+            } else if (result.chart_type === "metric") {
+                renderMetric(id, result);
+            } else {
+                renderEChart(id, result);
+            }
+        } catch (e) {
+            renderArea.textContent = "Could not render this chart.";
+            console.error("snapshot render error", id, e);
+        }
+    }
+
+    fetch(API_BASE + encodeURIComponent(SNAP_ID), { headers: { "Accept": "application/json" } })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            if (!d.ok) throw new Error(d.error || "load failed");
+            const snap = d.snapshot, data = snap.data || {};
+            const dr = snap.date_range || data.date_range || {};
+            document.getElementById("sv-sub").textContent =
+                "Generated " + fmtTs(snap.generated_at) + (dr.from ? "  ·  " + dr.from + " – " + dr.to : "");
+            // Export links (GET with ?format).
+            // only when the snapshot actually stored tables:
+            // CSV/Excel are built from data.tables, so a graphical-only
+            // snapshot (e.g. Impact Report dashboard) would download a
+            // valid-but-empty file. Hide the buttons instead.
+            const hasTables = (data.tables || []).length > 0;
+            document.getElementById("sv-export-csv").style.display = hasTables ? "" : "none";
+            document.getElementById("sv-export-xlsx").style.display = hasTables ? "" : "none";
+            if (hasTables) {
+                document.getElementById("sv-export-csv").href = API_BASE + encodeURIComponent(SNAP_ID) + "/export?format=csv";
+                document.getElementById("sv-export-xlsx").href = API_BASE + encodeURIComponent(SNAP_ID) + "/export?format=xlsx";
+            }
+
+            renderSummary(data.summary_metrics || {});
+            const items = (data.charts || []).concat(data.tables || []);
+            grid.innerHTML = "";
+            items.forEach(renderOne);
+
+            statusEl.style.display = "none";
+            if (!items.length && !Object.keys(data.summary_metrics || {}).length) {
+                statusEl.style.display = "";
+                statusEl.textContent = "This snapshot has no computed data.";
+            }
+        })
+        .catch(function (e) {
+            statusEl.textContent = "Unable to load this snapshot: " + e.message;
+        });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Step 5 — Workspace · Kavanah Analytics</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/cloudscape.css') }}">
+    <style>
+        body {
+            background: var(--cs-bg-page);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 84px 20px 40px;
+        }
+        .login-topbar {
+            position: fixed; top: 0; left: 0; right: 0;
+            height: 56px;
+            background: var(--cs-nav-bg);
+            display: flex; align-items: center;
+            padding: 0 24px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+            z-index: 10;
+        }
+        .login-topbar-logo { height: 24px; width: auto; margin-right: 12px; }
+        .login-topbar-title { font-size: 17px; font-weight: 700; color: #FFFFFF; }
+
+        .wizard-shell { width: 100%; max-width: 640px; }
+
+        .card {
+            background: var(--cs-bg-primary);
+            border: 1px solid var(--cs-border-default);
+            border-radius: var(--cs-radius-l);
+            box-shadow: var(--cs-shadow-m);
+            padding: 36px 36px 28px;
+        }
+
+        .eyebrow {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 11px; font-weight: 600;
+            letter-spacing: 0.08em; text-transform: uppercase;
+            color: var(--cs-text-secondary);
+            margin-bottom: 8px;
+        }
+        .wizard-title {
+            font-size: 24px; font-weight: 700;
+            color: var(--cs-text-heading);
+            margin: 0 0 6px;
+        }
+        .wizard-sub {
+            font-size: var(--cs-font-size-m);
+            color: var(--cs-text-secondary);
+            line-height: 1.5;
+            margin: 0 0 22px;
+        }
+
+        .field {
+            margin-bottom: 18px;
+        }
+        .field label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--cs-text-heading);
+            margin-bottom: 6px;
+        }
+        .field input[type="text"] {
+            width: 100%;
+            box-sizing: border-box;
+            height: 40px;
+            padding: 0 12px;
+            font-family: var(--cs-font);
+            font-size: var(--cs-font-size-m);
+            color: var(--cs-text-body);
+            background: var(--cs-bg-primary);
+            border: 1px solid var(--cs-border-input);
+            border-radius: var(--cs-radius-s);
+            transition: border-color 90ms ease-out, box-shadow 90ms ease-out;
+        }
+        .field input[type="text"]:focus {
+            outline: none;
+            border-color: var(--cs-btn-primary-bg);
+            box-shadow: 0 0 0 3px rgba(9, 114, 211, 0.18);
+        }
+        .field .hint {
+            font-size: 12px;
+            color: var(--cs-text-secondary);
+            margin-top: 6px;
+            line-height: 1.45;
+        }
+        /* inline required-field error (team name; org name reuses
+           the slug-status warn slot). Hidden until JS populates it. */
+        .field-error {
+            font-size: 12px;
+            color: #8A1A1A;
+            margin-top: 6px;
+            line-height: 1.45;
+            min-height: 0;
+        }
+        .field-error:empty { display: none; }
+
+        /* inline slug-availability warning + suggestion chips. */
+        .slug-status {
+            margin-top: 8px;
+            font-size: 12px;
+            line-height: 1.45;
+            min-height: 18px;
+        }
+        .slug-status.is-ok { color: var(--cs-text-secondary); }
+        .slug-status.is-warn { color: #8A1A1A; }
+        .slug-status .slug-preview {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            background: var(--cs-bg-page);
+            padding: 1px 6px;
+            border-radius: 3px;
+        }
+        .slug-suggestions {
+            display: none;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 8px;
+        }
+        .slug-suggestions.is-visible { display: flex; }
+        .slug-chip {
+            font: inherit;
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 12px;
+            background: var(--cs-bg-page);
+            border: 1px solid var(--cs-border-default);
+            border-radius: 999px;
+            padding: 4px 10px;
+            cursor: pointer;
+            color: var(--cs-text-body);
+        }
+        .slug-chip:hover {
+            background: var(--cs-bg-primary);
+            border-color: var(--cs-btn-primary-bg);
+        }
+
+        details.more-options {
+            margin: 8px 0 22px;
+            border-top: 1px solid var(--cs-border-divider);
+            padding-top: 14px;
+        }
+        details.more-options > summary {
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--cs-text-link);
+            list-style: none;
+            display: inline-flex; align-items: center; gap: 6px;
+        }
+        details.more-options > summary::-webkit-details-marker { display: none; }
+        details.more-options > summary::before {
+            content: '▸';
+            display: inline-block;
+            transition: transform 120ms ease-out;
+            color: var(--cs-text-secondary);
+        }
+        details.more-options[open] > summary::before { transform: rotate(90deg); }
+        .more-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 14px;
+        }
+        @media (max-width: 560px) { .more-grid { grid-template-columns: 1fr; } }
+
+        .field select {
+            width: 100%;
+            box-sizing: border-box;
+            height: 40px;
+            /* room for the global chevron + background-color (not the
+               `background` shorthand) so the chevron image isn't reset. */
+            padding: 0 28px 0 10px;
+            font-family: var(--cs-font);
+            font-size: var(--cs-font-size-m);
+            color: var(--cs-text-body);
+            background-color: var(--cs-bg-primary);
+            border: 1px solid var(--cs-border-input);
+            border-radius: var(--cs-radius-s);
+            transition: border-color 90ms ease-out, box-shadow 90ms ease-out;
+        }
+        .field select:focus {
+            outline: none;
+            border-color: var(--cs-btn-primary-bg);
+            box-shadow: 0 0 0 3px rgba(9, 114, 211, 0.18);
+        }
+
+        .btn-row {
+            display: flex; align-items: center; justify-content: space-between;
+            padding-top: 16px;
+            border-top: 1px solid var(--cs-border-divider);
+        }
+        .btn {
+            height: 40px; padding: 0 18px;
+            border-radius: var(--cs-radius-s);
+            font-size: var(--cs-font-size-m);
+            font-weight: 600;
+            font-family: var(--cs-font);
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition: background 90ms ease-out, border-color 90ms ease-out;
+            text-decoration: none;
+            display: inline-flex; align-items: center;
+        }
+        .btn-primary {
+            background: var(--cs-btn-primary-bg);
+            color: #FFFFFF;
+            font-weight: 700;
+        }
+        .btn-primary:hover { background: var(--cs-btn-primary-bg-hover); }
+        .btn-primary:focus-visible {
+            outline: none;
+            box-shadow: 0 0 0 2px #FFFFFF, 0 0 0 4px var(--cs-btn-primary-bg);
+        }
+        /* the Continue button is disabled while the required org
+           name / team name are blank. Give the disabled state a visible
+           "dimmed" look (matching the #ws-delete-btn:disabled pattern in
+           user_management.html) so it doesn't read as a live, clickable
+           button that silently does nothing. */
+        .btn-primary:disabled,
+        .btn-primary:disabled:hover {
+            background: var(--cs-btn-primary-bg);
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .btn-ghost {
+            background: transparent;
+            color: var(--cs-text-link);
+            border-color: transparent;
+        }
+        .btn-ghost:hover { background: var(--cs-bg-page); }
+
+        .alert {
+            padding: 12px 14px;
+            margin-bottom: 18px;
+            border-radius: var(--cs-radius-s);
+            background: #FDECEC;
+            border: 1px solid #F5B5B5;
+            color: #8A1A1A;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <a href="#wizard-main" class="cs-skip-link" data-testid="wizard-skip-link">Skip to main content</a>
+    <div class="login-topbar">
+        <img src="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5" alt="" class="login-topbar-logo">
+        <span class="login-topbar-title">Kavanah Analytics</span>
+    </div>
+
+    <main class="wizard-shell" id="wizard-main">
+        {% include "_onboarding_progress.html" %}
+
+        <div class="card">
+            {# eyebrow reads "Organization": the visible field
+               is the org name (the workspace title is system-derived and
+               hidden from non-superusers). The "Workspace"
+               eyebrow was the last stale label after the rename. #}
+            <div class="eyebrow">Organization</div>
+            <h1 class="wizard-title">{{ step3_title }}</h1>
+            <p class="wizard-sub">{{ step3_subtitle }}</p>
+
+            {% if error %}
+            <div class="alert" role="alert">{{ error }}</div>
+            {% endif %}
+
+            {# rename-confirm banner. Surfaced when the user
+               returned to step-3 from a later step and typed a name
+               different from the one they originally submitted.
+               Re-submitting from this state carries ``confirm_rename=1``
+               and the server renames the workspace + org (+ team for
+               the individual variant) in place. The slug stays the
+               original — only the human-readable titles change. #}
+            {% if rename_confirm_prior %}
+            <div class="alert" role="alert" data-testid="rename-confirm-banner">
+                You already named this
+                "<strong>{{ rename_confirm_prior }}</strong>".
+                Submitting again will rename it to
+                "<strong>{{ workspace_title }}</strong>" everywhere
+                it appears — filter dropdowns, user management, and
+                team labels. The workspace URL stays the same.
+                Change the field back if you'd rather keep the
+                original name.
+            </div>
+            {% endif %}
+
+            <form method="POST" action="{{ url_for('analytics.onboarding_step5_post') }}" id="step3Form" novalidate>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                {% if rename_confirm_prior %}
+                <input type="hidden" name="confirm_rename" value="1">
+                {% endif %}
+
+                <div class="field">
+                    <label for="workspaceInput">{{ step3_label }}</label>
+                    <input type="text"
+                           id="workspaceInput"
+                           name="workspace_title"
+                           value="{{ workspace_title }}"
+                           maxlength="120"
+                           autocomplete="off"
+                           autofocus
+                           aria-describedby="slugStatus"
+                           required>
+                    {# the input now drives the org/agency
+                       title (visible to the user in filter dropdowns),
+                       not the workspace title (which is system-derived
+                       and not user-visible). #}
+                    <div class="hint">Shown in your organization and team filters across the dashboard.</div>
+                    <div class="slug-status" id="slugStatus" role="status" aria-live="polite"></div>
+                    <div class="slug-suggestions" id="slugSuggestions" role="group" aria-label="Workspace name suggestions"></div>
+                </div>
+
+                {% if show_team_name_field %}
+                {# team-name field for the individual + org_owner
+                   entry points. Required; prefilled with the per-entry-point
+                   default ("Team 1" for org_owner; the org name for
+                   individual) so the common case needs no typing. No inline
+                   slug-check JS: the org-name field's
+                   check is the load-bearing workspace-slug dedup; a team
+                   slug collision is caught server-side (POST handler) and
+                   re-rendered with an inline error per AC#6. #}
+                <div class="field" id="teamNameField">
+                    <label for="teamNameInput">Team name</label>
+                    <input type="text"
+                           id="teamNameInput"
+                           name="team_title"
+                           value="{{ team_title }}"
+                           maxlength="120"
+                           autocomplete="off"
+                           aria-describedby="teamNameError">
+                    <div class="hint">Your first team inside this organization. You can rename it or add more later.</div>
+                    {# inline required-field error. Hidden until the
+                       user empties the field (it prefills valid), then shown
+                       with the Continue button held disabled. #}
+                    <div class="field-error" id="teamNameError" role="alert" aria-live="polite"></div>
+                </div>
+                {% endif %}
+
+                {% if show_agency_client_field %}
+                {# / F9: client = ORGANIZATION under the agency
+                   workspace (NOT a separate workspace). The label +
+                   hint enforce the spike-mandated terminology so the
+                   user's mental model matches what F7 actually writes
+                   (organization doc under workspace doc). #}
+                <div class="field" id="agencyClientField">
+                    <label for="agencyClientInput">First client organization</label>
+                    <input type="text"
+                           id="agencyClientInput"
+                           name="agency_client_title"
+                           value="{{ agency_client_title }}"
+                           maxlength="120"
+                           placeholder="e.g. Acme Brand"
+                           autocomplete="off">
+                    <div class="hint">Each client is an organization inside your agency workspace. You can add more after setup.</div>
+                </div>
+                {% endif %}
+
+                {# More-options disclosure persists timezone / currency /
+                   fiscal-year-start onto wizard_session.state. Closed by default
+                   (AC #1). Inputs prefill from Intl on load when wizard_session
+                   has no prior value (AC #2). Server-side validation is lenient:
+                   an unknown timezone or currency silently falls back to the
+                   server defaults (UTC / USD / month 1) rather than blocking the
+                   wizard — these are power-user surfaces, not blocking gates.
+
+                    follow-up — timezone + currency are now <select>
+                   dropdowns so a user can't typo a non-IANA zone or an
+                   unrecognised currency code through the UI. The lenient
+                   server-side sanitize stays unchanged for the JSON-API path. #}
+                <details class="more-options" id="moreOptions">
+                    <summary>More options · timezone, currency, fiscal year</summary>
+                    <div class="more-grid">
+                        <div class="field">
+                            <label for="timezoneInput">Timezone</label>
+                            <select id="timezoneInput" name="timezone" autocomplete="off"
+                                    data-server-value="{{ workspace_timezone }}">
+                                {% for tz in timezone_options %}
+                                <option value="{{ tz }}"{% if tz == workspace_timezone %} selected{% endif %}>{{ tz }}</option>
+                                {% endfor %}
+                            </select>
+                            <div class="hint">IANA zone name. Defaults to your browser's locale.</div>
+                        </div>
+                        <div class="field">
+                            <label for="currencyInput">Currency</label>
+                            <select id="currencyInput" name="currency" autocomplete="off"
+                                    data-server-value="{{ workspace_currency }}">
+                                {% for ccy in currency_options %}
+                                <option value="{{ ccy }}"{% if ccy == workspace_currency %} selected{% endif %}>{{ ccy }}</option>
+                                {% endfor %}
+                            </select>
+                            <div class="hint">ISO 4217 three-letter code.</div>
+                        </div>
+                        <div class="field">
+                            <label for="fiscalYearInput">Fiscal year start</label>
+                            <select id="fiscalYearInput" name="fiscal_year_start_month">
+                                {% for m_num, m_name in [
+                                    (1, 'January'), (2, 'February'), (3, 'March'),
+                                    (4, 'April'), (5, 'May'), (6, 'June'),
+                                    (7, 'July'), (8, 'August'), (9, 'September'),
+                                    (10, 'October'), (11, 'November'), (12, 'December')
+                                ] %}
+                                <option value="{{ m_num }}"{% if workspace_fiscal_year_start_month == m_num %} selected{% endif %}>{{ m_name }}</option>
+                                {% endfor %}
+                            </select>
+                            <div class="hint">Most teams use January; some use April or July.</div>
+                        </div>
+                    </div>
+                </details>
+
+                <div class="btn-row">
+                    <a class="btn btn-ghost" href="{{ url_for('analytics.onboarding_step4_page') }}">← Back</a>
+                    <button type="submit"
+                            class="btn btn-primary"
+                            id="step5ContinueBtn"
+                            data-testid="step5-continue-btn">Continue →</button>
+                </div>
+            </form>
+        </div>
+    </main>
+
+    <script nonce="{{ csp_nonce }}">
+        // inline slug-availability check.
+        //
+        // Debounced to ~180ms so the user sees feedback within the
+        // ticket's 200ms acceptance budget without DoSing ourselves on
+        // every keystroke. Fail-soft on every error path — if anything
+        // goes wrong the UI silently clears and the wizard's commit step
+        // (downstream ticket) is the load-bearing dedup gate.
+        (function () {
+            var input = document.getElementById('workspaceInput');
+            var statusEl = document.getElementById('slugStatus');
+            var suggestionsEl = document.getElementById('slugSuggestions');
+            if (!input || !statusEl || !suggestionsEl) return;
+
+            // follow-up (2026-05-21): Continue button gates on
+            // slug-check state. Disabled while a check is pending
+            // (debounce timer or fetch in-flight) AND when the check
+            // returned available=false. Re-enabled on available=true
+            // OR on fail-soft fallback (so the user isn't stranded
+            // if the slug-check endpoint is down — the POST handler's
+            // resolve_unique_slug is still the load-bearing dedup gate).
+            var continueBtn = document.getElementById('step5ContinueBtn');
+            function setContinueState(state) {
+                if (!continueBtn) return;
+                // once the submit-once guard below has stamped
+                // the sentinel, a late slug-check response (which races
+                // the POST request) MUST NOT re-enable the Continue
+                // button. The button stays disabled until either the
+                // redirect lands or the server returns 4xx and the page
+                // re-renders fresh. Without this short-circuit, a slug-
+                // check fetch that resolves AFTER the form submitted
+                // would call setContinueState('ok') and re-enable the
+                // button before the redirect arrived — re-opening the
+                // double-click window we just closed.
+                if (window._wizardStep5Submitting) return;
+                if (state === 'pending') {
+                    continueBtn.disabled = true;
+                    continueBtn.setAttribute('data-slug-state', 'pending');
+                } else if (state === 'taken') {
+                    continueBtn.disabled = true;
+                    continueBtn.setAttribute('data-slug-state', 'taken');
+                } else {
+                    // the org-name slug check is "ok", but the
+                    // team-name field is also required (when present). Only
+                    // enable Continue when BOTH pass; otherwise hold it
+                    // disabled with an 'ok' slug-state (the team gate, not
+                    // the slug gate, is what's blocking).
+                    continueBtn.setAttribute('data-slug-state', 'ok');
+                    continueBtn.disabled = !teamNameValid();
+                }
+            }
+
+            // the team-name field (individual + org_owner) is
+            // required. ``teamNameValid`` returns true when the field is
+            // absent (agency/invited never render it) or holds a non-blank,
+            // non-whitespace value. ``window._step5SlugOk`` tracks the last
+            // slug-check verdict so a team-field edit can re-evaluate the
+            // combined gate without re-firing the slug fetch.
+            var teamInput = document.getElementById('teamNameInput');
+            var teamErrorEl = document.getElementById('teamNameError');
+            function teamNameValid() {
+                if (!teamInput) return true;
+                return teamInput.value.trim().length > 0;
+            }
+            // surface a per-field error when the required team
+            // name is blank/whitespace (rather than silently disabling
+            // Continue). Cleared as soon as the field holds a real value.
+            function refreshTeamError() {
+                if (!teamErrorEl) return;
+                teamErrorEl.textContent = teamNameValid()
+                    ? ''
+                    : "Team name can't be empty.";
+            }
+
+            var endpoint = '{{ url_for("analytics.onboarding_step5_slug_check") }}';
+            var debounceMs = 180;
+            var timer = null;
+            var inflight = null;
+
+            function clearSuggestions() {
+                suggestionsEl.innerHTML = '';
+                suggestionsEl.classList.remove('is-visible');
+            }
+
+            function renderSuggestions(list) {
+                clearSuggestions();
+                if (!list || !list.length) return;
+                list.forEach(function (slug) {
+                    var btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'slug-chip';
+                    btn.textContent = slug;
+                    btn.addEventListener('click', function () {
+                        // Suggestions are slugs — drop them into the title
+                        // input so the user's edit is visible and the
+                        // server will re-derive the same slug from it.
+                        input.value = slug;
+                        input.focus();
+                        // Re-fire the check immediately so the warning
+                        // clears (the suggestion is, by construction, free).
+                        check(slug);
+                    });
+                    suggestionsEl.appendChild(btn);
+                });
+                suggestionsEl.classList.add('is-visible');
+            }
+
+            function render(result) {
+                if (!result || !result.slug) {
+                    statusEl.textContent = '';
+                    statusEl.className = 'slug-status';
+                    clearSuggestions();
+                    // No result → either empty input (let user type) or
+                    // fail-soft fallback (let user through; commit step
+                    // is the load-bearing dedup gate).
+                    setContinueState('ok');
+                    return;
+                }
+                if (result.available) {
+                    statusEl.className = 'slug-status is-ok';
+                    statusEl.innerHTML = 'Will be saved as <span class="slug-preview">'
+                        + escapeText(result.slug) + '</span>';
+                    clearSuggestions();
+                    setContinueState('ok');
+                    return;
+                }
+                statusEl.className = 'slug-status is-warn';
+                var reason = result.reason || 'taken';
+                var message;
+                if (reason === 'too_short') {
+                    message = 'A bit too short — try a longer name.';
+                } else if (reason === 'reserved') {
+                    message = '<span class="slug-preview">' + escapeText(result.slug)
+                        + '</span> is reserved. Try a different name.';
+                } else if (reason === 'empty') {
+                    message = '';
+                } else {
+                    message = '<span class="slug-preview">' + escapeText(result.slug)
+                        + '</span> is already taken. Pick another or use a suggestion.';
+                }
+                statusEl.innerHTML = message;
+                renderSuggestions(result.suggestions);
+                // Any non-available result blocks submit.
+                setContinueState('taken');
+            }
+
+            function escapeText(s) {
+                return String(s).replace(/[&<>"']/g, function (c) {
+                    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+                });
+            }
+
+            function check(title) {
+                var trimmed = (title || '').trim();
+                if (!trimmed) {
+                    // the org name is required. Show an inline
+                    // error in the slug-status slot (rather than clearing it)
+                    // so the disabled Continue button has a visible reason.
+                    // This only fires when the user CLEARS the field — the
+                    // initial load runs check() with the prefilled (non-empty)
+                    // value, so a fresh page never flashes this.
+                    clearSuggestions();
+                    statusEl.className = 'slug-status is-warn';
+                    statusEl.textContent = "Organization name can't be empty.";
+                    setContinueState('taken');
+                    return;
+                }
+                if (inflight && typeof inflight.abort === 'function') {
+                    try { inflight.abort(); } catch (e) { /* ignore */ }
+                }
+                // Fetch is about to fire — block submit until it resolves
+                // (so a fast Tab+Enter can't slip past a slow check).
+                setContinueState('pending');
+                var controller = (typeof AbortController !== 'undefined')
+                    ? new AbortController() : null;
+                inflight = controller;
+                var url = endpoint + '?title=' + encodeURIComponent(trimmed);
+                fetch(url, {
+                    credentials: 'same-origin',
+                    headers: { 'Accept': 'application/json' },
+                    signal: controller ? controller.signal : undefined
+                })
+                    .then(function (r) {
+                        if (!r.ok) throw new Error('http ' + r.status);
+                        return r.json();
+                    })
+                    .then(render)
+                    .catch(function (err) {
+                        if (err && err.name === 'AbortError') return;
+                        // Fail-soft: clear the status; the wizard's commit
+                        // step still validates. Re-enable Continue so a
+                        // user behind a flaky slug-check endpoint isn't
+                        // stranded.
+                        render(null);
+                    });
+            }
+
+            input.addEventListener('input', function () {
+                if (timer) window.clearTimeout(timer);
+                // Debounce timer pending — block submit so a fast typer
+                // can't fire-and-Enter before the check fires.
+                setContinueState('pending');
+                timer = window.setTimeout(function () { check(input.value); }, debounceMs);
+            });
+
+            // re-evaluate the combined gate when the team-name
+            // field changes. Only act when the slug check isn't actively
+            // blocking (data-slug-state 'ok'); a 'pending'/'taken' slug
+            // state already keeps Continue disabled and the team gate must
+            // not override that. When the slug is ok, the button's enabled
+            // state tracks team validity directly.
+            if (teamInput) {
+                teamInput.addEventListener('input', function () {
+                    if (window._wizardStep5Submitting) return;
+                    // Show/clear the inline required error as the user types.
+                    refreshTeamError();
+                    if (!continueBtn) return;
+                    if (continueBtn.getAttribute('data-slug-state') === 'ok') {
+                        continueBtn.disabled = !teamNameValid();
+                    }
+                });
+                // Also surface the error on blur (the user tabbed away from a
+                // field they'd cleared) so the message isn't missed.
+                teamInput.addEventListener('blur', refreshTeamError);
+            }
+
+            // Fire once on load so the preview chip ("Will be saved as ...")
+            // is visible for the pre-filled default value.
+            check(input.value);
+
+            // Continue-button double-click guard. Mirrors the
+            // step-8 Finish-button pattern. On first submit we
+            // disable the Continue button, swap the label to a
+            // "Setting up workspace…" string, and stamp a window-level
+            // sentinel so a stale handler reference cannot re-submit.
+            // The sentinel ALSO short-circuits setContinueState (above)
+            // so a late slug-check response can't re-enable the button
+            // mid-flight. The disabled state survives the redirect to
+            // step-6; if the POST surfaces a 4xx the page re-renders
+            // fresh with the button enabled again.
+            //
+            // Pre-fix two rapid clicks both fired the POST handler,
+            // racing OnboardingService.provision_individual against
+            // itself — the second race lost the slug-walker check
+            // (because the first request's workspace_membership write
+            // hadn't refreshed yet) and bumped to ``foo-workspace-2``,
+            // creating a SECOND workspace doc that User Management
+            // couldn't surface for the operator to delete.
+            var form = document.getElementById('step3Form');
+            if (form) {
+                form.addEventListener('submit', function (ev) {
+                    if (ev.defaultPrevented) return;
+                    if (window._wizardStep5Submitting) {
+                        // Race-stale handler — sentinel set by an earlier
+                        // click already in flight. Drop the second submit
+                        // without re-disabling (already disabled).
+                        ev.preventDefault();
+                        return;
+                    }
+                    // A submit fired while the slug-check is mid-flight
+                    // (button disabled via 'pending' or 'taken') means
+                    // the user hit Enter past a still-resolving check;
+                    // browsers fire the submit anyway because the
+                    // attribute hadn't been set yet. Stop here so the
+                    // POST doesn't race ahead of the check.
+                    if (continueBtn && continueBtn.disabled) {
+                        ev.preventDefault();
+                        return;
+                    }
+                    window._wizardStep5Submitting = true;
+                    if (continueBtn) {
+                        continueBtn.disabled = true;
+                        continueBtn.setAttribute('aria-busy', 'true');
+                        continueBtn.textContent = 'Setting up workspace…';
+                    }
+                });
+            }
+        })();
+
+        // prefill the More-options selects from the
+        // browser's Intl locale on load when the server didn't render a
+        // prior wizard_session value. The dropdown's default selection
+        // (browser-picked first <option>, "UTC") looks like a real
+        // value once the picker is a <select>, so we key off the
+        // server-rendered ``data-server-value`` attribute instead of
+        // ``.value`` — empty server value means "wizard_session had no
+        // typed input yet, run Intl detection." Setting ``.value`` to a
+        // string that doesn't match any <option> is a no-op, so an Intl
+        // zone outside our option list leaves the UTC default in place.
+        (function () {
+            var tzSel = document.getElementById('timezoneInput');
+            var ccySel = document.getElementById('currencyInput');
+            if (!tzSel && !ccySel) return;
+            try {
+                if (tzSel && !tzSel.getAttribute('data-server-value')) {
+                    var tz = (Intl.DateTimeFormat().resolvedOptions().timeZone || '').trim();
+                    if (tz) {
+                        // Only assign if the detected zone is in our
+                        // option list; otherwise leave UTC selected.
+                        var tzOpt = tzSel.querySelector(
+                            'option[value="' + tz.replace(/"/g, '\\"') + '"]'
+                        );
+                        if (tzOpt) tzSel.value = tzOpt.value;
+                    }
+                }
+            } catch (e) { /* ignore — server default stays selected */ }
+            try {
+                if (ccySel && !ccySel.getAttribute('data-server-value')) {
+                    var locale = Intl.NumberFormat().resolvedOptions().locale || '';
+                    var region = locale.split('-')[1] || '';
+                    var REGION_TO_CCY = {
+                        US: 'USD', CA: 'CAD', GB: 'GBP', AU: 'AUD',
+                        NZ: 'NZD', JP: 'JPY', CN: 'CNY', IN: 'INR',
+                        BR: 'BRL', MX: 'MXN', CH: 'CHF', SE: 'SEK',
+                        NO: 'NOK', DK: 'DKK', SG: 'SGD', HK: 'HKD',
+                        ZA: 'ZAR', KR: 'KRW', AE: 'AED'
+                    };
+                    var eurRegions = ['AT','BE','CY','DE','EE','ES','FI','FR','GR','IE','IT','LT','LU','LV','MT','NL','PT','SI','SK','HR'];
+                    var detected = null;
+                    if (region && REGION_TO_CCY[region]) {
+                        detected = REGION_TO_CCY[region];
+                    } else if (region && eurRegions.indexOf(region) !== -1) {
+                        detected = 'EUR';
+                    }
+                    if (detected) {
+                        var ccyOpt = ccySel.querySelector(
+                            'option[value="' + detected + '"]'
+                        );
+                        if (ccyOpt) ccySel.value = ccyOpt.value;
+                    }
+                }
+            } catch (e) { /* ignore — server default stays selected */ }
+        })();
+    </script>
+</body>
+</html>

@@ -1,0 +1,791 @@
+{% extends "base_v2.html" %}
+
+{% block title %}{{ config.title }} - Kavanah Analytics{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* ── Page header ── */
+    .list-page-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: var(--cs-space-l);
+    }
+
+    .list-page-header h1 {
+        font-size: var(--cs-font-size-xxl);
+        font-weight: var(--cs-font-weight-bold);
+        color: var(--cs-text-heading);
+        margin: 0;
+    }
+
+    .list-page-actions {
+        display: flex;
+        gap: var(--cs-space-xs);
+    }
+
+    /* ── Breadcrumbs ── */
+    .list-breadcrumbs {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: var(--cs-font-size-s);
+        margin-bottom: var(--cs-space-m);
+    }
+
+    .list-breadcrumbs a {
+        color: var(--cs-text-link);
+        text-decoration: none;
+    }
+
+    .list-breadcrumbs a:hover {
+        text-decoration: underline;
+    }
+
+    .list-breadcrumbs-sep {
+        color: var(--cs-text-disabled);
+        font-size: 10px;
+    }
+
+    .list-breadcrumbs-current {
+        color: var(--cs-text-tertiary);
+    }
+
+    /* ── Table container ── */
+    .list-container {
+        background: var(--cs-bg-primary);
+        border: 1px solid var(--cs-border-default);
+        border-radius: var(--cs-radius-m);
+        box-shadow: var(--cs-shadow-xs);
+        overflow: hidden;
+    }
+
+    /* The wrapper owns BOTH scroll axes so the user can pan a long, wide
+       table without having to scroll the page first. The horizontal
+       scrollbar lives at the bottom of the wrapper (not the bottom of
+       the page) so it's reachable even with hundreds of rows. */
+    .list-table-scroll {
+        overflow: auto;
+        max-height: calc(100vh - 280px);
+        min-height: 320px;
+    }
+
+    .list-table-wide {
+        min-width: 100%;
+        width: max-content;
+    }
+
+    /* Sticky thead — column headers stay pinned while vertical-scrolling
+       inside the wrapper. */
+    .list-table thead th {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+    }
+
+    /* Sticky first column — the team/asset title stays visible while
+       horizontal-scrolling, so users always know which row they're
+       reading. The first <th> needs the highest z-index so the
+       header-row corner cell sits above both axes. */
+    .list-table thead th:first-child {
+        z-index: 3;
+    }
+    .list-table tbody td:first-child {
+        position: sticky;
+        left: 0;
+        z-index: 1;
+        /* Repeat the row backgrounds so cells scrolling under the
+           sticky column don't bleed through. */
+        background: var(--cs-bg-primary);
+    }
+    .list-table tbody tr:hover td:first-child {
+        background: var(--cs-bg-hover);
+    }
+    /* Subtle right-edge shadow on the sticky column so users can tell
+       it's overlaying the rest of the table. */
+    .list-table tbody td:first-child::after,
+    .list-table thead th:first-child::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        right: -8px;
+        bottom: 0;
+        width: 8px;
+        pointer-events: none;
+        background: linear-gradient(to right, rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0));
+    }
+
+    /* Sortable column headers */
+    .list-table th.sortable {
+        cursor: pointer;
+        user-select: none;
+        white-space: nowrap;
+    }
+
+    .list-table th.sortable:hover {
+        color: var(--cs-text-primary);
+    }
+
+    .list-table th.sortable .sort-indicator {
+        display: inline-block;
+        margin-left: 4px;
+        opacity: 0.4;
+        font-size: 10px;
+    }
+
+    .list-table th.sortable.sort-asc .sort-indicator,
+    .list-table th.sortable.sort-desc .sort-indicator {
+        opacity: 1;
+        color: var(--cs-text-link);
+    }
+
+    /* Icon-only action buttons */
+    .list-action-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        font-size: var(--cs-font-size-s);
+        border-radius: var(--cs-radius-s);
+        cursor: pointer;
+        text-decoration: none;
+        transition: all var(--cs-transition-fast);
+        border: 1px solid var(--cs-btn-normal-border);
+        background: var(--cs-btn-normal-bg);
+        color: var(--cs-btn-normal-text);
+    }
+
+    .list-action-icon:hover {
+        background: var(--cs-btn-normal-hover-bg);
+        border-color: var(--cs-text-secondary);
+        color: var(--cs-text-primary);
+        text-decoration: none;
+    }
+
+    .list-action-icon-danger {
+        border-color: var(--cs-error);
+        color: var(--cs-error);
+        background: var(--cs-bg-primary);
+    }
+
+    .list-action-icon-danger:hover {
+        background: var(--cs-error-bg);
+        border-color: var(--cs-error);
+        color: var(--cs-error);
+    }
+
+    .list-cell-empty {
+        color: var(--cs-text-disabled);
+    }
+
+    /* Hint that this value carries a hover tooltip with extra detail. */
+    .list-cell-tooltip[title] {
+        text-decoration: underline dotted var(--cs-text-tertiary);
+        text-underline-offset: 3px;
+        cursor: help;
+    }
+
+    .list-container-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: var(--cs-space-m) var(--cs-space-l);
+        border-bottom: 1px solid var(--cs-border-divider);
+    }
+
+    .list-container-header h2 {
+        font-size: var(--cs-font-size-l);
+        font-weight: var(--cs-font-weight-bold);
+        color: var(--cs-text-heading);
+        margin: 0;
+    }
+
+    .list-count {
+        font-size: var(--cs-font-size-s);
+        color: var(--cs-text-secondary);
+    }
+
+    /* ── Table ── */
+    .list-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: var(--cs-font-size-m);
+    }
+
+    .list-table th {
+        text-align: left;
+        font-weight: var(--cs-font-weight-bold);
+        color: var(--cs-text-secondary);
+        font-size: var(--cs-font-size-xs);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        padding: 10px var(--cs-space-l);
+        border-bottom: 1px solid var(--cs-border-default);
+        background: var(--cs-bg-secondary);
+    }
+
+    .list-table td {
+        padding: 10px var(--cs-space-l);
+        border-bottom: 1px solid var(--cs-border-divider);
+        color: var(--cs-text-primary);
+    }
+
+    .list-table td:first-child {
+        font-weight: var(--cs-font-weight-medium);
+        color: var(--cs-text-link);
+    }
+
+    .list-table tbody tr {
+        transition: background var(--cs-transition-fast);
+    }
+
+    .list-table tbody tr:hover {
+        background: var(--cs-bg-hover);
+    }
+
+    .list-table tbody tr:hover td:first-child {
+        color: var(--cs-text-link-hover);
+    }
+
+    .list-table tbody tr:last-child td {
+        border-bottom: none;
+    }
+
+    /* ── Action buttons ── */
+    .list-actions {
+        display: flex;
+        gap: 6px;
+    }
+
+    .list-btn-primary {
+        display: inline-flex;
+        align-items: center;
+        height: 32px;
+        padding: 0 14px;
+        font-family: var(--cs-font);
+        font-size: var(--cs-font-size-m);
+        font-weight: var(--cs-font-weight-bold);
+        border-radius: var(--cs-radius-s);
+        cursor: pointer;
+        text-decoration: none;
+        transition: all var(--cs-transition-fast);
+        white-space: nowrap;
+        border: 1px solid var(--cs-btn-primary-bg);
+        background: var(--cs-btn-primary-bg);
+        color: var(--cs-btn-primary-text);
+    }
+
+    .list-btn-primary:hover {
+        background: var(--cs-btn-primary-bg-hover);
+        border-color: var(--cs-btn-primary-bg-hover);
+        text-decoration: none;
+        color: var(--cs-btn-primary-text);
+    }
+
+    .list-btn-normal {
+        display: inline-flex;
+        align-items: center;
+        height: 32px;
+        padding: 0 14px;
+        font-family: var(--cs-font);
+        font-size: var(--cs-font-size-m);
+        font-weight: var(--cs-font-weight-medium);
+        border-radius: var(--cs-radius-s);
+        cursor: pointer;
+        text-decoration: none;
+        transition: all var(--cs-transition-fast);
+        white-space: nowrap;
+        border: 1px solid var(--cs-btn-normal-border);
+        background: var(--cs-btn-normal-bg);
+        color: var(--cs-btn-normal-text);
+    }
+
+    .list-btn-normal:hover {
+        background: var(--cs-btn-normal-hover-bg);
+        border-color: var(--cs-text-secondary);
+        color: var(--cs-text-primary);
+        text-decoration: none;
+    }
+
+    /* ── Empty state ── */
+    .list-empty {
+        padding: var(--cs-space-xxxl) var(--cs-space-l);
+        text-align: center;
+        color: var(--cs-text-secondary);
+    }
+
+    .list-empty-icon {
+        font-size: 40px;
+        color: var(--cs-text-disabled);
+        margin-bottom: var(--cs-space-m);
+    }
+
+    .list-empty h3 {
+        font-size: var(--cs-font-size-l);
+        color: var(--cs-text-heading);
+        margin-bottom: var(--cs-space-xs);
+    }
+
+    .list-empty p {
+        color: var(--cs-text-tertiary);
+        font-size: var(--cs-font-size-m);
+    }
+
+    .list-empty a {
+        color: var(--cs-text-link);
+        text-decoration: none;
+        font-weight: var(--cs-font-weight-medium);
+    }
+
+    .list-empty a:hover {
+        text-decoration: underline;
+    }
+
+    /* ── Delete confirmation modal ── */
+    .delete-modal-overlay {
+        position: fixed; inset: 0; background: rgba(0, 7, 22, 0.5);
+        z-index: 10000; display: flex; align-items: center; justify-content: center;
+        backdrop-filter: blur(2px);
+    }
+    .delete-modal-overlay.hidden { display: none !important; }
+    .delete-modal {
+        background: var(--cs-bg-primary); border-radius: var(--cs-radius-l);
+        width: 460px; max-width: 95vw;
+        box-shadow: var(--cs-shadow-modal);
+    }
+    .delete-modal-header {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: var(--cs-space-m) var(--cs-space-l);
+        border-bottom: 1px solid var(--cs-border-divider);
+    }
+    .delete-modal-header h3 {
+        margin: 0; font-size: var(--cs-font-size-l); color: var(--cs-text-heading);
+    }
+    .delete-modal-close {
+        background: none; border: none; font-size: 1.3rem; cursor: pointer;
+        color: var(--cs-text-tertiary); padding: 2px 6px; border-radius: var(--cs-radius-s);
+    }
+    .delete-modal-close:hover { background: var(--cs-bg-hover); color: var(--cs-text-primary); }
+    .delete-modal-body {
+        padding: var(--cs-space-l);
+        color: var(--cs-text-primary); font-size: var(--cs-font-size-m);
+    }
+    .delete-modal-body strong { color: var(--cs-text-heading); }
+    .delete-modal-footer {
+        display: flex; justify-content: flex-end; gap: var(--cs-space-xs);
+        padding: var(--cs-space-m) var(--cs-space-l);
+        border-top: 1px solid var(--cs-border-divider);
+    }
+    .delete-modal-cancel-btn {
+        height: 32px; padding: 0 14px; font-family: var(--cs-font);
+        font-size: var(--cs-font-size-m); font-weight: var(--cs-font-weight-medium);
+        border-radius: var(--cs-radius-s); cursor: pointer;
+        border: 1px solid var(--cs-btn-normal-border);
+        background: var(--cs-btn-normal-bg); color: var(--cs-btn-normal-text);
+    }
+    .delete-modal-cancel-btn:hover { background: var(--cs-bg-hover); }
+    .delete-modal-confirm-btn {
+        height: 32px; padding: 0 14px; font-family: var(--cs-font);
+        font-size: var(--cs-font-size-m); font-weight: var(--cs-font-weight-bold);
+        border-radius: var(--cs-radius-s); cursor: pointer;
+        border: 1px solid var(--cs-error);
+        background: var(--cs-error); color: #fff;
+    }
+    .delete-modal-confirm-btn:hover { filter: brightness(0.93); }
+    .delete-modal-confirm-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    /* warning block listing docs that still reference the asset,
+       so deleting a load-bearing record never looks consequence-free. */
+    .delete-modal-refs {
+        margin-top: var(--cs-space-m);
+        padding: var(--cs-space-s) var(--cs-space-m);
+        border: 1px solid var(--cs-warning, #e6a700);
+        border-radius: var(--cs-radius-s);
+        background: var(--cs-bg-warning, #fff8e6);
+        font-size: var(--cs-font-size-s);
+    }
+    .delete-modal-refs.hidden { display: none; }
+    .delete-modal-refs-title {
+        font-weight: var(--cs-font-weight-bold);
+        color: var(--cs-text-heading);
+        margin-bottom: 4px;
+    }
+    .delete-modal-refs ul { margin: 0; padding-left: 18px; }
+    .delete-modal-refs li { margin: 2px 0; }
+    /* superuser-only consequence note in the delete modal. */
+    .delete-modal-su-note {
+        margin-top: var(--cs-space-m);
+        color: var(--cs-text-secondary);
+        font-size: var(--cs-font-size-s);
+    }
+    /* post-create banner shown when a superuser's new org/team
+       landed outside their own scope and is invisible in this list. */
+    .su-scope-banner {
+        display: flex; gap: var(--cs-space-s); align-items: baseline;
+        margin-bottom: var(--cs-space-m);
+        padding: var(--cs-space-s) var(--cs-space-m);
+        border: 1px solid var(--cs-warning, #e6a700);
+        border-radius: var(--cs-radius-s);
+        background: var(--cs-bg-warning, #fff8e6);
+        color: var(--cs-text-primary);
+        font-size: var(--cs-font-size-m);
+    }
+    .su-scope-banner strong { color: var(--cs-text-heading); }
+    .su-scope-banner a { color: var(--cs-link, inherit); font-weight: var(--cs-font-weight-medium); }
+</style>
+{% endblock %}
+
+{% block content %}
+<nav class="list-breadcrumbs">
+    <a href="{{ url_for('index') }}">Asset Explorer</a>
+    <span class="list-breadcrumbs-sep"><i class="fas fa-angle-right"></i></span>
+    <span class="list-breadcrumbs-current">{{ config.title }}</span>
+</nav>
+
+<div class="list-page-header">
+    <h1>{{ config.title }}</h1>
+    <div class="list-page-actions">
+        {# code-managed types (TikTok accounts) are read-only projections. #}
+        {% if not config.code_managed %}
+        <a href="{{ url_for('add_asset', asset_type=asset_type) }}" class="list-btn-primary">Add New</a>
+        {% endif %}
+        <a href="{{ url_for('index') }}" class="list-btn-normal">Back to Explorer</a>
+    </div>
+</div>
+
+{# post-create warning for superusers. add_asset redirects here
+   with su_hidden=1 when the org/team a superuser just created landed
+   outside their own scope (no workspace role, membership, or data grant
+   for it) — the new row is NOT in the table below, and without this
+   banner that reads as "my new org vanished". Gated on is_superuser so
+   a crafted URL shows nothing to other users (AC4). #}
+{% if is_superuser and request.args.get('su_hidden') == '1' and asset_type in ('teams', 'organizations') %}
+<div class="su-scope-banner" role="alert">
+    <i class="fas fa-triangle-exclamation"></i>
+    <div>
+        <strong>{{ request.args.get('su_hidden_title') or 'Your new ' ~ config.title|lower }}</strong>
+        was created, but it is not visible to you here. Superusers only see
+        assets in their own scope (workspace role, membership, or data grant).
+        To see it in the Explorer and dashboards,
+        <a href="{{ url_for('grants_page') }}">grant yourself access on the Grants page</a>.
+    </div>
+</div>
+{% endif %}
+
+{# Build the list of fields to render as columns.
+   Skips UI-only field types and any field marked hidden_in_table.
+
+   the TITLE field always leads. Columns otherwise follow
+   ``config.fields`` order, and 13 asset types declare the shared
+   ``_SUPERUSER_WORKSPACE_FIELD`` first, so their list showed "Workspace" in
+   the sticky first column while the hyperlinked title sat further right
+   (organizations/teams/workspaces looked right only because they declare
+   their workspace field inline AFTER the title). Sorting here rather than
+   reordering the configs keeps the EDIT FORM layout untouched — ``fields``
+   order drives that too, so moving the workspace field would push the input
+   down on all 13 forms. #}
+{% set _hidden_table_types = ['section_divider', 'data_source_checkbox', 'logo'] %}
+{% set _visible_fields = config.fields | rejectattr('type', 'in', _hidden_table_types) | rejectattr('hidden_in_table', 'defined') | list %}
+{% set _title_col = _visible_fields | selectattr('name', 'equalto', config.title_field) | list %}
+{% set table_fields = _title_col + (_visible_fields | rejectattr('name', 'equalto', config.title_field) | list) %}
+
+<div class="list-container">
+    <div class="list-container-header">
+        <h2>{{ config.title }}</h2>
+        <span class="list-count">{{ items|length }} item{{ 's' if items|length != 1 }}</span>
+    </div>
+
+    {% if items %}
+    <div class="list-table-scroll">
+        <table class="list-table list-table-wide" id="asset-list-table">
+            <thead>
+                <tr>
+                    {% for field in table_fields %}
+                    <th class="sortable" data-sort-field="{{ field.name }}" onclick="sortAssetTable(this)">
+                        {{ field.label }}<span class="sort-indicator">▲▼</span>
+                    </th>
+                    {% endfor %}
+                    <th style="text-align: right; white-space: nowrap;">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in items %}
+                <tr>
+                    {% for field in table_fields %}
+                    {% set value = item.get(field.name, '') %}
+                    {% set display_items = item.get(field.name ~ '__display_items') %}
+                    {% if display_items is not none %}
+                        {# Multi-select with display_format: render slug per
+                           link, with the parent doc's other fields as a
+                           hover tooltip. #}
+                        {% set sort_value = display_items | map(attribute='display') | join(', ') %}
+                        <td data-sort-value="{{ sort_value }}">
+                            {% if display_items %}
+                                {% for entry in display_items %}<span class="list-cell-tooltip"{% if entry.tooltip %} title="{{ entry.tooltip }}"{% endif %}>{{ entry.display }}</span>{% if not loop.last %}, {% endif %}{% endfor %}
+                            {% else %}
+                                <span class="list-cell-empty">—</span>
+                            {% endif %}
+                        </td>
+                    {% else %}
+                        {% if field.name == 'fb_ad_account_payment_card_last4' and value %}
+                            {% set display = '•••• ' ~ value %}
+                        {% elif value is iterable and value is not string %}
+                            {# Filter out empty/whitespace-only entries so legacy
+                               data with blank slots doesn't render as ", , value". #}
+                            {% set non_empty = value | reject('none') | map('string') | map('trim') | reject('equalto', '') | list %}
+                            {% set display = non_empty | join(', ') %}
+                        {% else %}
+                            {% set display = value %}
+                        {% endif %}
+                        <td data-sort-value="{{ display }}">
+                            {% if display %}
+                                {% if field.name == config.title_field and not config.code_managed %}
+                                    <a href="{{ url_for('edit_asset', asset_type=asset_type, item_id=item._id) }}"
+                                       style="color: inherit; text-decoration: none;">{{ display }}</a>
+                                {% else %}
+                                    {{ display }}
+                                {% endif %}
+                            {% else %}
+                                <span class="list-cell-empty">—</span>
+                            {% endif %}
+                        </td>
+                    {% endif %}
+                    {% endfor %}
+                    <td>
+                        <div class="list-actions" style="justify-content: flex-end;">
+                            {% if not config.code_managed %}
+                            <a href="{{ url_for('edit_asset', asset_type=asset_type, item_id=item._id) }}"
+                               class="list-action-icon" title="Edit" aria-label="Edit">
+                                <i class="fas fa-pen-to-square"></i>
+                            </a>
+                            <button type="button"
+                                    class="list-action-icon list-action-icon-danger js-delete-asset"
+                                    data-item-id="{{ item._id }}"
+                                    data-item-title="{{ item[config.title_field] }}"
+                                    title="Delete" aria-label="Delete">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="list-empty">
+        <div class="list-empty-icon"><i class="fas fa-inbox"></i></div>
+        <h3>No {{ config.title|lower }} found</h3>
+        {% if config.code_managed %}
+        <p>Connect an account from the Data Connectors page and it appears here.</p>
+        {% else %}
+        <p><a href="{{ url_for('add_asset', asset_type=asset_type) }}">Add the first one</a></p>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+
+<div id="delete-modal-overlay" class="delete-modal-overlay hidden" role="dialog"
+     aria-modal="true" aria-labelledby="delete-modal-title">
+    <div class="delete-modal">
+        <div class="delete-modal-header">
+            <h3 id="delete-modal-title">Delete {{ config.title|lower }}?</h3>
+            <button type="button" class="delete-modal-close js-delete-cancel"
+                    aria-label="Close">&#10005;</button>
+        </div>
+        <div class="delete-modal-body">
+            Are you sure you want to delete <strong id="delete-modal-name"></strong>?
+            This cannot be undone.
+            <div id="delete-modal-refs" class="delete-modal-refs hidden" aria-live="polite">
+                <div class="delete-modal-refs-title">
+                    <i class="fas fa-triangle-exclamation"></i> Still linked by:
+                </div>
+                <ul id="delete-modal-refs-list"></ul>
+                Deleting it will remove those links (e.g. a team's data source
+                stops importing).
+            </div>
+            {# superuser deletes are cluster-real, not view-local.
+               A superuser reaching an org/team through a data grant might
+               read "delete" as "remove from my view" — spell out that it
+               deletes the asset for every user in its workspace. #}
+            {% if is_superuser and asset_type in ('teams', 'organizations') %}
+            <p class="delete-modal-su-note">
+                This deletes the {{ 'team' if asset_type == 'teams' else 'organization' }}
+                for <strong>every user and workspace</strong> that references it —
+                not just from your view. To stop seeing an asset without
+                deleting it, remove your data grant instead.
+            </p>
+            {% endif %}
+        </div>
+        <div class="delete-modal-footer">
+            <button type="button" class="delete-modal-cancel-btn js-delete-cancel">Cancel</button>
+            <button type="button" class="delete-modal-confirm-btn" id="delete-modal-confirm">Delete</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script nonce="{{ csp_nonce }}">
+var deleteUrlBase = "{{ url_for('delete_asset', asset_type=asset_type, item_id='ITEM_ID_PLACEHOLDER') }}";
+var checkRefsUrlBase = "{{ url_for('check_asset_references', asset_type=asset_type, item_id='ITEM_ID_PLACEHOLDER') }}";
+
+// Delete confirmation flow. The item id/title are carried on the trash
+// button's data-* attributes (not an inline onclick string, which broke for
+// titles containing quotes/apostrophes). Clicking a trash button opens an
+// in-page modal; the modal's Confirm button performs the delete.
+(function () {
+    var overlay = document.getElementById('delete-modal-overlay');
+    var nameEl = document.getElementById('delete-modal-name');
+    var confirmBtn = document.getElementById('delete-modal-confirm');
+    var pendingId = null;
+
+    function openModal(itemId, itemTitle) {
+        pendingId = itemId;
+        nameEl.textContent = '"' + itemTitle + '"';
+        confirmBtn.disabled = false;
+        overlay.classList.remove('hidden');
+        confirmBtn.focus();
+        loadReferences(itemId);
+    }
+
+    // surface which docs (usually teams) still link this asset
+    // before the user confirms. Best-effort: a fetch failure just leaves the
+    // warning hidden; the delete itself is unaffected.
+    var refsBox = document.getElementById('delete-modal-refs');
+    var refsList = document.getElementById('delete-modal-refs-list');
+
+    function loadReferences(itemId) {
+        refsBox.classList.add('hidden');
+        refsList.textContent = '';
+        var url = checkRefsUrlBase.replace('ITEM_ID_PLACEHOLDER', encodeURIComponent(itemId));
+        fetch(url)
+        .then(function (response) { return response.json(); })
+        .then(function (data) {
+            // The modal may have been closed/reopened for another row while
+            // this request was in flight — only paint the matching item.
+            if (pendingId !== itemId) { return; }
+            var refs = (data && data.success && data.references) || [];
+            if (!refs.length) { return; }
+            refs.forEach(function (ref) {
+                var li = document.createElement('li');
+                var label = (ref.type_label || ref.index || '').replace(/s$/, '');
+                li.textContent = label + ' "' + (ref.title || ref.id) + '"';
+                refsList.appendChild(li);
+            });
+            refsBox.classList.remove('hidden');
+        })
+        .catch(function () { /* warning is best-effort only */ });
+    }
+
+    function closeModal() {
+        overlay.classList.add('hidden');
+        pendingId = null;
+    }
+
+    // Open the modal when a row's trash button is clicked (delegated).
+    document.addEventListener('click', function (event) {
+        var btn = event.target.closest('.js-delete-asset');
+        if (!btn) {
+            return;
+        }
+        openModal(btn.dataset.itemId, btn.dataset.itemTitle || '');
+    });
+
+    // Cancel / close (the X or the Cancel button). Backdrop-click no longer
+    // dismisses the modal (site-wide change); Escape is the keyboard dismiss.
+    document.addEventListener('click', function (event) {
+        if (event.target.closest('.js-delete-cancel')) {
+            closeModal();
+        }
+    });
+
+    // Escape closes the modal while it's open.
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' && !overlay.classList.contains('hidden')) {
+            closeModal();
+        }
+    });
+
+    // Confirm performs the delete.
+    confirmBtn.addEventListener('click', function () {
+        if (!pendingId) {
+            return;
+        }
+        confirmBtn.disabled = true;
+        var deleteUrl = deleteUrlBase.replace('ITEM_ID_PLACEHOLDER', encodeURIComponent(pendingId));
+        // the global CSRF hook rejects state-changing POSTs without
+        // a token (403 "CSRF validation failed"), which made every Explorer
+        // delete silently impossible. Read the canonical token from base_v2's
+        // meta tag.
+        var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+        fetch(deleteUrl, { method: 'POST', headers: { 'X-CSRF-Token': csrfMeta ? csrfMeta.content : '' } })
+        .then(function (response) { return response.json(); })
+        .then(function (data) {
+            if (data.success) {
+                location.reload();
+            } else {
+                closeModal();
+                alert('Failed to delete item: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(function (error) {
+            closeModal();
+            alert('Error: ' + error);
+        });
+    });
+})();
+
+function sortAssetTable(headerEl) {
+    var table = document.getElementById('asset-list-table');
+    if (!table) return;
+
+    var headers = table.tHead.rows[0].cells;
+    var colIndex = -1;
+    for (var i = 0; i < headers.length; i++) {
+        if (headers[i] === headerEl) { colIndex = i; break; }
+    }
+    if (colIndex < 0) return;
+
+    var nextDir = headerEl.classList.contains('sort-asc') ? 'desc' : 'asc';
+
+    for (var j = 0; j < headers.length; j++) {
+        headers[j].classList.remove('sort-asc', 'sort-desc');
+    }
+    headerEl.classList.add('sort-' + nextDir);
+
+    var tbody = table.tBodies[0];
+    var rows = Array.prototype.slice.call(tbody.rows);
+
+    rows.sort(function(a, b) {
+        var aCell = a.cells[colIndex];
+        var bCell = b.cells[colIndex];
+        // dataset.sortValue is the authoritative key (set by the template).
+        // If the attribute is missing entirely, fall back to textContent.
+        var aRaw = aCell.dataset.sortValue !== undefined ? aCell.dataset.sortValue : aCell.textContent;
+        var bRaw = bCell.dataset.sortValue !== undefined ? bCell.dataset.sortValue : bCell.textContent;
+        var aVal = (aRaw || '').trim();
+        var bVal = (bRaw || '').trim();
+
+        // Empty values always sort to the bottom regardless of direction
+        if (aVal === '' && bVal !== '') return 1;
+        if (aVal !== '' && bVal === '') return -1;
+        if (aVal === '' && bVal === '') return 0;
+
+        var aNum = parseFloat(aVal);
+        var bNum = parseFloat(bVal);
+        var cmp;
+        if (!isNaN(aNum) && !isNaN(bNum) && /^-?\d+(\.\d+)?$/.test(aVal) && /^-?\d+(\.\d+)?$/.test(bVal)) {
+            cmp = aNum - bNum;
+        } else {
+            cmp = aVal.localeCompare(bVal, undefined, { sensitivity: 'base', numeric: true });
+        }
+        return nextDir === 'asc' ? cmp : -cmp;
+    });
+
+    rows.forEach(function(r) { tbody.appendChild(r); });
+}
+</script>
+{% endblock %}

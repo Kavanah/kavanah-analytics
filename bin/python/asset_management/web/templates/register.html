@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register - Kavanah Analytics</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/cloudscape.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/password-toggle.css') }}?v=20260504b">
+    <script src="{{ url_for('static', filename='js/password-toggle.js') }}?v=20260504a" defer></script>
+    {% if hcaptcha_site_key %}
+    <script src="https://js.hcaptcha.com/1/api.js" async defer></script>
+    {% endif %}
+    <style>
+        body {
+            background: var(--cs-bg-page);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .login-topbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 56px;
+            background: var(--cs-nav-bg);
+            display: flex;
+            align-items: center;
+            padding: 0 24px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+            z-index: 10;
+        }
+
+        .login-topbar-logo { height: 24px; width: auto; margin-right: 12px; }
+        .login-topbar-title { font-size: 17px; font-weight: 700; color: #FFFFFF; }
+
+        .register-container { width: 100%; max-width: 440px; margin-top: 28px; }
+
+        .register-card {
+            background: var(--cs-bg-primary);
+            border: 1px solid var(--cs-border-default);
+            border-radius: var(--cs-radius-l);
+            box-shadow: var(--cs-shadow-m);
+            padding: 40px 36px 32px;
+        }
+
+        .register-header { text-align: center; margin-bottom: 32px; }
+        .register-header h1 { font-size: 24px; font-weight: 700; color: var(--cs-text-heading); margin-bottom: 6px; }
+        .register-header p { font-size: var(--cs-font-size-m); color: var(--cs-text-secondary); }
+
+        .alert {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 12px 14px;
+            margin-bottom: 20px;
+            border-radius: var(--cs-radius-m);
+            border: 1px solid;
+            font-size: var(--cs-font-size-m);
+            line-height: 1.5;
+        }
+        .alert-error { background: var(--cs-error-bg); border-color: var(--cs-error); color: var(--cs-text-primary); }
+        .alert-error ul { margin: 5px 0 0 20px; padding: 0; }
+
+        .form-group { margin-bottom: 20px; }
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 700;
+            color: var(--cs-text-label);
+            font-size: var(--cs-font-size-m);
+        }
+
+        .register-input {
+            width: 100%;
+            height: 40px;
+            padding: 0 12px;
+            border: 1px solid var(--cs-border-input);
+            border-radius: var(--cs-radius-s);
+            font-size: var(--cs-font-size-m);
+            font-family: var(--cs-font);
+            color: var(--cs-text-primary);
+            background: var(--cs-bg-primary);
+            transition: border-color 90ms ease-out, box-shadow 90ms ease-out;
+        }
+        .register-input:hover { border-color: var(--cs-text-secondary); }
+        .register-input:focus {
+            outline: none;
+            border-color: var(--cs-border-input-focus);
+            box-shadow: 0 0 0 2px rgba(9, 114, 211, 0.25);
+        }
+        .register-input::placeholder { color: var(--cs-text-disabled); }
+
+        .password-requirements { margin-top: 8px; font-size: 12px; color: var(--cs-text-secondary); }
+        .password-requirements .req { display: flex; align-items: center; gap: 6px; margin: 3px 0; transition: color 0.2s; }
+        .password-requirements .req.met { color: var(--cs-success); }
+        .password-requirements .req .icon { width: 14px; text-align: center; font-weight: 700; }
+
+        .register-btn {
+            display: block;
+            width: 100%;
+            height: 40px;
+            background: var(--cs-btn-primary-bg);
+            color: #FFFFFF;
+            border: none;
+            border-radius: var(--cs-radius-s);
+            font-size: var(--cs-font-size-l);
+            font-weight: 700;
+            font-family: var(--cs-font);
+            cursor: pointer;
+            transition: background 90ms ease-out;
+            margin-top: 8px;
+        }
+        .register-btn:hover { background: var(--cs-btn-primary-bg-hover); }
+        .register-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px #FFFFFF, 0 0 0 4px var(--cs-btn-primary-bg); }
+        .register-btn:active { background: #022D5E; }
+        .register-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        .captcha-container { margin: 16px 0; display: flex; justify-content: center; }
+
+        .register-footer {
+            margin-top: 24px;
+            padding-top: 20px;
+            border-top: 1px solid var(--cs-border-divider);
+            text-align: center;
+        }
+        .register-footer p { color: var(--cs-text-secondary); font-size: var(--cs-font-size-s); margin: 6px 0; }
+        .register-footer a { color: var(--cs-text-link); text-decoration: none; font-weight: 500; }
+        .register-footer a:hover { text-decoration: underline; color: var(--cs-text-link-hover); }
+
+        .login-powered { margin-top: 24px; text-align: center; font-size: 12px; color: var(--cs-text-disabled); }
+
+        @media (max-width: 480px) {
+            .register-card { padding: 32px 24px 24px; }
+            .register-header h1 { font-size: 20px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-topbar">
+        <img src="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5" alt="" class="login-topbar-logo">
+        <span class="login-topbar-title">Kavanah Analytics</span>
+    </div>
+
+    <div class="register-container">
+        <div class="register-card">
+            <div class="register-header">
+                <h1>Create Account</h1>
+                <p>Sign up for Kavanah Analytics</p>
+            </div>
+
+            {% if errors %}
+            <div class="alert alert-error">
+                <ul>
+                {% for error in errors %}
+                    <li>{{ error }}</li>
+                {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
+            <form method="POST" action="{{ url_for('analytics.signup_post') }}" id="register-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    {# ES Security usernames are case-sensitive; a
+                       mobile-capitalized signup creates a permanently-unloggable
+                       account, so harden the field against keyboard mangling. #}
+                    <input type="text" id="username" name="username" class="register-input" required autofocus
+                        placeholder="Choose a username" autocomplete="username"
+                        autocapitalize="none" autocorrect="off" spellcheck="false"
+                        value="{{ form_data.username or '' }}" minlength="3" maxlength="30" pattern="[a-zA-Z0-9_.\-]+">
+                </div>
+
+                <div class="form-group">
+                    <label for="full_name">Full Name</label>
+                    <input type="text" id="full_name" name="full_name" class="register-input"
+                        placeholder="Your full name (optional)" autocomplete="name"
+                        maxlength="100"
+                        value="{{ form_data.full_name or '' }}">
+                </div>
+
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" class="register-input" required
+                        placeholder="your@email.com" autocomplete="email"
+                        maxlength="254"
+                        value="{{ form_data.email or '' }}">
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <div class="pw-wrap">
+                        <input type="password" id="password" name="password" class="register-input pw-input" required
+                            placeholder="Create a strong password" autocomplete="new-password" minlength="12" maxlength="128">
+                        {% with pw_target="password" %}{% include "_pw_toggle.html" %}{% endwith %}
+                    </div>
+                    <div class="password-requirements" id="pw-reqs">
+                        <div class="req" data-req="length"><span class="icon">-</span> At least 12 characters</div>
+                        <div class="req" data-req="upper"><span class="icon">-</span> One uppercase letter</div>
+                        <div class="req" data-req="lower"><span class="icon">-</span> One lowercase letter</div>
+                        <div class="req" data-req="digit"><span class="icon">-</span> One number</div>
+                        <div class="req" data-req="special"><span class="icon">-</span> One special character</div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="confirm_password">Confirm Password</label>
+                    <div class="pw-wrap">
+                        <input type="password" id="confirm_password" name="confirm_password" class="register-input pw-input" required
+                            placeholder="Re-enter your password" autocomplete="new-password" maxlength="128">
+                        {% with pw_target="confirm_password" %}{% include "_pw_toggle.html" %}{% endwith %}
+                    </div>
+                </div>
+
+                {% if hcaptcha_site_key %}
+                <div class="captcha-container">
+                    <div class="h-captcha" data-sitekey="{{ hcaptcha_site_key }}"></div>
+                </div>
+                {% endif %}
+
+                <button type="submit" class="register-btn" id="submit-btn">Create Account</button>
+            </form>
+
+            <div class="register-footer">
+                <p>Already have an account? <a href="/login">Sign in</a></p>
+            </div>
+        </div>
+
+        <div class="login-powered">Kavanah Analytics</div>
+    </div>
+
+    <script nonce="{{ csp_nonce }}">
+    (function() {
+        var pw = document.getElementById('password');
+        var reqs = {
+            length:  function(v) { return v.length >= 12; },
+            upper:   function(v) { return /[A-Z]/.test(v); },
+            lower:   function(v) { return /[a-z]/.test(v); },
+            digit:   function(v) { return /[0-9]/.test(v); },
+            special: function(v) { return /[^A-Za-z0-9]/.test(v); }
+        };
+        pw.addEventListener('input', function() {
+            var val = pw.value;
+            for (var key in reqs) {
+                var el = document.querySelector('[data-req="' + key + '"]');
+                var icon = el.querySelector('.icon');
+                if (reqs[key](val)) { el.classList.add('met'); icon.textContent = '\u2713'; }
+                else { el.classList.remove('met'); icon.textContent = '-'; }
+            }
+        });
+        document.getElementById('register-form').addEventListener('submit', function(e) {
+            var btn = document.getElementById('submit-btn');
+            if (btn.disabled) { e.preventDefault(); return; }
+            btn.disabled = true;
+            btn.textContent = 'Creating Account...';
+        });
+    })();
+    </script>
+</body>
+</html>

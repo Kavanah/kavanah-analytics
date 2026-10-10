@@ -1,0 +1,22 @@
+{
+  "_comment": "docs screenshot manifest. Consumed by capture.spec.ts (capture) and bin/python/tools/publish_doc_captures.py (verify + publish). Routes are relative to APP_PREFIX. docs_image paths are relative to the repo root and use cap-* names so curated hand-made images are never clobbered silently — wiring a capture into an RST page is the Cowork text step in runbook-docs-screenshot-refresh.md. required_markers must ALL appear (case-insensitive) either in the captured visible page text OR in the page's hidden data-docs-workspace anchor (captured as anchor_text in the sidecar). The denylist leak-scan always runs against the VISIBLE page text only. NOTE: /dashboard renders no visible workspace-name text (the on-screen label was removed for layout reasons ), so it carries the demo-workspace marker in a hidden data-docs-workspace attribute on #dashboard-toolbar instead;  added the same anchor to /user-management's .page-header for the same reason (its workspace filter bar is superuser-only).",
+  "_note_2": "2026-09-15 : the Management Console guides no longer carry screenshots. Every image in them sat after prose that already described the screen in full, and each carried ~200 chars of alt text saying the same thing again — so nothing load-bearing was lost by removing them, only the recurring cost of keeping them honest (a tenant-identifier leak, an orphan nobody noticed, four screens the demo account cannot reach, and a capture that advertised the demo account's MFA-bypass state). One image survives: the Dashboard Builder layout, where spatial arrangement is genuinely hard to convey in prose. The removed entries' full definitions — routes, click sequences and wait-selectors, all verified against prod on 2026-09-15 — are in git history at commit 1ce7861f if this is ever revisited. The pipeline itself (multi-step capture, the /user-management data-docs-workspace anchor, the denylist gate) stays: it is what proved the old images were leaking.",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "expected_username": "kavanah",
+  "captures": [
+    {
+      "slug": "dashboard-builder-layout",
+      "route": "/dashboard-builder/",
+      "title": "Dashboard Builder layout",
+      "docs_image": "docs/documentation/guide-management-console/_images/cap-dashboard-builder-layout.png",
+      "required_markers": [
+        "Kavanah Demo"
+      ],
+      "settle_ms": 4000,
+      "full_page": false
+    }
+  ]
+}

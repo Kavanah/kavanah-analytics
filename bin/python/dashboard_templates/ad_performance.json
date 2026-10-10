@@ -1,0 +1,92 @@
+{
+  "connector_id": "meta_ads",
+  "created_at": "2026-05-27T15:26:48.997367+00:00",
+  "description": "Ad spend, impressions, reach. clicks, CTR",
+  "echarts_config": {
+    "charts": [
+      {
+        "aggregation": "sum",
+        "breakdown": null,
+        "cell_gradient_color": "#006d2c",
+        "cell_gradient_enabled": false,
+        "chart_id": "c1779895246230",
+        "chart_type": "table",
+        "data_view": "*_fb_insights",
+        "date_format": "",
+        "display_toggles": {},
+        "filters": [],
+        "height": "303px",
+        "hide_title": true,
+        "max_columns": 2,
+        "max_rows": 10,
+        "other_bucket": false,
+        "position": {
+          "col": 0,
+          "h": 4,
+          "row": 0,
+          "w": 6
+        },
+        "table_columns": [
+          {
+            "aggregation": "sum",
+            "field": "insight_spend",
+            "format": "$0.00",
+            "label": "Ad Spend"
+          },
+          {
+            "aggregation": "sum",
+            "field": "insight_impressions",
+            "format": "000,",
+            "label": "Impressions"
+          },
+          {
+            "aggregation": "sum",
+            "field": "insight_reach",
+            "format": "000,",
+            "label": "Reach"
+          },
+          {
+            "aggregation": "sum",
+            "field": "insight_clicks",
+            "format": "000,",
+            "label": "Clicks"
+          },
+          {
+            "aggregation": "sum",
+            "field": "insight_ctr",
+            "format": "0.00\\%",
+            "label": "CTR"
+          }
+        ],
+        "table_font_size": 12,
+        "title": "Table",
+        "width": "879.253px",
+        "x_field": "adset_name",
+        "x_field_type": "keyword",
+        "x_label": "Ad Set Name",
+        "y_fields": [
+          "insight_spend",
+          "insight_impressions",
+          "insight_reach",
+          "insight_clicks",
+          "insight_ctr"
+        ],
+        "y_max": "",
+        "y_min": ""
+      }
+    ],
+    "filters": [],
+    "global_date_range": null
+  },
+  "frozen_from_dashboard_id": "a31ecd60-3f0c-4396-88e9-993e56a88ac8",
+  "menu_position": 4,
+  "menu_title": "Meta",
+  "name": "Ad Performance",
+  "pack_id": "meta_ads",
+  "placeholder_field": null,
+  "required_sources": [
+    "meta_ads"
+  ],
+  "template_id": "ad_performance",
+  "updated_at": "2026-05-27T15:26:48.997367+00:00"
+}

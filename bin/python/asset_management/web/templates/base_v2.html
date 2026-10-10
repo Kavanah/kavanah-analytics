@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <!-- server idle window (seconds) read by session-timeout.js. -->
+    <meta name="session-idle-timeout" content="{{ session_idle_timeout|default(0) }}">
+    <title>{% block title %}Kavanah Analytics{% endblock %}</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" integrity="sha384-/o6I2CkkWC//PSjvWC/eYN7l3xM3tJm8ZzVkCOfp//W05QcE3mlGskpoHB6XqI+B" crossorigin="anonymous">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/cloudscape.css') }}?v=20260430a">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}?v=20260430b">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/utilities.css') }}?v=20260622a">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/password-toggle.css') }}?v=20260504b">
+    <script src="{{ url_for('static', filename='js/password-toggle.js') }}?v=20260504a" defer></script>
+
+    <style>
+        /* ── Top navigation ── */
+        .cs-topnav {
+            position: sticky;
+            top: 0;
+            z-index: 300;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: var(--cs-header-height);
+            padding: 0 var(--cs-space-xl);
+            background: var(--cs-nav-bg);
+            color: var(--cs-nav-text);
+            box-shadow: var(--cs-nav-shadow);
+        }
+
+        .cs-topnav-left {
+            display: flex;
+            align-items: center;
+            gap: var(--cs-space-s);
+        }
+
+        .cs-topnav-logo {
+            height: 28px;
+            width: auto;
+            flex-shrink: 0;
+        }
+
+        .cs-topnav-title {
+            font-size: 17px;
+            font-weight: var(--cs-font-weight-bold);
+            color: var(--cs-nav-text-hover);
+            white-space: nowrap;
+            letter-spacing: -0.01em;
+        }
+
+        .cs-topnav-right {
+            display: flex;
+            align-items: center;
+            gap: var(--cs-space-s);
+            font-size: var(--cs-font-size-m);
+        }
+
+        .cs-topnav-link {
+            color: var(--cs-nav-text);
+            text-decoration: none;
+            padding: 4px 8px;
+            border-radius: var(--cs-radius-s);
+            transition: color var(--cs-transition-fast),
+                        background var(--cs-transition-fast);
+        }
+
+        .cs-topnav-link:hover {
+            color: var(--cs-nav-text-hover);
+            background: var(--cs-nav-bg-hover);
+            text-decoration: none;
+        }
+
+        .cs-topnav-context {
+            font-size: var(--cs-font-size-s);
+            color: var(--cs-nav-text);
+            opacity: 0.8;
+            margin-left: var(--cs-space-xs);
+        }
+
+        .cs-topnav-icon-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 34px;
+            height: 34px;
+            background: transparent;
+            border: 1px solid transparent;
+            border-radius: var(--cs-radius-s);
+            color: var(--cs-nav-text);
+            font-size: 15px;
+            cursor: pointer;
+            transition: all var(--cs-transition-fast);
+            text-decoration: none;
+        }
+
+        .cs-topnav-icon-btn:hover {
+            background: var(--cs-nav-bg-hover);
+            border-color: rgba(255,255,255,0.1);
+            color: var(--cs-nav-text-hover);
+            text-decoration: none;
+        }
+
+        .cs-topnav-logout {
+            font-size: var(--cs-font-size-s);
+            opacity: 0.8;
+            height: 34px;
+            display: inline-flex;
+            align-items: center;
+            padding: 0 12px;
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: var(--cs-radius-s);
+            transition: all var(--cs-transition-fast);
+        }
+
+        .cs-topnav-logout:hover {
+            opacity: 1;
+            border-color: rgba(255,255,255,0.3);
+            background: var(--cs-nav-bg-hover);
+        }
+
+        .cs-topnav-user {
+            color: var(--cs-nav-text);
+            font-weight: var(--cs-font-weight-medium);
+        }
+
+        .cs-topnav-divider {
+            width: 1px;
+            height: 20px;
+            background: var(--cs-nav-border);
+            flex-shrink: 0;
+        }
+
+        .cs-topnav-user-wrapper {
+            position: relative;
+            display: inline-block;
+        }
+
+        /* ── Sidebar ── */
+        .cs-dropdown-icon {
+            width: 16px;
+            text-align: center;
+            margin-right: 6px;
+            font-size: 13px;
+            color: var(--cs-text-tertiary);
+        }
+
+        .cs-sidebar {
+            position: fixed;
+            top: var(--cs-header-height);
+            left: 0;
+            bottom: 0;
+            width: var(--cs-sidebar-width);
+            background: var(--cs-bg-primary);
+            border-right: 1px solid var(--cs-border-default);
+            display: flex;
+            flex-direction: column;
+            z-index: 200;
+            transition: transform var(--cs-transition-slow);
+            overflow: hidden;
+        }
+
+        .cs-sidebar.collapsed {
+            transform: translateX(calc(-1 * var(--cs-sidebar-width)));
+        }
+
+        .cs-sidebar-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: var(--cs-space-s) var(--cs-space-m);
+            border-bottom: 1px solid var(--cs-border-divider);
+            flex-shrink: 0;
+        }
+
+        .cs-sidebar-menu-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            height: 32px;
+            padding: 0 14px;
+            background: var(--cs-btn-normal-bg);
+            border: 1px solid var(--cs-btn-normal-border);
+            border-radius: var(--cs-radius-s);
+            cursor: pointer;
+            font-family: var(--cs-font);
+            font-size: var(--cs-font-size-m);
+            font-weight: var(--cs-font-weight-medium);
+            color: var(--cs-btn-normal-text);
+            white-space: nowrap;
+            transition: all var(--cs-transition-fast);
+        }
+
+        .cs-sidebar-menu-btn:hover {
+            background: var(--cs-btn-normal-hover-bg);
+            border-color: var(--cs-text-secondary);
+            color: var(--cs-text-primary);
+        }
+
+        .cs-sidebar-nav {
+            flex: 1;
+            overflow-y: auto;
+            padding: var(--cs-space-s) var(--cs-space-s);
+        }
+
+        .cs-sidebar-link {
+            display: flex;
+            align-items: center;
+            gap: var(--cs-space-s);
+            padding: 10px 14px;
+            color: var(--cs-text-primary);
+            font-size: var(--cs-font-size-m);
+            font-weight: var(--cs-font-weight-normal);
+            text-decoration: none;
+            border-radius: var(--cs-radius-s);
+            transition: all var(--cs-transition-fast);
+            margin-bottom: 2px;
+        }
+
+        .cs-sidebar-link:hover {
+            background: var(--cs-bg-hover);
+            color: var(--cs-text-primary);
+            text-decoration: none;
+        }
+
+        .cs-sidebar-link.active {
+            background: var(--cs-bg-active);
+            color: var(--cs-text-link);
+            font-weight: var(--cs-font-weight-medium);
+        }
+
+        .cs-sidebar-link i {
+            width: 20px;
+            text-align: center;
+            font-size: 15px;
+            flex-shrink: 0;
+            color: var(--cs-text-tertiary);
+        }
+
+        .cs-sidebar-link:hover i {
+            color: var(--cs-text-secondary);
+        }
+
+        .cs-sidebar-link.active i {
+            color: var(--cs-text-link);
+        }
+
+        .cs-sidebar-label {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .cs-sidebar-arrow {
+            margin-left: auto;
+            font-size: 10px;
+            color: var(--cs-text-tertiary);
+            transition: transform var(--cs-transition-normal);
+        }
+
+        .cs-sidebar-parent {
+            cursor: pointer;
+        }
+
+        .cs-sidebar-parent.open .cs-sidebar-arrow {
+            transform: rotate(180deg);
+        }
+
+        .cs-sidebar-submenu {
+            display: none;
+            margin-left: 20px;
+            padding-left: 14px;
+        }
+
+        .cs-sidebar-submenu.open {
+            display: block;
+        }
+
+        .cs-sidebar-submenu .cs-sidebar-link {
+            padding: 8px 14px;
+            font-size: var(--cs-font-size-s);
+        }
+
+        .cs-sidebar-submenu .cs-sidebar-link i {
+            font-size: 13px;
+            width: 18px;
+        }
+
+        .cs-sidebar-divider {
+            border: none;
+            height: 0;
+            margin: var(--cs-space-xs) 0;
+        }
+
+        /* ── Main content area ── */
+        .cs-main {
+            margin-left: var(--cs-sidebar-width);
+            min-height: calc(100vh - var(--cs-header-height));
+            transition: margin-left var(--cs-transition-slow);
+        }
+
+        .cs-main.sidebar-collapsed {
+            margin-left: 0;
+        }
+
+        .cs-main-no-sidebar {
+            margin-left: 0;
+        }
+
+        .cs-main-toolbar {
+            display: flex;
+            align-items: center;
+            padding: 6px var(--cs-space-l);
+            background: var(--cs-bg-primary);
+            border-bottom: 1px solid var(--cs-border-divider);
+            min-height: 42px;
+        }
+
+        .cs-content {
+            max-width: var(--cs-content-max-width);
+            padding: var(--cs-space-l) var(--cs-space-xl);
+        }
+
+        /* ── Feedback modal ── */
+        .feedback-modal-overlay {
+            position: fixed; inset: 0; background: rgba(0, 7, 22, 0.5);
+            z-index: 10000; display: flex; align-items: center; justify-content: center;
+            backdrop-filter: blur(2px);
+        }
+        .feedback-modal-overlay.hidden { display: none !important; }
+        .feedback-modal {
+            background: var(--cs-bg-primary); border-radius: var(--cs-radius-l);
+            width: 520px; max-width: 95vw;
+            box-shadow: var(--cs-shadow-modal);
+        }
+        .feedback-modal-header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: var(--cs-space-m) var(--cs-space-l); border-bottom: 1px solid var(--cs-border-divider);
+        }
+        .feedback-modal-header h3 { margin: 0; font-size: var(--cs-font-size-l); color: var(--cs-text-heading); }
+        .feedback-modal-close {
+            background: none; border: none; font-size: 1.3rem; cursor: pointer;
+            color: var(--cs-text-tertiary); padding: 2px 6px; border-radius: var(--cs-radius-s);
+        }
+        .feedback-modal-close:hover { background: var(--cs-bg-hover); color: var(--cs-text-primary); }
+        .feedback-modal-body { padding: var(--cs-space-l); }
+        .feedback-form-group { margin-bottom: var(--cs-space-m); }
+        .feedback-form-group label {
+            display: block; font-size: var(--cs-font-size-m); font-weight: var(--cs-font-weight-medium);
+            color: var(--cs-text-label); margin-bottom: 5px;
+        }
+        .feedback-form-group label.required::after { content: " *"; color: var(--cs-error); }
+        .feedback-form-group input[type="text"],
+        .feedback-form-group textarea,
+        .feedback-form-group select {
+            width: 100%; padding: 8px 10px; border: 1px solid var(--cs-border-input);
+            border-radius: var(--cs-radius-s); font-size: var(--cs-font-size-m);
+            font-family: var(--cs-font); box-sizing: border-box;
+            color: var(--cs-text-primary);
+        }
+        .feedback-form-group input:focus,
+        .feedback-form-group textarea:focus,
+        .feedback-form-group select:focus {
+            outline: none; border-color: var(--cs-border-input-focus);
+            box-shadow: 0 0 0 2px rgba(9, 114, 211, 0.25);
+        }
+        .feedback-form-group textarea { resize: vertical; min-height: 80px; }
+        .feedback-type-options {
+            display: flex; gap: var(--cs-space-m); margin-top: 4px; flex-wrap: wrap;
+        }
+        .feedback-type-options label {
+            font-weight: var(--cs-font-weight-normal); font-size: var(--cs-font-size-m);
+            color: var(--cs-text-primary); display: flex; align-items: center; gap: 6px;
+            cursor: pointer; white-space: nowrap;
+        }
+        .feedback-type-options input[type="radio"] { accent-color: var(--cs-btn-primary-bg); }
+        .feedback-file-upload { margin-top: 4px; position: relative; }
+        .feedback-file-upload input[type="file"] {
+            font-size: var(--cs-font-size-s); font-family: var(--cs-font);
+            width: 100%; padding: 8px 12px;
+            border: 1px solid var(--cs-border-input); border-radius: var(--cs-radius-s);
+            background: var(--cs-bg-primary); cursor: pointer;
+            transition: border-color var(--cs-transition-fast);
+        }
+        .feedback-file-upload input[type="file"]:hover { border-color: var(--cs-text-secondary); }
+        .feedback-file-upload input[type="file"]:focus { outline: none; border-color: var(--cs-border-input-focus); box-shadow: 0 0 0 2px rgba(9,114,211,0.25); }
+        .feedback-file-upload input[type="file"]::file-selector-button {
+            padding: 4px 12px; margin-right: 12px;
+            border: 1px solid var(--cs-btn-normal-border); border-radius: var(--cs-radius-s);
+            background: var(--cs-btn-normal-bg); color: var(--cs-btn-normal-text);
+            font-family: var(--cs-font); font-size: var(--cs-font-size-s); font-weight: var(--cs-font-weight-medium);
+            cursor: pointer; transition: all var(--cs-transition-fast);
+        }
+        .feedback-file-upload input[type="file"]::file-selector-button:hover {
+            background: var(--cs-btn-normal-hover-bg); border-color: var(--cs-text-secondary);
+        }
+        .feedback-file-info { font-size: var(--cs-font-size-xs); color: var(--cs-text-tertiary); margin-top: 4px; }
+        .feedback-file-error { font-size: var(--cs-font-size-xs); color: var(--cs-error); margin-top: 4px; display: none; }
+        .feedback-modal-footer {
+            display: flex; justify-content: flex-end; gap: var(--cs-space-xs);
+            padding: var(--cs-space-m) var(--cs-space-l); border-top: 1px solid var(--cs-border-divider);
+        }
+        .feedback-modal-cancel-btn {
+            padding: 8px 18px; border: 1px solid var(--cs-border-default); background: var(--cs-bg-primary);
+            border-radius: var(--cs-radius-s); cursor: pointer; font-size: var(--cs-font-size-m);
+            color: var(--cs-text-secondary); font-family: var(--cs-font);
+        }
+        .feedback-modal-cancel-btn:hover { background: var(--cs-bg-hover); }
+        .feedback-modal-submit-btn {
+            padding: 8px 18px; border: none; border-radius: var(--cs-radius-s); cursor: pointer;
+            font-size: var(--cs-font-size-m); font-weight: var(--cs-font-weight-bold); color: #fff;
+            background: var(--cs-btn-primary-bg); font-family: var(--cs-font);
+        }
+        .feedback-modal-submit-btn:hover { background: var(--cs-btn-primary-bg-hover); }
+        .feedback-modal-submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .feedback-success-msg {
+            text-align: center; padding: var(--cs-space-xxl) var(--cs-space-l);
+        }
+        .feedback-success-msg i { font-size: 2.5rem; color: var(--cs-success); margin-bottom: var(--cs-space-s); }
+        .feedback-success-msg h3 { color: var(--cs-text-heading); margin: 0; }
+        .feedback-success-msg p { font-size: var(--cs-font-size-m); color: var(--cs-text-secondary); margin: 8px 0 0; }
+    </style>
+
+    {% block extra_css %}{% endblock %}
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    {% block header %}
+    {% include "_header_v2.html" %}
+    {% endblock %}
+
+    {% block sidebar %}
+    {% if has_any_mc %}
+    {% include "_sidebar_v2.html" %}
+    {% endif %}
+    {% endblock %}
+
+    <main class="cs-main{% if not has_any_mc %} cs-main-no-sidebar{% endif %}" id="cs-main">
+    {% block main_toolbar %}
+    {% if has_any_mc %}
+    <div class="cs-main-toolbar">
+        <button class="cs-sidebar-menu-btn" id="cs-sidebar-toggle" title="Toggle navigation">
+            <i class="fas fa-bars"></i> <span id="cs-sidebar-toggle-text">Open Menu</span>
+        </button>
+    </div>
+    {% endif %}
+    {% endblock %}
+    {# broken-connection banners, above page content on every page. #}
+    {% include "_credential_banners.html" %}
+    {% block page_content %}
+        <div class="cs-content">
+            {% block content %}{% endblock %}
+        </div>
+    {% endblock %}
+    </main>
+
+    <!-- Feedback modal (shared across all pages) -->
+    <div id="feedback-modal-overlay" class="feedback-modal-overlay hidden">
+        <div class="feedback-modal" onclick="event.stopPropagation()">
+            <div id="feedback-form-view">
+                <div class="feedback-modal-header">
+                    <h3><i class="fas fa-comment-dots" style="margin-right:8px;color:var(--cs-btn-primary-bg)"></i>Share Feedback</h3>
+                    <button class="feedback-modal-close" onclick="closeFeedbackModal()">&#10005;</button>
+                </div>
+                <div class="feedback-modal-body">
+                    <div class="feedback-form-group">
+                        <label>Feedback Type</label>
+                        <div class="feedback-type-options">
+                            <label><input type="radio" name="feedback-type" value="bug" checked onchange="toggleStepsField()"> Bug Report</label>
+                            <label><input type="radio" name="feedback-type" value="feature" onchange="toggleStepsField()"> Feature Request</label>
+                        </div>
+                    </div>
+                    <div class="feedback-form-group">
+                        <label class="required" for="feedback-subject">Subject</label>
+                        <input type="text" id="feedback-subject" placeholder="Brief summary of the issue or request" maxlength="200">
+                    </div>
+                    <div class="feedback-form-group">
+                        <label class="required" for="feedback-description">Description</label>
+                        <textarea id="feedback-description" rows="4" maxlength="5000" placeholder="Provide details about the issue or feature you'd like to see"></textarea>
+                    </div>
+                    <div class="feedback-form-group" id="feedback-steps-group">
+                        <label for="feedback-steps">Steps to Reproduce</label>
+                        <textarea id="feedback-steps" rows="3" maxlength="2000" placeholder="1. Go to...&#10;2. Click on...&#10;3. Observe that..."></textarea>
+                    </div>
+                    <div class="feedback-form-group">
+                        <label for="feedback-priority">Priority</label>
+                        <select id="feedback-priority">
+                            <option value="low">Low</option>
+                            <option value="medium" selected>Medium</option>
+                            <option value="high">High</option>
+                        </select>
+                    </div>
+                    <div class="feedback-form-group">
+                        <label for="feedback-file">Attachment</label>
+                        <div class="feedback-file-upload">
+                            <input type="file" id="feedback-file" accept=".png,.jpg,.jpeg,.gif,.pdf" onchange="validateFeedbackFile()">
+                        </div>
+                        <div class="feedback-file-info">PNG, JPG, GIF, or PDF. Max 5 MB.</div>
+                        <div class="feedback-file-error" id="feedback-file-error"></div>
+                    </div>
+                </div>
+                <div class="feedback-modal-footer">
+                    <button class="feedback-modal-cancel-btn" onclick="closeFeedbackModal()">Cancel</button>
+                    <button class="feedback-modal-submit-btn" id="feedback-submit-btn" onclick="submitFeedback()">Submit Feedback</button>
+                </div>
+            </div>
+            <div id="feedback-success-view" class="feedback-success-msg" style="display:none">
+                <i class="fas fa-check-circle"></i>
+                <h3>Thank you!</h3>
+                <p>Your feedback has been submitted successfully.</p>
+                <div style="margin-top:20px">
+                    <button class="feedback-modal-cancel-btn" onclick="closeFeedbackModal()">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <!-- loaded AFTER app.js so the fetch guard composes on top of
+         the CSRF fetch wrapper rather than racing a second monkey-patch. -->
+    <script src="{{ url_for('static', filename='js/session-timeout.js') }}?v=20260615b"></script>
+
+    <script nonce="{{ csp_nonce }}">
+    (function() {
+        /* Settings dropdown toggle */
+        var settingsBtn = document.getElementById('cs-settings-btn');
+        var settingsDropdown = document.getElementById('cs-settings-dropdown');
+        if (settingsBtn && settingsDropdown) {
+            settingsBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                settingsDropdown.classList.toggle('cs-hidden');
+                settingsBtn.setAttribute('aria-expanded',
+                    !settingsDropdown.classList.contains('cs-hidden'));
+            });
+            document.addEventListener('click', function() {
+                settingsDropdown.classList.add('cs-hidden');
+                settingsBtn.setAttribute('aria-expanded', 'false');
+            });
+        }
+
+        /* Sidebar toggle */
+        var sidebarToggle = document.getElementById('cs-sidebar-toggle');
+        var sidebarToggleText = document.getElementById('cs-sidebar-toggle-text');
+        var sidebar = document.getElementById('cs-sidebar');
+        var mainContent = document.getElementById('cs-main');
+        function updateSidebarToggleText() {
+            if (sidebarToggleText) {
+                sidebarToggleText.textContent = sidebar.classList.contains('collapsed') ? 'Open Menu' : 'Close Menu';
+            }
+        }
+        if (sidebarToggle && sidebar && mainContent) {
+            var sidebarState = localStorage.getItem('cs-sidebar-collapsed');
+            if (sidebarState === 'true') {
+                sidebar.classList.add('collapsed');
+                mainContent.classList.add('sidebar-collapsed');
+            }
+            updateSidebarToggleText();
+            sidebarToggle.addEventListener('click', function() {
+                sidebar.classList.toggle('collapsed');
+                mainContent.classList.toggle('sidebar-collapsed');
+                localStorage.setItem('cs-sidebar-collapsed',
+                    sidebar.classList.contains('collapsed'));
+                updateSidebarToggleText();
+            });
+        }
+
+        /* Sidebar submenu toggles */
+        document.querySelectorAll('.cs-sidebar-parent').forEach(function(parent) {
+            parent.addEventListener('click', function(e) {
+                e.preventDefault();
+                var submenuId = this.getAttribute('data-submenu');
+                var submenu = document.getElementById(submenuId);
+                if (submenu) {
+                    this.classList.toggle('open');
+                    submenu.classList.toggle('open');
+                }
+            });
+        });
+
+        /* Active sidebar link highlighting */
+        var currentPath = window.location.pathname;
+        var currentHash = window.location.hash;
+        var currentFull = currentPath + window.location.search;
+        var currentWithHash = currentPath + currentHash;
+        document.querySelectorAll('.cs-sidebar-link:not(.cs-sidebar-parent)').forEach(function(link) {
+            var href = link.getAttribute('href');
+            var hrefPath = href.split('?')[0].split('#')[0];
+            var hrefHash = href.includes('#') ? '#' + href.split('#')[1] : '';
+            var isInSubmenu = !!link.closest('.cs-sidebar-submenu');
+            var isMatch = false;
+            if (hrefHash) {
+                // Links with hash: only match if hash matches exactly
+                isMatch = currentHash === hrefHash && hrefPath === currentPath;
+            } else {
+                isMatch = href === currentFull || href === currentPath || hrefPath === currentPath;
+                if (!isMatch && isInSubmenu && hrefPath.length > 1 && currentPath.startsWith(hrefPath)) {
+                    isMatch = true;
+                }
+            }
+            if (isMatch) {
+                link.classList.add('active');
+                var submenu = link.closest('.cs-sidebar-submenu');
+                if (submenu) {
+                    submenu.classList.add('open');
+                    var parentLink = document.querySelector('[data-submenu="' + submenu.id + '"]');
+                    if (parentLink) parentLink.classList.add('open');
+                }
+            }
+        });
+    })();
+
+    /* Feedback modal functions (global) */
+    var FEEDBACK_CHECK_URL  = '/assets/api/feedback/check';
+    var FEEDBACK_SUBMIT_URL = '/assets/api/feedback/submit';
+
+    function toggleStepsField() {
+        var isBug = document.querySelector('input[name="feedback-type"]:checked').value === 'bug';
+        document.getElementById('feedback-steps-group').style.display = isBug ? '' : 'none';
+    }
+
+    function validateFeedbackFile() {
+        var input = document.getElementById('feedback-file');
+        var errorEl = document.getElementById('feedback-file-error');
+        errorEl.style.display = 'none';
+        errorEl.textContent = '';
+        if (!input.files || !input.files[0]) return true;
+        var file = input.files[0];
+        var allowed = ['.png', '.jpg', '.jpeg', '.gif', '.pdf'];
+        var ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+        if (allowed.indexOf(ext) === -1) {
+            errorEl.textContent = 'Invalid file type. Allowed: PNG, JPG, GIF, PDF.';
+            errorEl.style.display = 'block';
+            input.value = '';
+            return false;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+            errorEl.textContent = 'File exceeds the 5 MB size limit.';
+            errorEl.style.display = 'block';
+            input.value = '';
+            return false;
+        }
+        return true;
+    }
+
+    // ``opts`` lets a caller open the modal pre-set to a non-default
+    // state. The availability check is async, and the reset that follows it
+    // clears the subject + forces the Bug radio, so any pre-fill MUST be
+    // applied INSIDE the .then() callback (after the reset) or it gets
+    // clobbered. ``opts.type`` flips the feedback-type radio ('bug' |
+    // 'feature'); ``opts.subject`` pre-fills the Subject field. Description is
+    // never pre-filled — the existing required-field validation still forces
+    // the user to write it. Called bare (no args) from the top-nav button, so
+    // the default behaviour (Bug Report, empty subject) is unchanged.
+    function openFeedbackModal(opts) {
+        opts = opts || {};
+        // follow-up: the gear dropdown is cs-settings-dropdown on every
+        // surface now (dashboards de-duplicated onto _header_v2.html). Close it
+        // before opening the feedback modal.
+        var dd = document.getElementById('cs-settings-dropdown');
+        if (dd) dd.classList.add('cs-hidden');
+
+        fetch(FEEDBACK_CHECK_URL)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data.available) {
+                    alert('Feedback is not available yet. An administrator needs to configure the feedback email address in the Management Console.');
+                    return;
+                }
+                document.getElementById('feedback-subject').value = opts.subject || '';
+                document.getElementById('feedback-description').value = '';
+                document.getElementById('feedback-steps').value = '';
+                document.getElementById('feedback-priority').value = 'medium';
+                document.getElementById('feedback-file').value = '';
+                document.getElementById('feedback-file-error').style.display = 'none';
+                document.getElementById('feedback-file-error').textContent = '';
+                var fbType = opts.type === 'feature' ? 'feature' : 'bug';
+                document.querySelector('input[name="feedback-type"][value="' + fbType + '"]').checked = true;
+                // Always re-run toggleStepsField() after flipping the radio so
+                // the "Steps to reproduce" field hides for Feature Request.
+                toggleStepsField();
+                document.getElementById('feedback-form-view').style.display = '';
+                document.getElementById('feedback-success-view').style.display = 'none';
+                document.getElementById('feedback-submit-btn').disabled = false;
+                document.getElementById('feedback-submit-btn').textContent = 'Submit Feedback';
+                document.getElementById('feedback-modal-overlay').classList.remove('hidden');
+            })
+            .catch(function() {
+                alert('Could not check feedback availability. Please try again.');
+            });
+    }
+
+    // thin sibling used by the Data Connectors "Request Data
+    // Connector" tile. Opens Share Feedback pre-set to Feature Request with the
+    // Subject pre-filled, so the tile handler is a clean one-line call site
+    // rather than poking the modal DOM after an async open.
+    function openFeedbackModalAsFeatureRequest(subject) {
+        openFeedbackModal({ type: 'feature', subject: subject });
+    }
+
+    function closeFeedbackModal() {
+        document.getElementById('feedback-modal-overlay').classList.add('hidden');
+    }
+
+    // Backdrop-click no longer dismisses the feedback modal (site-wide change —
+    // it's a data-entry form; an accidental outside-click shouldn't discard it).
+    // Escape is the keyboard dismiss, alongside the X / Cancel buttons.
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') {
+            var fb = document.getElementById('feedback-modal-overlay');
+            if (fb && !fb.classList.contains('hidden')) closeFeedbackModal();
+        }
+    });
+
+    function submitFeedback() {
+        var subject = document.getElementById('feedback-subject').value.trim();
+        var description = document.getElementById('feedback-description').value.trim();
+        if (!subject || !description) {
+            alert('Please fill in the Subject and Description fields.');
+            return;
+        }
+        if (!validateFeedbackFile()) return;
+
+        var btn = document.getElementById('feedback-submit-btn');
+        btn.disabled = true;
+        btn.textContent = 'Submitting\u2026';
+
+        var fbType = document.querySelector('input[name="feedback-type"]:checked').value;
+        var formData = new FormData();
+        formData.append('type', fbType);
+        formData.append('subject', subject);
+        formData.append('description', description);
+        formData.append('steps', fbType === 'bug' ? document.getElementById('feedback-steps').value.trim() : '');
+        formData.append('priority', document.getElementById('feedback-priority').value);
+
+        var fileInput = document.getElementById('feedback-file');
+        if (fileInput.files && fileInput.files[0]) {
+            formData.append('attachment', fileInput.files[0]);
+        }
+
+        fetch(FEEDBACK_SUBMIT_URL, {
+            method: 'POST',
+            body: formData
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success) {
+                document.getElementById('feedback-form-view').style.display = 'none';
+                document.getElementById('feedback-success-view').style.display = '';
+            } else {
+                alert('Failed to submit feedback: ' + (data.error || 'Unknown error'));
+                btn.disabled = false;
+                btn.textContent = 'Submit Feedback';
+            }
+        })
+        .catch(function() {
+            alert('Failed to submit feedback. Please try again.');
+            btn.disabled = false;
+            btn.textContent = 'Submit Feedback';
+        });
+    }
+    </script>
+
+    {% block extra_js %}{% endblock %}
+
+    <script nonce="{{ csp_nonce }}">
+    (function() {
+        // bare /login is the single canonical sign-in URL.
+        // Cross-tab logout redirects here directly (was /dashboards/login,
+        // which still works as a 301 → /login but adds an extra hop).
+        var loginUrl = '/login';
+        var loadTime = Date.now().toString();
+
+        // Broadcast login only after an actual login (indicated by URL param)
+        var params = new URLSearchParams(window.location.search);
+        if (params.get('just_logged_in')) {
+            localStorage.setItem('login', loadTime);
+            params.delete('just_logged_in');
+            var cleanUrl = window.location.pathname + (params.toString() ? '?' + params : '');
+            window.history.replaceState({}, '', cleanUrl);
+        }
+
+        // Cross-tab logout via localStorage
+        window.addEventListener('storage', function(e) {
+            if (e.key === 'logout' && e.newValue && e.newValue > loadTime) {
+                window.location.href = loginUrl;
+            }
+        });
+
+        // Fallback: when tab becomes visible, check if a logout happened
+        document.addEventListener('visibilitychange', function() {
+            if (document.visibilityState === 'visible') {
+                var lastLogout = localStorage.getItem('logout');
+                if (lastLogout && lastLogout > loadTime) {
+                    window.location.href = loginUrl;
+                }
+            }
+        });
+
+        // bfcache fallback: when the browser's back-forward cache restores
+        // this page (e.g., user clicked Sign Out, lands on /login, then
+        // hits back), the storage and visibilitychange events do NOT fire
+        // because no real navigation occurred. The pageshow event fires
+        // with event.persisted === true on bfcache restore — at that point
+        // we force a hard navigation to the login URL so verify_auth can
+        // re-run on the server and bounce the user out.
+        window.addEventListener('pageshow', function(e) {
+            if (e.persisted) {
+                var lastLogout = localStorage.getItem('logout');
+                if (lastLogout && lastLogout > loadTime) {
+                    window.location.href = loginUrl;
+                }
+            }
+        });
+    })();
+    </script>
+</body>
+</html>

@@ -1,0 +1,3155 @@
+{
+  "catalog_version": "2026.07-fb-v2",
+  "source": "fb_ads",
+  "_notes": "PHASE-106 v1 seed;  (PHASE-107) adds `core` (true = always-on, tenant cannot disable in the field picker; absent = false) and maps the five response-driven scalars (attribution_setting, canvas_avg_view_percent/_time, cost_per_estimated_ad_recallers, full_view_impressions) with types matching what ES dynamic mapping already produced on live daily indices. action_metric.action_type is stored DOT-STRIPPED (reformat_insights replaces '.' with '_'), e.g. offsite_conversion_fb_pixel_purchase; the true FB action_type has a dot (offsite_conversion.fb_pixel_purchase). v1 only requests the parent ('actions'/'cost_per_action_type') and takes the response as-is, so this is harmless; the picker phase (107) must recover the true dotted value before matching on action_type. aggregation: sum=additive numeric, none=non-additive numeric (FB-deduped), ratio=computed, dimension=group-by/label, null=unknown (unmapped/dynamic or a request-only parent).",
+  "fields": [
+    {
+      "field_id": "fb_ads.@timestamp",
+      "origin": "system",
+      "es_field": "@timestamp",
+      "es_type": "date",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Timestamp",
+      "description": "Document index timestamp. System field.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.ad_account_id",
+      "origin": "metadata",
+      "es_field": "ad_account_id",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Account ID",
+      "description": "Identifier of the ad account that owns the ad.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.ad_campaign_daily_budget",
+      "origin": "metadata",
+      "es_field": "ad_campaign_daily_budget",
+      "es_type": "float",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Campaign Budget (Daily)",
+      "description": "Point-in-time budget CONFIG stamped by the daily metadata batch, not a windowed insight — converted on ingest from Meta's minor currency units (cents) to major units, consistent with insight_spend. Conversion assumes an offset-100 currency (all current accounts are USD); zero-decimal currencies (e.g. JPY) would need Meta's currency-offset table. Daily budget set on the CAMPAIGN (Advantage campaign budget / CBO). Absent when the budget lives on the ad set.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.ad_campaign_id",
+      "origin": "metadata",
+      "es_field": "ad_campaign_id",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Campaign ID",
+      "description": "Identifier of the campaign the ad belongs to.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.ad_campaign_lifetime_budget",
+      "origin": "metadata",
+      "es_field": "ad_campaign_lifetime_budget",
+      "es_type": "float",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Campaign Budget (Lifetime)",
+      "description": "Point-in-time budget CONFIG stamped by the daily metadata batch, not a windowed insight — converted on ingest from Meta's minor currency units (cents) to major units, consistent with insight_spend. Conversion assumes an offset-100 currency (all current accounts are USD); zero-decimal currencies (e.g. JPY) would need Meta's currency-offset table. Lifetime budget set on the CAMPAIGN (Advantage campaign budget / CBO). Absent when the budget lives on the ad set.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.ad_campaign_name",
+      "origin": "metadata",
+      "es_field": "ad_campaign_name",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Campaign Name",
+      "description": "Name of the campaign the ad belongs to.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.ad_created",
+      "origin": "metadata",
+      "es_field": "ad_created",
+      "es_type": "date",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Ad Created",
+      "description": "Timestamp when the ad was created.",
+      "deprecated": false,
+      "es_format": "yyyy-MM-dd'T'HH:mm:ssZ",
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.ad_id",
+      "origin": "metadata",
+      "es_field": "ad_id",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Ad ID",
+      "description": "Unique identifier of the ad.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.ad_name",
+      "origin": "metadata",
+      "es_field": "ad_name",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Ad Name",
+      "description": "Name of the ad as shown in Ads Manager.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.ad_preview",
+      "origin": "metadata",
+      "es_field": "ad_preview",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Ad Preview Link",
+      "description": "Shareable link to preview how the ad renders across placements.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.ad_status",
+      "origin": "metadata",
+      "es_field": "ad_status",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Ad Status",
+      "description": "Configured status of the ad (e.g. ACTIVE, PAUSED).",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.adset_bid_strategy",
+      "origin": "metadata",
+      "es_field": "adset_bid_strategy",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Ad Set Bid Strategy",
+      "description": "Bidding strategy used by the ad set (e.g. lowest cost, cost cap, bid cap).",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.adset_billing_event",
+      "origin": "metadata",
+      "es_field": "adset_billing_event",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Ad Set Billing Event",
+      "description": "The event the ad set is billed on (e.g. IMPRESSIONS, LINK_CLICKS).",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.adset_daily_budget",
+      "origin": "metadata",
+      "es_field": "adset_daily_budget",
+      "es_type": "float",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Ad Set Budget (Daily)",
+      "description": "Point-in-time budget CONFIG stamped by the daily metadata batch, not a windowed insight — converted on ingest from Meta's minor currency units (cents) to major units, consistent with insight_spend. Conversion assumes an offset-100 currency (all current accounts are USD); zero-decimal currencies (e.g. JPY) would need Meta's currency-offset table. Daily budget set on the AD SET. Absent under Advantage campaign budget (CBO) — fall back to the campaign budget fields, as Ads Manager does.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.adset_id",
+      "origin": "metadata",
+      "es_field": "adset_id",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Ad Set ID",
+      "description": "Identifier of the ad set the ad belongs to.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.adset_lifetime_budget",
+      "origin": "metadata",
+      "es_field": "adset_lifetime_budget",
+      "es_type": "float",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Ad Set Budget (Lifetime)",
+      "description": "Point-in-time budget CONFIG stamped by the daily metadata batch, not a windowed insight — converted on ingest from Meta's minor currency units (cents) to major units, consistent with insight_spend. Conversion assumes an offset-100 currency (all current accounts are USD); zero-decimal currencies (e.g. JPY) would need Meta's currency-offset table. Lifetime budget set on the AD SET. Absent under Advantage campaign budget (CBO) — fall back to the campaign budget fields, as Ads Manager does.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.adset_name",
+      "origin": "metadata",
+      "es_field": "adset_name",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Ad Set Name",
+      "description": "Name of the ad set the ad belongs to.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.adset_optimization_goal",
+      "origin": "metadata",
+      "es_field": "adset_optimization_goal",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Ad Set Optimization Goal",
+      "description": "The result the ad set is optimized to deliver.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.adset_promoted_object",
+      "origin": "metadata",
+      "es_field": "adset_promoted_object",
+      "es_type": "object",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Ad Set Promoted Object",
+      "description": "The object the ad set promotes (page, pixel, application, etc.). Nested structure.",
+      "deprecated": false,
+      "es_mapping": {
+        "type": "object",
+        "dynamic": "true"
+      },
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.adset_targeting",
+      "origin": "metadata",
+      "es_field": "adset_targeting",
+      "es_type": "object",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Ad Set Targeting",
+      "description": "Targeting specification of the ad set (audiences, geos, demographics). Nested structure.",
+      "deprecated": false,
+      "es_mapping": {
+        "type": "object",
+        "dynamic": "true"
+      },
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.asset_reach_accounts",
+      "origin": "metadata",
+      "es_field": "asset_reach_accounts",
+      "es_type": "integer",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Asset Reach Accounts",
+      "description": "number of SLICES (campaign x account) a per-asset MARGINAL window doc sums across; Meta's video_asset breakdown dedups per campaign at finest (level=account returns zero rows). >1 means the reach is a summed upper bound.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.asset_reach_cross_account",
+      "origin": "metadata",
+      "es_field": "asset_reach_cross_account",
+      "es_type": "boolean",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Asset Reach Cross-Account",
+      "description": "true when a per-asset marginal doc sums 2+ campaign/account slices; the read path labels those rows as upper bounds.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.breakdown_video_assets",
+      "origin": "system",
+      "es_field": null,
+      "es_type": null,
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Video Asset Breakdown",
+      "description": "pull-level toggle gating the per-video-asset window pulls (cells + marginals). Mirrors breakdown_demographics: per-tenant opt-out, default on.",
+      "deprecated": false,
+      "kind": "breakdown",
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.cost_per_result",
+      "origin": "system",
+      "es_field": "cost_per_result",
+      "es_type": "float",
+      "aggregation": "ratio",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Cost per Result",
+      "description": "Spend divided by the optimization result count. Computed as a ratio at query time. System field.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.cost_result_conversations",
+      "origin": "system",
+      "es_field": "cost_result_conversations",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Cost per Result (Conversations)",
+      "description": "Cost per result where the result is messaging conversations. System field.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.cost_result_link_clicks",
+      "origin": "system",
+      "es_field": "cost_result_link_clicks",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Cost per Result (Link Clicks)",
+      "description": "Cost per result where the result is link clicks. System field.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.creative_body",
+      "origin": "metadata",
+      "es_field": "creative_body",
+      "es_type": "text",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Creative Body",
+      "description": "Body text of the ad creative.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.creative_id",
+      "origin": "metadata",
+      "es_field": "creative_id",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Creative ID",
+      "description": "Identifier of the ad creative.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.creative_image_url",
+      "origin": "metadata",
+      "es_field": "creative_image_url",
+      "es_type": "text",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Creative Image URL",
+      "description": "URL of the ad creative's image.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.creative_title",
+      "origin": "metadata",
+      "es_field": "creative_title",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Creative Title",
+      "description": "Title text of the ad creative.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.creative_video_id",
+      "origin": "metadata",
+      "es_field": "creative_video_id",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Creative Video ID",
+      "description": "Identifier of the video used in the ad creative.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.effective_status",
+      "origin": "metadata",
+      "es_field": "effective_status",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Effective Delivery",
+      "description": "Effective delivery status of the ad, accounting for its own status and that of its parent campaign and ad set.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.account_currency",
+      "origin": "insight",
+      "es_field": "insight_account_currency",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily",
+        "window"
+      ],
+      "display_name": "Account Currency",
+      "description": "Currency of the ad account the spend and cost figures are reported in.",
+      "deprecated": false,
+      "core": true,
+      "kind": "metric",
+      "api_field": "account_currency",
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.actions_landing_page_view",
+      "origin": "insight",
+      "es_field": "insight_actions_landing_page_view",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Landing Page Views",
+      "description": "Number of times a person clicked an ad link and the destination page loaded.",
+      "deprecated": false,
+      "kind": "action_metric",
+      "api_field": "actions",
+      "action_type": "landing_page_view"
+    },
+    {
+      "field_id": "fb_ads.actions_link_click",
+      "origin": "insight",
+      "es_field": "insight_actions_link_click",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Link Clicks",
+      "description": "Number of clicks on ad links that lead to a destination.",
+      "deprecated": false,
+      "kind": "action_metric",
+      "api_field": "actions",
+      "action_type": "link_click"
+    },
+    {
+      "field_id": "fb_ads.actions_offsite_conversion_fb_pixel_purchase",
+      "origin": "insight",
+      "es_field": "insight_actions_offsite_conversion_fb_pixel_purchase",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Website Purchases",
+      "description": "Number of purchase events recorded by the Meta Pixel or Conversions API on the website and attributed to the ad.",
+      "deprecated": false,
+      "kind": "action_metric",
+      "api_field": "actions",
+      "action_type": "offsite_conversion_fb_pixel_purchase"
+    },
+    {
+      "field_id": "fb_ads.actions_onsite_conversion_lead_grouped",
+      "origin": "insight",
+      "es_field": "insight_actions_onsite_conversion_lead_grouped",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "On-Facebook Leads",
+      "description": "Number of leads submitted directly on Facebook-owned properties attributed to the ad.",
+      "deprecated": false,
+      "kind": "action_metric",
+      "api_field": "actions",
+      "action_type": "onsite_conversion_lead_grouped"
+    },
+    {
+      "field_id": "fb_ads.actions_onsite_conversion_messaging_conversation_started_7d",
+      "origin": "insight",
+      "es_field": "insight_actions_onsite_conversion_messaging_conversation_started_7d",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "New Messaging Contacts",
+      "description": "Number of new messaging conversations started within 7 days, attributed to the ad.",
+      "deprecated": false,
+      "kind": "action_metric",
+      "api_field": "actions",
+      "action_type": "onsite_conversion_messaging_conversation_started_7d"
+    },
+    {
+      "field_id": "fb_ads.actions_page_engagement",
+      "origin": "insight",
+      "es_field": "insight_actions_page_engagement",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Page Engagement",
+      "description": "Total actions taken on the Facebook Page and its posts attributed to the ad.",
+      "deprecated": false,
+      "kind": "action_metric",
+      "api_field": "actions",
+      "action_type": "page_engagement"
+    },
+    {
+      "field_id": "fb_ads.actions_post_engagement",
+      "origin": "insight",
+      "es_field": "insight_actions_post_engagement",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Post Engagement",
+      "description": "Total actions taken on the ad's post attributed to the ad.",
+      "deprecated": false,
+      "kind": "action_metric",
+      "api_field": "actions",
+      "action_type": "post_engagement"
+    },
+    {
+      "field_id": "fb_ads.actions_post_reaction",
+      "origin": "insight",
+      "es_field": "insight_actions_post_reaction",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Post Reactions",
+      "description": "Number of reactions (Like, Love, Haha, Wow, Sad, Angry) on the ad.",
+      "deprecated": false,
+      "kind": "action_metric",
+      "api_field": "actions",
+      "action_type": "post_reaction"
+    },
+    {
+      "field_id": "fb_ads.actions_comment",
+      "origin": "insight",
+      "es_field": "insight_actions_comment",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Comments (ads)",
+      "description": "Number of comments on the ad (the Summary Report's Comments tile reads this since Meta retired the Page Insights comment metric).",
+      "deprecated": false,
+      "kind": "action_metric",
+      "api_field": "actions",
+      "action_type": "comment"
+    },
+    {
+      "field_id": "fb_ads.actions_video_view",
+      "origin": "insight",
+      "es_field": "insight_actions_video_view",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "3-Second Video Plays",
+      "description": "Number of times the video played for at least three seconds.",
+      "deprecated": false,
+      "kind": "action_metric",
+      "api_field": "actions",
+      "action_type": "video_view"
+    },
+    {
+      "field_id": "fb_ads.buying_type",
+      "origin": "insight",
+      "es_field": "insight_buying_type",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily",
+        "window"
+      ],
+      "display_name": "Buying Type",
+      "description": "How the ad is purchased and targeted (e.g. AUCTION, RESERVED).",
+      "deprecated": false,
+      "kind": "metric",
+      "api_field": "buying_type",
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.clicks",
+      "origin": "insight",
+      "es_field": "insight_clicks",
+      "es_type": "integer",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily",
+        "window"
+      ],
+      "display_name": "Clicks (All)",
+      "description": "Number of clicks on the ad, including link clicks, reactions, comments and other clickable elements.",
+      "deprecated": false,
+      "core": true,
+      "kind": "metric",
+      "api_field": "clicks",
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.conversion_rate_ranking",
+      "origin": "insight",
+      "es_field": "insight_conversion_rate_ranking",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily"
+      ],
+      "display_name": "Conversion Rate Ranking",
+      "description": "Meta's ranking of the ad's expected conversion rate against competing ads.",
+      "deprecated": false,
+      "kind": "metric",
+      "api_field": "conversion_rate_ranking",
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.cost_per_action_type_landing_page_view",
+      "origin": "insight",
+      "es_field": "insight_cost_per_action_type_landing_page_view",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Cost per Landing Page View",
+      "description": "Average cost per landing page view.",
+      "deprecated": false,
+      "kind": "action_metric",
+      "api_field": "cost_per_action_type",
+      "action_type": "landing_page_view"
+    },
+    {
+      "field_id": "fb_ads.cost_per_action_type_link_click",
+      "origin": "insight",
+      "es_field": "insight_cost_per_action_type_link_click",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Cost per Link Click",
+      "description": "Average cost per link click.",
+      "deprecated": false,
+      "kind": "action_metric",
+      "api_field": "cost_per_action_type",
+      "action_type": "link_click"
+    },
+    {
+      "field_id": "fb_ads.cost_per_action_type_offsite_conversion_fb_pixel_purchase",
+      "origin": "insight",
+      "es_field": "insight_cost_per_action_type_offsite_conversion_fb_pixel_purchase",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Cost per Website Purchase",
+      "description": "Average cost per website purchase attributed to the ad.",
+      "deprecated": false,
+      "kind": "action_metric",
+      "api_field": "cost_per_action_type",
+      "action_type": "offsite_conversion_fb_pixel_purchase"
+    },
+    {
+      "field_id": "fb_ads.cost_per_action_type_onsite_conversion_lead_grouped",
+      "origin": "insight",
+      "es_field": "insight_cost_per_action_type_onsite_conversion_lead_grouped",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Cost per On-Facebook Lead",
+      "description": "Average cost per lead submitted on Facebook-owned properties.",
+      "deprecated": false,
+      "kind": "action_metric",
+      "api_field": "cost_per_action_type",
+      "action_type": "onsite_conversion_lead_grouped"
+    },
+    {
+      "field_id": "fb_ads.cost_per_action_type_onsite_conversion_messaging_conversation_started_7d",
+      "origin": "insight",
+      "es_field": "insight_cost_per_action_type_onsite_conversion_messaging_conversation_started_7d",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Cost per New Messaging Contact",
+      "description": "Average cost per new messaging conversation started within 7 days.",
+      "deprecated": false,
+      "kind": "action_metric",
+      "api_field": "cost_per_action_type",
+      "action_type": "onsite_conversion_messaging_conversation_started_7d"
+    },
+    {
+      "field_id": "fb_ads.cost_per_action_type_post_engagement",
+      "origin": "insight",
+      "es_field": "insight_cost_per_action_type_post_engagement",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Cost per Post Engagement",
+      "description": "Average cost per post engagement action.",
+      "deprecated": false,
+      "kind": "action_metric",
+      "api_field": "cost_per_action_type",
+      "action_type": "post_engagement"
+    },
+    {
+      "field_id": "fb_ads.cost_per_inline_link_click",
+      "origin": "insight",
+      "es_field": "insight_cost_per_inline_link_click",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily",
+        "window"
+      ],
+      "display_name": "Cost per Inline Link Click",
+      "description": "Average cost per inline link click.",
+      "deprecated": false,
+      "kind": "metric",
+      "api_field": "cost_per_inline_link_click",
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.cost_per_inline_post_engagement",
+      "origin": "insight",
+      "es_field": "insight_cost_per_inline_post_engagement",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily"
+      ],
+      "display_name": "Cost per Inline Post Engagement",
+      "description": "Average cost per inline post engagement action.",
+      "deprecated": false,
+      "kind": "metric",
+      "api_field": "cost_per_inline_post_engagement",
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.cost_per_unique_click",
+      "origin": "insight",
+      "es_field": "insight_cost_per_unique_click",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily",
+        "window"
+      ],
+      "display_name": "Cost per Unique Click",
+      "description": "Average cost per unique person who clicked (all).",
+      "deprecated": false,
+      "kind": "metric",
+      "api_field": "cost_per_unique_click",
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.cost_per_unique_inline_link_click",
+      "origin": "insight",
+      "es_field": "insight_cost_per_unique_inline_link_click",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily"
+      ],
+      "display_name": "Cost per Unique Inline Link Click",
+      "description": "Average cost per unique person who clicked an inline link.",
+      "deprecated": false,
+      "kind": "metric",
+      "api_field": "cost_per_unique_inline_link_click",
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.cpc",
+      "origin": "insight",
+      "es_field": "insight_cpc",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily",
+        "window"
+      ],
+      "display_name": "CPC (All)",
+      "description": "Average cost per click (all), spend divided by total clicks.",
+      "deprecated": false,
+      "kind": "metric",
+      "api_field": "cpc",
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.cpm",
+      "origin": "insight",
+      "es_field": "insight_cpm",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily",
+        "window"
+      ],
+      "display_name": "CPM",
+      "description": "Average cost per 1,000 impressions.",
+      "deprecated": false,
+      "kind": "metric",
+      "api_field": "cpm",
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.cpp",
+      "origin": "insight",
+      "es_field": "insight_cpp",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily",
+        "window"
+      ],
+      "display_name": "Cost per 1,000 People Reached",
+      "description": "Average cost to reach 1,000 unique people (spend / reach x 1,000).",
+      "deprecated": false,
+      "kind": "metric",
+      "api_field": "cpp",
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.ctr",
+      "origin": "insight",
+      "es_field": "insight_ctr",
+      "es_type": "float",
+      "aggregation": "ratio",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily",
+        "window"
+      ],
+      "display_name": "CTR (All)",
+      "description": "Click-through rate: percentage of impressions that resulted in a click (all). Aggregates as total clicks / total impressions.",
+      "deprecated": false,
+      "kind": "metric",
+      "api_field": "ctr",
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.date_start",
+      "origin": "insight",
+      "es_field": "insight_date_start",
+      "es_type": "date",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily"
+      ],
+      "display_name": "Reporting Starts",
+      "description": "Start date of the reporting window for this insight row.",
+      "deprecated": false,
+      "core": true,
+      "es_format": "yyyy-MM-dd",
+      "kind": "metric",
+      "api_field": "date_start",
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.date_stop",
+      "origin": "insight",
+      "es_field": "insight_date_stop",
+      "es_type": "date",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily"
+      ],
+      "display_name": "Reporting Ends",
+      "description": "End date of the reporting window for this insight row.",
+      "deprecated": false,
+      "core": true,
+      "es_format": "yyyy-MM-dd",
+      "kind": "metric",
+      "api_field": "date_stop",
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.engagement_rate_ranking",
+      "origin": "insight",
+      "es_field": "insight_engagement_rate_ranking",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily"
+      ],
+      "display_name": "Engagement Rate Ranking",
+      "description": "Meta's ranking of the ad's expected engagement rate against competing ads.",
+      "deprecated": false,
+      "kind": "metric",
+      "api_field": "engagement_rate_ranking",
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.estimated_ad_recall_rate",
+      "origin": "insight",
+      "es_field": "insight_estimated_ad_recall_rate",
+      "es_type": "float",
+      "aggregation": "none",
+      "mapped": true,
+      "mapped_in": [
+        "window"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily",
+        "window"
+      ],
+      "display_name": "Estimated Ad Recall Lift Rate",
+      "description": "Estimated rate at which additional people would recall the ad within two days. An estimate; cannot be summed across days or rows.",
+      "deprecated": false,
+      "kind": "metric",
+      "api_field": "estimated_ad_recall_rate",
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.estimated_ad_recallers",
+      "origin": "insight",
+      "es_field": "insight_estimated_ad_recallers",
+      "es_type": "float",
+      "aggregation": "none",
+      "mapped": true,
+      "mapped_in": [
+        "window"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily",
+        "window"
+      ],
+      "display_name": "Estimated Ad Recall Lift (People)",
+      "description": "Estimated number of additional people who would recall seeing the ad within two days. An estimate; cannot be summed across days or rows.",
+      "deprecated": false,
+      "kind": "metric",
+      "api_field": "estimated_ad_recallers",
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.frequency",
+      "origin": "insight",
+      "es_field": "insight_frequency",
+      "es_type": "float",
+      "aggregation": "none",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily",
+        "window"
+      ],
+      "display_name": "Frequency",
+      "description": "Average number of times each person saw the ad (impressions / reach). Computed by Meta per slice; not additive.",
+      "deprecated": false,
+      "core": true,
+      "kind": "metric",
+      "api_field": "frequency",
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.full_view_reach",
+      "origin": "insight",
+      "es_field": "insight_full_view_reach",
+      "es_type": "integer",
+      "aggregation": "none",
+      "mapped": true,
+      "mapped_in": [
+        "window"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily",
+        "window"
+      ],
+      "display_name": "Full View Reach",
+      "description": "Number of unique people who gave the ad a full view. Cannot be summed across days or rows.",
+      "deprecated": false,
+      "kind": "metric",
+      "api_field": "full_view_reach",
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.impressions",
+      "origin": "insight",
+      "es_field": "insight_impressions",
+      "es_type": "integer",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily",
+        "window"
+      ],
+      "display_name": "Impressions",
+      "description": "Number of times the ad was on screen.",
+      "deprecated": false,
+      "core": true,
+      "kind": "metric",
+      "api_field": "impressions",
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.inline_link_click_ctr",
+      "origin": "insight",
+      "es_field": "insight_inline_link_click_ctr",
+      "es_type": "float",
+      "aggregation": "ratio",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily",
+        "window"
+      ],
+      "display_name": "Inline Link Click CTR",
+      "description": "Percentage of impressions that resulted in an inline link click. Aggregates as link clicks / impressions.",
+      "deprecated": false,
+      "kind": "metric",
+      "api_field": "inline_link_click_ctr",
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.inline_link_clicks",
+      "origin": "insight",
+      "es_field": "insight_inline_link_clicks",
+      "es_type": "integer",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily",
+        "window"
+      ],
+      "display_name": "Inline Link Clicks",
+      "description": "Number of clicks on links within the ad that lead to destinations on or off Meta.",
+      "deprecated": false,
+      "kind": "metric",
+      "api_field": "inline_link_clicks",
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.inline_post_engagement",
+      "origin": "insight",
+      "es_field": "insight_inline_post_engagement",
+      "es_type": "integer",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily",
+        "window"
+      ],
+      "display_name": "Inline Post Engagement",
+      "description": "Total number of engagement actions taken on the ad's post.",
+      "deprecated": false,
+      "kind": "metric",
+      "api_field": "inline_post_engagement",
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.objective",
+      "origin": "insight",
+      "es_field": "insight_objective",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily",
+        "window"
+      ],
+      "display_name": "Objective",
+      "description": "Advertising objective the ad is optimized toward (e.g. OUTCOME_TRAFFIC, OUTCOME_ENGAGEMENT).",
+      "deprecated": false,
+      "kind": "metric",
+      "api_field": "objective",
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.optimization_goal",
+      "origin": "insight",
+      "es_field": "insight_optimization_goal",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily",
+        "window"
+      ],
+      "display_name": "Optimization Goal",
+      "description": "The result the ad set is optimized to deliver (e.g. LINK_CLICKS, REACH, CONVERSIONS).",
+      "deprecated": false,
+      "kind": "metric",
+      "api_field": "optimization_goal",
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.quality_ranking",
+      "origin": "insight",
+      "es_field": "insight_quality_ranking",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily"
+      ],
+      "display_name": "Quality Ranking",
+      "description": "Meta's ranking of the ad's perceived quality against ads competing for the same audience (e.g. ABOVE_AVERAGE, AVERAGE, BELOW_AVERAGE).",
+      "deprecated": false,
+      "kind": "metric",
+      "api_field": "quality_ranking",
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.reach",
+      "origin": "insight",
+      "es_field": "insight_reach",
+      "es_type": "integer",
+      "aggregation": "none",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily",
+        "window"
+      ],
+      "display_name": "Reach",
+      "description": "Number of unique people who saw the ad at least once. De-duplicated by Meta; cannot be summed across days or rows.",
+      "deprecated": false,
+      "core": true,
+      "kind": "metric",
+      "api_field": "reach",
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.spend",
+      "origin": "insight",
+      "es_field": "insight_spend",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily",
+        "window"
+      ],
+      "display_name": "Amount Spent",
+      "description": "Total amount spent on the ad over the reporting period, in the ad account currency.",
+      "deprecated": false,
+      "core": true,
+      "kind": "metric",
+      "api_field": "spend",
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.insight_targeting",
+      "origin": "metadata",
+      "es_field": "insight_targeting",
+      "es_type": "object",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Targeting (insight)",
+      "description": "Targeting detail captured alongside the insight row. Nested structure; pipeline-derived.",
+      "deprecated": false,
+      "es_mapping": {
+        "type": "object",
+        "dynamic": "true"
+      },
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.insight_window_end",
+      "origin": "system",
+      "es_field": "insight_window_end",
+      "es_type": "date",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Window End",
+      "description": "End date of the deduplicated window pull (window index only). System field.",
+      "deprecated": false,
+      "es_format": "yyyy-MM-dd",
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.insight_window_label",
+      "origin": "system",
+      "es_field": "insight_window_label",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Window Label",
+      "description": "Label of the deduplicated window pull (window index only). System field.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.grain",
+      "origin": "system",
+      "es_field": "grain",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Grain",
+      "description": "window-doc grain discriminator — \"adset\" (per-ad-set docs), \"team\" (one cross-ad-set deduplicated-reach doc per team), or \"page\" (one deduplicated-reach doc per team+page). System field.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.team_reach_accounts",
+      "origin": "system",
+      "es_field": "team_reach_accounts",
+      "es_type": "integer",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Team Reach Accounts",
+      "description": "how many ad accounts contributed to a grain=team reach doc. >1 means the value is summed across accounts (Meta cannot dedup across accounts). System field.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.team_reach_cross_account",
+      "origin": "system",
+      "es_field": "team_reach_cross_account",
+      "es_type": "boolean",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Team Reach Cross-Account",
+      "description": "true when a grain=team reach doc sums 2+ ad accounts (upper bound); false = single-account exact. System field.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.page_reach_accounts",
+      "origin": "system",
+      "es_field": "page_reach_accounts",
+      "es_type": "integer",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Page Reach Accounts",
+      "description": "how many ad accounts contributed to a grain=page reach doc. >1 means the value is summed across accounts (Meta cannot dedup across accounts). System field.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.page_reach_cross_account",
+      "origin": "system",
+      "es_field": "page_reach_cross_account",
+      "es_type": "boolean",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Page Reach Cross-Account",
+      "description": "true when a grain=page reach doc sums 2+ ad accounts (upper bound); false = single-account exact. System field.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.estimate_mau_lower_bound",
+      "origin": "metadata",
+      "es_field": "estimate_mau_lower_bound",
+      "es_type": "long",
+      "aggregation": "none",
+      "mapped": true,
+      "mapped_in": [
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Estimated Audience Size (lower bound)",
+      "description": "lower bound of Meta's estimated audience size (monthly active users matching the ad set's targeting spec) from the ad set delivery_estimate edge. A fetch-time snapshot of targetable users, NOT people reached; render with the upper bound as a range. Non-additive.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.estimate_mau_upper_bound",
+      "origin": "metadata",
+      "es_field": "estimate_mau_upper_bound",
+      "es_type": "long",
+      "aggregation": "none",
+      "mapped": true,
+      "mapped_in": [
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Estimated Audience Size (upper bound)",
+      "description": "upper bound of Meta's estimated audience size for the ad set's targeting spec (delivery_estimate edge). See estimate_mau_lower_bound. Non-additive.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.age",
+      "origin": "metadata",
+      "es_field": "age",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Age",
+      "description": "Meta age bucket (13-17 .. 65+, or Unknown) from the age/gender insights breakdown. Present on grain=demographics window docs; \"all\" marks a gender-marginal doc.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.gender",
+      "origin": "metadata",
+      "es_field": "gender",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Gender",
+      "description": "Meta gender bucket (male / female / unknown) from the age/gender insights breakdown. Present on grain=demographics window docs; \"all\" marks an age-marginal doc.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.breakdown_demographics",
+      "origin": "system",
+      "es_field": null,
+      "es_type": null,
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Demographics (Age / Gender)",
+      "description": "Collects audience reach by age bracket and gender, used by demographics charts and tiles. Adds one extra data request per ad account on each import; turn it off if you don't use demographics reporting.",
+      "_dev_notes": "gates the  age×gender breakdown pull (one extra level=account Meta call per ad account per window; grain=demographics docs). Toggle-only entry — governs the PULL, not a stored field: age/gender/demo_* carry the data. mapped:true is required so re-ENABLING passes the  unmapped-enable rejection (the underlying window mappings exist); es_field/api_field stay null so schemas and request lists are untouched.",
+      "deprecated": false,
+      "kind": "breakdown",
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.demo_reach_accounts",
+      "origin": "system",
+      "es_field": "demo_reach_accounts",
+      "es_type": "integer",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Demographics Reach Accounts",
+      "description": "how many ad accounts contributed to a grain=demographics doc. >1 means the reach is summed across accounts (Meta cannot dedup across accounts). System field.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.demo_reach_cross_account",
+      "origin": "system",
+      "es_field": "demo_reach_cross_account",
+      "es_type": "boolean",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Demographics Reach Cross-Account",
+      "description": "true when a grain=demographics doc sums 2+ ad accounts (upper bound); false = single-account exact. System field.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.insight_window_start",
+      "origin": "system",
+      "es_field": "insight_window_start",
+      "es_type": "date",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Window Start",
+      "description": "Start date of the deduplicated window pull (window index only). System field.",
+      "deprecated": false,
+      "es_format": "yyyy-MM-dd",
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.kibana_date",
+      "origin": "system",
+      "es_field": "kibana_date",
+      "es_type": "date",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Date",
+      "description": "Normalized date used for time-series charting. System field.",
+      "deprecated": false,
+      "es_format": "yyyy-MM-dd",
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.date",
+      "origin": "system",
+      "es_field": "date",
+      "es_type": "date",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Date",
+      "description": "cross-source day field, stamped by the sender as a copy of kibana_date so fb_insights answers the same date queries as youtube/google_ads/GA docs. Daily index only; window docs are range aggregates.",
+      "deprecated": false,
+      "es_format": "yyyy-MM-dd",
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.location_cities",
+      "origin": "system",
+      "es_field": "location_cities",
+      "es_type": null,
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Targeted Cities",
+      "description": "Geocoded cities derived from ad set targeting, for map visualization. System field.",
+      "deprecated": false,
+      "es_mapping": {
+        "properties": {
+          "name": {
+            "type": "keyword"
+          },
+          "coordinates": {
+            "type": "geo_point"
+          }
+        }
+      },
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.organization_title",
+      "origin": "system",
+      "es_field": "organization_title",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Organization",
+      "description": "Organization the attributed team belongs to. System field.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.page_engagement",
+      "origin": "metadata",
+      "es_field": "page_engagement",
+      "es_type": "integer",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Page Engagement Total",
+      "description": "Total engagement actions on the associated Page.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.page_fan_count",
+      "origin": "metadata",
+      "es_field": "page_fan_count",
+      "es_type": "integer",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Page Likes",
+      "description": "Number of people who like the associated Page.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.page_followers_count",
+      "origin": "metadata",
+      "es_field": "page_followers_count",
+      "es_type": "integer",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Page Followers",
+      "description": "Number of followers of the associated Page.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.page_id",
+      "origin": "metadata",
+      "es_field": "page_id",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Page ID",
+      "description": "Identifier of the Facebook Page associated with the ad.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.page_is_permanently_closed",
+      "origin": "metadata",
+      "es_field": "page_is_permanently_closed",
+      "es_type": "boolean",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Page Is Permanently Closed",
+      "description": "Whether the associated Page is marked permanently closed.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.page_is_published",
+      "origin": "metadata",
+      "es_field": "page_is_published",
+      "es_type": "boolean",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Page Is Published",
+      "description": "Whether the associated Page is published.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.page_is_unclaimed",
+      "origin": "metadata",
+      "es_field": "page_is_unclaimed",
+      "es_type": "boolean",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Page Is Unclaimed",
+      "description": "Whether the associated Page is unclaimed.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.page_link",
+      "origin": "metadata",
+      "es_field": "page_link",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Page Link",
+      "description": "URL of the associated Facebook Page.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.page_name",
+      "origin": "metadata",
+      "es_field": "page_name",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Page Name",
+      "description": "Name of the Facebook Page associated with the ad.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.page_new_like_count",
+      "origin": "metadata",
+      "es_field": "page_new_like_count",
+      "es_type": "integer",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Page New Likes",
+      "description": "Number of new Page likes in the period.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.page_talking_about_count",
+      "origin": "metadata",
+      "es_field": "page_talking_about_count",
+      "es_type": "integer",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Page Talking About Count",
+      "description": "Number of people talking about the associated Page.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.page_username",
+      "origin": "metadata",
+      "es_field": "page_username",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Page Username",
+      "description": "Username (handle) of the associated Facebook Page.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.page_verification_status",
+      "origin": "metadata",
+      "es_field": "page_verification_status",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Page Verification Status",
+      "description": "Verification status of the associated Page.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.publisher_platform",
+      "origin": "metadata",
+      "es_field": "publisher_platform",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Publisher Platform",
+      "description": "Platform where the ad was shown (e.g. facebook, instagram, audience_network).",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.result_count",
+      "origin": "system",
+      "es_field": "result_count",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Result Count",
+      "description": "Count of the optimization result for the row. System field.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.result_label",
+      "origin": "system",
+      "es_field": "result_label",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Result Label",
+      "description": "Human label for the optimization result type. System field.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.result_type",
+      "origin": "system",
+      "es_field": "result_type",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Result Type",
+      "description": "Type of optimization result computed for the row (derived from the ad set's optimization goal). System field.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.team_city",
+      "origin": "system",
+      "es_field": "team_city",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Team City",
+      "description": "City associated with the attributed team. System field.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.team_country",
+      "origin": "system",
+      "es_field": "team_country",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Team Country",
+      "description": "Country associated with the attributed team. System field.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.team_esid",
+      "origin": "system",
+      "es_field": "team_esid",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Team (internal ID)",
+      "description": "Internal team identifier this row is attributed to. System field.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.team_site_url",
+      "origin": "system",
+      "es_field": "team_site_url",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Team Site URL",
+      "description": "Site URL associated with the attributed team. System field.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.team_title",
+      "origin": "system",
+      "es_field": "team_title",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily",
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Team",
+      "description": "Display name of the team this row is attributed to. System field.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.action_values",
+      "origin": "insight",
+      "kind": "action_metric_parent",
+      "api_field": "action_values",
+      "action_type": null,
+      "es_field": null,
+      "es_type": null,
+      "aggregation": null,
+      "mapped": false,
+      "mapped_in": [],
+      "requested": true,
+      "requested_in": [
+        "daily"
+      ],
+      "display_name": "Action Values (all types)",
+      "description": "Parent request for per-action-type monetary values; expands into individual value metrics after the response.",
+      "deprecated": false
+    },
+    {
+      "field_id": "fb_ads.actions",
+      "origin": "insight",
+      "kind": "action_metric_parent",
+      "api_field": "actions",
+      "action_type": null,
+      "es_field": null,
+      "es_type": null,
+      "aggregation": null,
+      "mapped": false,
+      "mapped_in": [],
+      "requested": true,
+      "requested_in": [
+        "daily",
+        "window"
+      ],
+      "display_name": "Actions (all types)",
+      "description": "Parent request for the per-action-type counts; expands into individual action metrics after the response is returned.",
+      "deprecated": false
+    },
+    {
+      "field_id": "fb_ads.cost_per_action_type",
+      "origin": "insight",
+      "kind": "action_metric_parent",
+      "api_field": "cost_per_action_type",
+      "action_type": null,
+      "es_field": null,
+      "es_type": null,
+      "aggregation": null,
+      "mapped": false,
+      "mapped_in": [],
+      "requested": true,
+      "requested_in": [
+        "daily",
+        "window"
+      ],
+      "display_name": "Cost per Action (all types)",
+      "description": "Parent request for per-action-type cost figures; expands into individual cost metrics after the response.",
+      "deprecated": false
+    },
+    {
+      "field_id": "fb_ads.attribution_setting",
+      "origin": "insight",
+      "kind": "metric",
+      "api_field": "attribution_setting",
+      "action_type": null,
+      "es_field": "insight_attribution_setting",
+      "es_type": "text",
+      "es_mapping": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "daily"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily"
+      ],
+      "display_name": "Attribution Setting",
+      "description": "Attribution window Meta used when crediting conversions to the ad (e.g. 7-day click, 1-day view).",
+      "deprecated": false
+    },
+    {
+      "field_id": "fb_ads.canvas_avg_view_percent",
+      "origin": "insight",
+      "kind": "metric",
+      "api_field": "canvas_avg_view_percent",
+      "action_type": null,
+      "es_field": "insight_canvas_avg_view_percent",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily"
+      ],
+      "display_name": "Avg. Canvas View Percentage",
+      "description": "Average percentage of the Instant Experience that people viewed.",
+      "deprecated": false
+    },
+    {
+      "field_id": "fb_ads.canvas_avg_view_time",
+      "origin": "insight",
+      "kind": "metric",
+      "api_field": "canvas_avg_view_time",
+      "action_type": null,
+      "es_field": "insight_canvas_avg_view_time",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily"
+      ],
+      "display_name": "Avg. Canvas View Time",
+      "description": "Average time in seconds people spent viewing the Instant Experience.",
+      "deprecated": false
+    },
+    {
+      "field_id": "fb_ads.conversion_values",
+      "origin": "insight",
+      "kind": "metric",
+      "api_field": "conversion_values",
+      "action_type": null,
+      "es_field": "insight_conversion_values",
+      "es_type": null,
+      "aggregation": null,
+      "mapped": false,
+      "mapped_in": [],
+      "requested": true,
+      "requested_in": [
+        "daily"
+      ],
+      "display_name": "Conversion Values",
+      "description": "Total monetary value of conversions attributed to the ad.",
+      "deprecated": false
+    },
+    {
+      "field_id": "fb_ads.conversions",
+      "origin": "insight",
+      "kind": "metric",
+      "api_field": "conversions",
+      "action_type": null,
+      "es_field": "insight_conversions",
+      "es_type": null,
+      "aggregation": null,
+      "mapped": false,
+      "mapped_in": [],
+      "requested": true,
+      "requested_in": [
+        "daily"
+      ],
+      "display_name": "Conversions",
+      "description": "Total conversions attributed to the ad across configured conversion events.",
+      "deprecated": false
+    },
+    {
+      "field_id": "fb_ads.converted_product_quantity",
+      "origin": "insight",
+      "kind": "metric",
+      "api_field": "converted_product_quantity",
+      "action_type": null,
+      "es_field": "insight_converted_product_quantity",
+      "es_type": null,
+      "aggregation": null,
+      "mapped": false,
+      "mapped_in": [],
+      "requested": true,
+      "requested_in": [
+        "daily"
+      ],
+      "display_name": "Converted Product Quantity",
+      "description": "Number of catalog product units associated with attributed conversions.",
+      "deprecated": false
+    },
+    {
+      "field_id": "fb_ads.converted_product_value",
+      "origin": "insight",
+      "kind": "metric",
+      "api_field": "converted_product_value",
+      "action_type": null,
+      "es_field": "insight_converted_product_value",
+      "es_type": null,
+      "aggregation": null,
+      "mapped": false,
+      "mapped_in": [],
+      "requested": true,
+      "requested_in": [
+        "daily"
+      ],
+      "display_name": "Converted Product Value",
+      "description": "Total monetary value of catalog products associated with attributed conversions.",
+      "deprecated": false
+    },
+    {
+      "field_id": "fb_ads.cost_per_conversion",
+      "origin": "insight",
+      "kind": "metric",
+      "api_field": "cost_per_conversion",
+      "action_type": null,
+      "es_field": "insight_cost_per_conversion",
+      "es_type": null,
+      "aggregation": null,
+      "mapped": false,
+      "mapped_in": [],
+      "requested": true,
+      "requested_in": [
+        "daily"
+      ],
+      "display_name": "Cost per Conversion",
+      "description": "Average cost per attributed conversion (spend / conversions).",
+      "deprecated": false
+    },
+    {
+      "field_id": "fb_ads.cost_per_estimated_ad_recallers",
+      "origin": "insight",
+      "kind": "metric",
+      "api_field": "cost_per_estimated_ad_recallers",
+      "action_type": null,
+      "es_field": "insight_cost_per_estimated_ad_recallers",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily"
+      ],
+      "display_name": "Cost per Estimated Ad Recall Lift",
+      "description": "Average cost per estimated person reached who would recall the ad.",
+      "deprecated": false
+    },
+    {
+      "field_id": "fb_ads.cost_per_outbound_click",
+      "origin": "insight",
+      "kind": "metric",
+      "api_field": "cost_per_outbound_click",
+      "action_type": "outbound_click",
+      "es_field": "insight_cost_per_outbound_click_outbound_click",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily"
+      ],
+      "display_name": "Cost per Outbound Click",
+      "description": "Average cost per click that takes a person off Meta-owned properties.",
+      "deprecated": false
+    },
+    {
+      "field_id": "fb_ads.cost_per_thruplay",
+      "origin": "insight",
+      "kind": "metric",
+      "api_field": "cost_per_thruplay",
+      "action_type": "video_view",
+      "es_field": "insight_cost_per_thruplay_video_view",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily"
+      ],
+      "display_name": "Cost per ThruPlay",
+      "description": "Average cost per ThruPlay (video played to completion, or for at least 15 seconds).",
+      "deprecated": false
+    },
+    {
+      "field_id": "fb_ads.cost_per_unique_action_type",
+      "origin": "insight",
+      "kind": "metric",
+      "api_field": "cost_per_unique_action_type",
+      "action_type": null,
+      "es_field": "insight_cost_per_unique_action_type",
+      "es_type": null,
+      "aggregation": null,
+      "mapped": false,
+      "mapped_in": [],
+      "requested": true,
+      "requested_in": [
+        "daily"
+      ],
+      "display_name": "Cost per Unique Action",
+      "description": "Average cost per unique person who performed an action, broken down by action type.",
+      "deprecated": false
+    },
+    {
+      "field_id": "fb_ads.cost_per_unique_outbound_click",
+      "origin": "insight",
+      "kind": "metric",
+      "api_field": "cost_per_unique_outbound_click",
+      "action_type": "outbound_click",
+      "es_field": "insight_cost_per_unique_outbound_click_outbound_click",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily"
+      ],
+      "display_name": "Cost per Unique Outbound Click",
+      "description": "Average cost per unique person who performed an outbound click.",
+      "deprecated": false
+    },
+    {
+      "field_id": "fb_ads.dda_results",
+      "origin": "insight",
+      "kind": "metric",
+      "api_field": "dda_results",
+      "action_type": null,
+      "es_field": "insight_dda_results",
+      "es_type": null,
+      "aggregation": null,
+      "mapped": false,
+      "mapped_in": [],
+      "requested": true,
+      "requested_in": [
+        "daily"
+      ],
+      "display_name": "Data-Driven Attribution Results",
+      "description": "Results attributed under Meta's data-driven attribution model.",
+      "deprecated": false
+    },
+    {
+      "field_id": "fb_ads.full_view_impressions",
+      "origin": "insight",
+      "kind": "metric",
+      "api_field": "full_view_impressions",
+      "action_type": null,
+      "es_field": "insight_full_view_impressions",
+      "es_type": "long",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily"
+      ],
+      "display_name": "Full View Impressions",
+      "description": "Number of full-view impressions of the ad.",
+      "deprecated": false
+    },
+    {
+      "field_id": "fb_ads.outbound_clicks",
+      "origin": "insight",
+      "kind": "metric",
+      "api_field": "outbound_clicks",
+      "action_type": "outbound_click",
+      "es_field": "insight_outbound_clicks_outbound_click",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily"
+      ],
+      "display_name": "Outbound Clicks",
+      "description": "Number of clicks on links that take people off Meta-owned properties.",
+      "deprecated": false
+    },
+    {
+      "field_id": "fb_ads.outbound_clicks_ctr",
+      "origin": "insight",
+      "kind": "metric",
+      "api_field": "outbound_clicks_ctr",
+      "action_type": "outbound_click",
+      "es_field": "insight_outbound_clicks_ctr_outbound_click",
+      "es_type": "float",
+      "aggregation": "ratio",
+      "mapped": true,
+      "mapped_in": [
+        "daily"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily"
+      ],
+      "display_name": "Outbound CTR",
+      "description": "Percentage of impressions that resulted in an outbound click.",
+      "deprecated": false
+    },
+    {
+      "field_id": "fb_ads.total_postbacks_detailed",
+      "origin": "insight",
+      "kind": "metric",
+      "api_field": "total_postbacks_detailed",
+      "action_type": null,
+      "es_field": "insight_total_postbacks_detailed",
+      "es_type": null,
+      "aggregation": null,
+      "mapped": false,
+      "mapped_in": [],
+      "requested": true,
+      "requested_in": [
+        "daily"
+      ],
+      "display_name": "SKAdNetwork Postbacks",
+      "description": "Number of SKAdNetwork postbacks received for the ad (iOS attribution).",
+      "deprecated": false
+    },
+    {
+      "field_id": "fb_ads.total_postbacks_detailed_v4",
+      "origin": "insight",
+      "kind": "metric",
+      "api_field": "total_postbacks_detailed_v4",
+      "action_type": null,
+      "es_field": "insight_total_postbacks_detailed_v4",
+      "es_type": null,
+      "aggregation": null,
+      "mapped": false,
+      "mapped_in": [],
+      "requested": true,
+      "requested_in": [
+        "daily"
+      ],
+      "display_name": "SKAdNetwork Postbacks (v4)",
+      "description": "Number of SKAdNetwork 4.x postbacks received for the ad (iOS attribution).",
+      "deprecated": false
+    },
+    {
+      "field_id": "fb_ads.video_30_sec_watched_actions",
+      "origin": "insight",
+      "kind": "metric",
+      "api_field": "video_30_sec_watched_actions",
+      "action_type": "video_view",
+      "es_field": "insight_video_30_sec_watched_actions_video_view_total",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily"
+      ],
+      "display_name": "30-Second Video Plays",
+      "description": "Number of times the video played for at least 30 seconds, or to completion if shorter. (es_field pins the _total form reformat_insights() actually emits — the suffix-less key appears in 0 docs.)",
+      "deprecated": false
+    },
+    {
+      "field_id": "fb_ads.video_asset_id",
+      "origin": "metadata",
+      "es_field": "video_asset_id",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Video Asset ID",
+      "description": "the VIDEO id of a dynamic-creative media asset (Meta's video_asset.video_id; same value space as creative_video_id on daily docs). Window-only dimension: exists on grain=\"asset\" docs alone.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.video_asset_name",
+      "origin": "metadata",
+      "es_field": "video_asset_name",
+      "es_type": "keyword",
+      "aggregation": "dimension",
+      "mapped": true,
+      "mapped_in": [
+        "window"
+      ],
+      "requested": false,
+      "requested_in": [],
+      "display_name": "Video Asset Name",
+      "description": "the video file name of the media asset (video_asset.video_name), as Ads Manager's media-asset breakdown displays it. Window-only dimension.",
+      "deprecated": false,
+      "kind": null,
+      "api_field": null,
+      "action_type": null
+    },
+    {
+      "field_id": "fb_ads.video_avg_time_watched_actions",
+      "origin": "insight",
+      "kind": "metric",
+      "api_field": "video_avg_time_watched_actions",
+      "action_type": "video_view",
+      "es_field": "insight_video_avg_time_watched_actions_video_view_total",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily"
+      ],
+      "display_name": "Video Average Play Time",
+      "description": "Average time the video was played, including replays, per impression. (es_field pins the _total form reformat_insights() actually emits — the suffix-less key appears in 0 docs.)",
+      "deprecated": false
+    },
+    {
+      "field_id": "fb_ads.video_p100_watched_actions",
+      "origin": "insight",
+      "kind": "metric",
+      "api_field": "video_p100_watched_actions",
+      "action_type": "video_view",
+      "es_field": "insight_video_p100_watched_actions_video_view_total",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily"
+      ],
+      "display_name": "Video Plays at 100%",
+      "description": "Number of times the video played to 100% of its length, including skips to that point. (es_field pins the _total form reformat_insights() actually emits — the suffix-less key appears in 0 docs.)",
+      "deprecated": false
+    },
+    {
+      "field_id": "fb_ads.video_p25_watched_actions",
+      "origin": "insight",
+      "kind": "metric",
+      "api_field": "video_p25_watched_actions",
+      "action_type": "video_view",
+      "es_field": "insight_video_p25_watched_actions_video_view_total",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily"
+      ],
+      "display_name": "Video Plays at 25%",
+      "description": "Number of times the video played to 25% of its length, including skips to that point. (es_field pins the _total form reformat_insights() actually emits — the suffix-less key appears in 0 docs.)",
+      "deprecated": false
+    },
+    {
+      "field_id": "fb_ads.video_p50_watched_actions",
+      "origin": "insight",
+      "kind": "metric",
+      "api_field": "video_p50_watched_actions",
+      "action_type": "video_view",
+      "es_field": "insight_video_p50_watched_actions_video_view_total",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily"
+      ],
+      "display_name": "Video Plays at 50%",
+      "description": "Number of times the video played to 50% of its length, including skips to that point. (es_field pins the _total form reformat_insights() actually emits — the suffix-less key appears in 0 docs.)",
+      "deprecated": false
+    },
+    {
+      "field_id": "fb_ads.video_p75_watched_actions",
+      "origin": "insight",
+      "kind": "metric",
+      "api_field": "video_p75_watched_actions",
+      "action_type": "video_view",
+      "es_field": "insight_video_p75_watched_actions_video_view_total",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily"
+      ],
+      "display_name": "Video Plays at 75%",
+      "description": "Number of times the video played to 75% of its length, including skips to that point. (es_field pins the _total form reformat_insights() actually emits — the suffix-less key appears in 0 docs.)",
+      "deprecated": false
+    },
+    {
+      "field_id": "fb_ads.video_p95_watched_actions",
+      "origin": "insight",
+      "kind": "metric",
+      "api_field": "video_p95_watched_actions",
+      "action_type": "video_view",
+      "es_field": "insight_video_p95_watched_actions_video_view_total",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily"
+      ],
+      "display_name": "Video Plays at 95%",
+      "description": "Number of times the video played to 95% of its length, including skips to that point. (es_field pins the _total form reformat_insights() actually emits — the suffix-less key appears in 0 docs.)",
+      "deprecated": false
+    },
+    {
+      "field_id": "fb_ads.video_play_actions",
+      "origin": "insight",
+      "kind": "metric",
+      "api_field": "video_play_actions",
+      "action_type": "video_view",
+      "es_field": "insight_video_play_actions_video_view_total",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily"
+      ],
+      "display_name": "Video Plays",
+      "description": "Number of times the video started playing, excluding replays. (es_field pins the _total form reformat_insights() actually emits — the suffix-less key appears in 0 docs.)",
+      "deprecated": false
+    },
+    {
+      "field_id": "fb_ads.video_thruplay_watched_actions",
+      "origin": "insight",
+      "kind": "metric",
+      "api_field": "video_thruplay_watched_actions",
+      "action_type": "video_view",
+      "es_field": "insight_video_thruplay_watched_actions_video_view_total",
+      "es_type": "float",
+      "aggregation": "sum",
+      "mapped": true,
+      "mapped_in": [
+        "daily"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily"
+      ],
+      "display_name": "ThruPlays",
+      "description": "Number of times the video was played to completion, or for at least 15 seconds (the count Ads Manager's ThruPlays column reports; cost_per_thruplay was already imported without it). es_field carries the _total suffix because the video family arrives with action_video_type='total' and reformat_insights() keys on it — verified against staging docs 2026-08-19.",
+      "deprecated": false
+    },
+    {
+      "field_id": "fb_ads.website_ctr",
+      "origin": "insight",
+      "kind": "metric",
+      "api_field": "website_ctr",
+      "action_type": "link_click",
+      "es_field": "insight_website_ctr_link_click",
+      "es_type": "float",
+      "aggregation": "ratio",
+      "mapped": true,
+      "mapped_in": [
+        "daily"
+      ],
+      "requested": true,
+      "requested_in": [
+        "daily"
+      ],
+      "display_name": "Website CTR (Link Click-Through Rate)",
+      "description": "Percentage of impressions that resulted in a link click to the website.",
+      "deprecated": false
+    }
+  ]
+}

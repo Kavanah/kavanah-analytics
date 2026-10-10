@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  {# csrf-token is REQUIRED: query_batch is a CSRF-checked POST (not in
+     _CSRF_EXEMPT_ENDPOINTS) — without the token every live value stays
+     empty. view.html carries the same meta for charts.js. #}
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  {# app.js wraps fetch to inject X-CSRF-Token from the meta
+     above; charts.js' queryAndRender (table objects) posts api/query without
+     setting the header itself, exactly like view.html, which also relies on
+     this wrapper. #}
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  <meta name="cv-icon-base" content="{{ url_for('static', filename='dashboard_builder/icons') }}">
+  <meta name="cv-map-url" content="{{ url_for('static', filename='dashboard_builder/map_with_countries.svg') }}">
+  <title>Canvas Page</title>
+  {# builder.css carries the shared dashboard-filter strip/popover
+     styles (.db-filter-*). Loaded before the inline style block so
+     the canvas-specific rules below win any overlap. #}
+  <link rel="stylesheet" href="{{ url_for('static', filename='dashboard_builder/builder.css') }}?v=20260710a">
+  <style>
+    /* follow-up — read-only canvas viewer (embedded in the
+       dashboards.html iframe, same contract as view.html). Kept
+       self-contained apart from the shared filter-strip styles: no editor
+       CSS, no chrome. */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { background: #f7f8fa; }
+    /* follow-up: 20px breathing room above the sheet — the report
+       blocks sit inside a padded container, so strip→content distance is
+       container padding (20) + the page's own 16px, matching the report. */
+    #cvv-stage { position: relative; margin: 20px auto 0; transform-origin: top left; }
+    .cvv-object { position: absolute; overflow: hidden; }
+    .cvv-text {
+      padding: 6px 8px; font-size: 15px; line-height: 1.4; color: #16191f;
+      white-space: pre-wrap; word-break: break-word;
+      font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+      display: flex; flex-direction: column; justify-content: center;
+    }
+    /* rich blocks; keep in step with.cv-text in canvas_editor.css */
+    .cvv-text p { margin: 0; }
+    .cvv-text ul, .cvv-text ol { margin: 0; padding-left: 1.4em; }
+    .cvv-data-field {
+      display: flex; flex-direction: column; justify-content: center; gap: 4px;
+      padding: 12px 16px; background: #fff; border: 1px solid #e2ddd4;
+      border-radius: 10px; box-shadow: 0 2px 10px rgba(26,39,68,.06);
+      font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    .cvv-data-field .cvv-df-value {
+      font-size: 26px; font-weight: 700; color: #1a2744; line-height: 1.1;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .cvv-data-field .cvv-df-label {
+      font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+      color: #8da0b8; font-weight: 600; overflow: hidden;
+      text-overflow: ellipsis; white-space: nowrap;
+    }
+    .cvv-data-field.cvv-df-cell {
+      padding: 0; gap: 0; border-radius: 0; box-shadow: none;
+      border: 1px solid #E9EBED; justify-content: stretch; align-items: stretch;
+    }
+    .cvv-df-cell .cvv-df-label {
+      flex: 0 0 55%; display: flex; align-items: center; justify-content: center;
+      padding: 3px 6px; text-transform: none; letter-spacing: 0; font-weight: 700;
+      white-space: normal; text-overflow: clip; line-height: 1.15; text-align: center;
+    }
+    .cvv-df-cell .cvv-df-value {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      font-weight: 500; white-space: nowrap;
+    }
+    .cvv-data-field.cvv-df-plain {
+      background: transparent; border: none; box-shadow: none;
+      border-radius: 0; padding: 4px 6px; gap: 2px;
+    }
+    .cvv-df-plain .cvv-df-label {
+      text-transform: none; letter-spacing: 0; white-space: normal;
+      line-height: 1.2; overflow: visible;
+    }
+    .cvv-icon { display: flex; align-items: center; justify-content: center; }
+    .cvv-icon img { width: 100%; height: 100%; object-fit: contain; }
+    /* shapes + images; keep in step with canvas_editor.css */
+    .cvv-shape, .cvv-image { background: transparent; }
+    .cvv-shape .cvs-text p { margin: 0; }
+    .cvv-shape .cvs-text ul, .cvv-shape .cvs-text ol { margin: 0; padding-left: 1.4em; }
+    .cvv-placeholder-obj {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 6px; padding: 12px; text-align: center;
+      border: 2px dashed #c9953c; border-radius: 10px; background: #fdf8ee;
+      font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    .cvv-placeholder-obj .cvv-ph-label { font-size: 14px; font-weight: 700; color: #7a5b1c; }
+    .cvv-placeholder-obj .cvv-ph-reason { font-size: 11px; color: #8a7340; max-width: 90%; }
+    .cvv-error {
+      padding: 24px; color: #d13212; font-size: 13px;
+      font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    /* canvas PDF export lost every background fill.
+       Browsers drop background colors/images when printing unless
+       print-color-adjust says otherwise, so the blue/navy/gold section
+       panels came out white while text colors (which are NOT stripped)
+       survived — the giveaway that this is the print-adjust default and
+       not a stylesheet-loading failure.
+
+       builder.css:964 has such a rule but scopes it to
+       `.cv-section, .cv-metric-card` — the charts.js canvas classes. This
+       viewer renders `.cvv-*` objects whose fills are INLINE styles on
+       .cvv-object/.cvv-shape, so that rule never matched. Scope to the
+       universal selector: the fills live on arbitrary descendants, so
+       enumerating classes would silently miss any new object type. */
+    @media print {
+      html, body, #cvv-stage, #cvv-stage *,
+      #cvv-stage *::before, #cvv-stage *::after {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      /* The stage is the whole document when printing; a trailing margin or
+         stray overflow here becomes an empty second page. */
+      html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
+      #cvv-stage { margin: 0 !important; }
+      .db-filter-strip { display: none !important; }
+    }
+  </style>
+</head>
+<body data-dashboard-id="{{ dashboard_id }}">
+  <!-- dashboard-level filter strip.
+       Rendered by renderDashboardFilterStrip() after the doc loads; stays
+       hidden when the page defines no filters. -->
+  <div class="db-filter-strip" id="dashboard-filter-strip" style="display:none;"></div>
+  <div id="cvv-stage"></div>
+  {# dashboard_filters.js must load BEFORE canvas_view.js — the
+     viewer calls renderDashboardFilterStrip / hydrateViewerFilterSelections
+     during boot. #}
+  <script src="{{ url_for('static', filename='dashboard_builder/dashboard_filters.js') }}?v=20260713a"></script>
+  {# theme tokens (single source: canvas_theme.py) + the shared
+     resolver, loaded before every canvas renderer. #}
+  <script nonce="{{ csp_nonce }}">window.CANVAS_THEME_TOKENS = {{ canvas_theme_tokens|safe }};</script>
+  <script src="{{ url_for('static', filename='dashboard_builder/canvas_theme.js') }}?v=20260717a"></script>
+  {# shared live geo/trend chart renderer (loaded before the
+     viewer, which calls window.cvRenderChartInto). #}
+  <script src="{{ url_for('static', filename='dashboard_builder/canvas_charts.js') }}?v=20260912a"></script>
+  <script src="{{ url_for('static', filename='dashboard_builder/canvas_view.js') }}?v=20260717a"></script>
+  {# table objects render through the REAL charts.js renderTable.
+     Loaded AFTER canvas_view.js: charts.js reads DASHBOARD_BASE at load time
+     and canvas_view.js sets it ('../' here). escHtml is a builder.js global
+     charts.js expects — stub it like view.html does. #}
+  <script nonce="{{ csp_nonce }}">
+    function escHtml(s) {
+      if (!s) return '';
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+  </script>
+  <script src="{{ url_for('static', filename='dashboard_builder/charts.js') }}?v=20261007a"></script>
+  {# the dashboards-page Export → PDF path posts 'print-now' into
+     this iframe (same contract as view.html). Before this handler existed the
+     message fell on the floor and canvas PDF export silently did nothing —
+     the loud half of the ticket. Branding headers are an echarts-viewer
+     feature; the canvas page prints as designed, so e.data.branding is
+     ignored here. #}
+  <script nonce="{{ csp_nonce }}">
+    window.addEventListener('message', function (e) {
+      if (!e.data || e.data.type !== 'print-now') return;
+      var stage = document.getElementById('cvv-stage');
+      // Size the @page to the rendered canvas so nothing clips and there is
+      // no gray tail — same approach as view.html's print path.
+      var pageStyle = null;
+      try {
+        // measure the STAGE only, not documentElement. The latter
+        // includes the stage's 20px top margin and the filter strip, so the
+        // page came out taller than its content.
+        var cw = stage.scrollWidth;
+        var ch = stage.scrollHeight;
+        pageStyle = document.createElement('style');
+        // margin MUST be 0. @page margin is added OUTSIDE the
+        // declared size, so any non-zero value made the content ~23px taller
+        // than the printable area and pushed a blank second page. The canvas
+        // already carries its own internal padding.
+        pageStyle.textContent = '@page { size: ' + cw + 'px ' + ch + 'px; margin: 0; }';
+        document.head.appendChild(pageStyle);
+      } catch (ex) {}
+      if (window.parent !== window) {
+        window.parent.postMessage({ type: 'echarts-print-ready' }, '*');
+      }
+      window.print();
+      if (window.parent !== window) {
+        window.parent.postMessage({ type: 'echarts-afterprint' }, '*');
+      }
+      if (pageStyle && pageStyle.parentNode) pageStyle.parentNode.removeChild(pageStyle);
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Save Your Recovery Codes - Digital Engagement</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/cloudscape.css') }}">
+    <style>
+        .login-topbar { position: fixed; top: 0; left: 0; right: 0; height: 56px; background: var(--cs-nav-bg); display: flex; align-items: center; padding: 0 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.25); z-index: 10; }
+        .login-topbar-logo { height: 24px; width: auto; margin-right: 12px; }
+        .login-topbar-title { font-size: 17px; font-weight: 700; color: #FFFFFF; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: var(--cs-bg-page);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .login-container { width: 100%; max-width: 480px; }
+        .login-card {
+            background: white;
+            border-radius: var(--cs-radius-l);
+            box-shadow: var(--cs-shadow-m);
+            padding: 40px;
+        }
+        .login-header {
+            text-align: center;
+            margin-bottom: 20px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #ecf0f1;
+        }
+        .login-header h1 { color: var(--cs-text-heading, #000716); font-size: 24px; margin-bottom: 5px; font-weight: 600; }
+        .login-header h2 { color: var(--cs-text-secondary, #5F6B7A); font-size: 16px; font-weight: 400; }
+        .alert { padding: 15px; margin-bottom: 20px; border-radius: 6px; font-size: 14px; }
+        .alert-warning { background: #fff3cd; color: #664d03; border: 1px solid #ffe69c; }
+        .intro { color: #4a5568; font-size: 14px; line-height: 1.6; margin-bottom: 16px; }
+        .codes-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px 16px;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 18px 20px;
+            margin-bottom: 16px;
+        }
+        .codes-grid code {
+            font-family: 'Courier New', monospace;
+            font-size: 15px;
+            letter-spacing: 1px;
+            color: var(--cs-text-heading, #000716);
+        }
+        .actions-row { display: flex; gap: 12px; margin-bottom: 22px; }
+        .btn-secondary {
+            flex: 1;
+            padding: 11px;
+            background: #ffffff;
+            color: var(--cs-text-link);
+            border: 1px solid var(--cs-text-link);
+            border-radius: var(--cs-radius-s);
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            text-align: center;
+            text-decoration: none;
+        }
+        .btn-secondary:hover { background: #f2f8fd; }
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 14px;
+            background: var(--cs-btn-primary-bg);
+            color: #FFFFFF;
+            border: none;
+            border-radius: var(--cs-radius-s);
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background 90ms ease-out;
+        }
+        .btn:hover { background: var(--cs-btn-primary-bg-hover); }
+        .btn:disabled { background: var(--cs-bg-page); color: var(--cs-text-disabled); cursor: not-allowed; }
+        .confirm-line { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 16px; font-size: 14px; color: #4a5568; }
+        .confirm-line input { margin-top: 3px; }
+        @media (max-width: 480px) {
+            .login-card { padding: 30px 25px; }
+            .codes-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-topbar"><img src="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5" alt="" class="login-topbar-logo"><span class="login-topbar-title">Kavanah Analytics</span></div>
+    <div class="login-container">
+        <div class="login-card">
+            <div class="login-header">
+                <h1>Save Your Recovery Codes</h1>
+                <h2>Two-Factor Authentication</h2>
+            </div>
+
+            {% if codes_consumed %}
+            {# Back-button landing after Continue already cleared the one-time
+               plaintext. Rendered as a plain 200 page (no redirect) so Back
+               doesn't loop — see mfa_recovery_codes_page(). #}
+            <p class="intro">
+                Your recovery codes have already been shown and can't be
+                displayed again. If you didn't save them, you can generate a new
+                set from your profile's security settings.
+            </p>
+            <a href="{{ profile_url }}" class="btn" style="text-decoration:none;text-align:center;">Back to profile</a>
+            {% else %}
+            <div class="alert alert-warning">
+                These codes are shown <strong>once</strong> and won't be displayed again.
+                Store them somewhere safe.
+            </div>
+
+            <p class="intro">
+                If you lose access to your authenticator, each code lets you sign in
+                once. Treat them like passwords.
+            </p>
+
+            <div class="codes-grid" id="codes-grid">
+                {% for code in recovery_codes %}
+                <code>{{ code }}</code>
+                {% endfor %}
+            </div>
+
+            <div class="actions-row">
+                <button type="button" class="btn-secondary" id="download-btn">Download .txt</button>
+                <button type="button" class="btn-secondary" id="copy-btn">Copy to clipboard</button>
+            </div>
+
+            <form method="POST" action="{{ url_for('mfa_recovery_codes_continue') }}" id="continue-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <label class="confirm-line">
+                    <input type="checkbox" id="saved-checkbox" required>
+                    <span>I've saved my recovery codes somewhere safe.</span>
+                </label>
+                <button type="submit" class="btn" id="continue-btn" disabled>Continue</button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+    {% if not codes_consumed %}
+    <script nonce="{{ csp_nonce }}">
+        (function () {
+            var codes = [];
+            document.querySelectorAll('#codes-grid code').forEach(function (el) {
+                codes.push(el.textContent.trim());
+            });
+            var text = codes.join('\n') + '\n';
+
+            var downloadBtn = document.getElementById('download-btn');
+            if (downloadBtn) {
+                downloadBtn.addEventListener('click', function () {
+                    var blob = new Blob([text], { type: 'text/plain' });
+                    var url = URL.createObjectURL(blob);
+                    var a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'kavanah-recovery-codes.txt';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                });
+            }
+
+            var copyBtn = document.getElementById('copy-btn');
+            if (copyBtn) {
+                copyBtn.addEventListener('click', function () {
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(text).then(function () {
+                            copyBtn.textContent = 'Copied!';
+                            setTimeout(function () { copyBtn.textContent = 'Copy to clipboard'; }, 1500);
+                        });
+                    }
+                });
+            }
+
+            var checkbox = document.getElementById('saved-checkbox');
+            var continueBtn = document.getElementById('continue-btn');
+            if (checkbox && continueBtn) {
+                checkbox.addEventListener('change', function () {
+                    continueBtn.disabled = !checkbox.checked;
+                });
+            }
+        })();
+    </script>
+    {% endif %}
+</body>
+</html>

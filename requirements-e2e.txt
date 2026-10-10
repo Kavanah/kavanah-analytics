@@ -1,0 +1,16 @@
+# End-to-end (browser-driven) test dependencies.
+#
+# Kept separate from requirements-test.txt so the standard pytest suite
+# stays fast and free of native dependencies. E2E tests are opt-in:
+# install only when you want to run them, and run them with `pytest -m e2e`.
+#
+# After installing, you must also install a browser binary:
+#   playwright install chromium
+#
+# Tests are tagged with the `e2e` marker; the default pytest run excludes
+# them so the existing pre-push gate keeps its 30s budget.
+
+-r requirements-test.txt
+
+playwright==1.63.0
+pytest-playwright==0.9.0

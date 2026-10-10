@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Join {{ org_title }} on Kavanah?</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/cloudscape.css') }}">
+    <style>
+        body {
+            background: var(--cs-bg-page);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .login-topbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 56px;
+            background: var(--cs-nav-bg);
+            display: flex;
+            align-items: center;
+            padding: 0 24px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+            z-index: 10;
+        }
+        .login-topbar-logo { height: 24px; width: auto; margin-right: 12px; }
+        .login-topbar-title { font-size: 17px; font-weight: 700; color: #FFFFFF; }
+
+        .prompt-container { width: 100%; max-width: 440px; margin-top: 28px; }
+
+        .prompt-card {
+            background: var(--cs-bg-primary);
+            border: 1px solid var(--cs-border-default);
+            border-radius: var(--cs-radius-l);
+            box-shadow: var(--cs-shadow-m);
+            padding: 40px 36px 32px;
+        }
+
+        .prompt-header { text-align: center; margin-bottom: 24px; }
+        .prompt-header h1 {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--cs-text-heading);
+            margin-bottom: 8px;
+        }
+        .prompt-header p {
+            font-size: var(--cs-font-size-m);
+            color: var(--cs-text-secondary);
+            line-height: 1.45;
+        }
+        .prompt-org {
+            font-weight: 700;
+            color: var(--cs-text-heading);
+        }
+
+        .btn-primary {
+            display: block;
+            width: 100%;
+            height: 40px;
+            background: var(--cs-btn-primary-bg);
+            color: #FFFFFF;
+            border: none;
+            border-radius: var(--cs-radius-s);
+            font-size: var(--cs-font-size-l);
+            font-weight: 700;
+            font-family: var(--cs-font);
+            cursor: pointer;
+            transition: background 90ms ease-out;
+            margin-top: 8px;
+        }
+        .btn-primary:hover { background: var(--cs-btn-primary-bg-hover); }
+        .btn-primary:focus-visible {
+            outline: none;
+            box-shadow: 0 0 0 2px #FFFFFF, 0 0 0 4px var(--cs-btn-primary-bg);
+        }
+
+        .btn-secondary {
+            display: block;
+            width: 100%;
+            height: 40px;
+            background: var(--cs-bg-primary);
+            color: var(--cs-text-link);
+            border: 1px solid var(--cs-border-input);
+            border-radius: var(--cs-radius-s);
+            font-size: var(--cs-font-size-m);
+            font-weight: 600;
+            font-family: var(--cs-font);
+            cursor: pointer;
+            transition: background 90ms ease-out, border-color 90ms ease-out;
+            margin-top: 12px;
+        }
+        .btn-secondary:hover {
+            background: var(--cs-bg-page);
+            border-color: var(--cs-text-secondary);
+        }
+        .btn-secondary:focus-visible {
+            outline: none;
+            box-shadow: 0 0 0 2px #FFFFFF, 0 0 0 4px var(--cs-btn-primary-bg);
+        }
+
+        .prompt-footnote {
+            margin-top: 20px;
+            padding-top: 16px;
+            border-top: 1px solid var(--cs-border-divider);
+            font-size: 12px;
+            color: var(--cs-text-secondary);
+            text-align: center;
+            line-height: 1.45;
+        }
+
+        @media (max-width: 480px) {
+            .prompt-card { padding: 32px 24px 24px; }
+            .prompt-header h1 { font-size: 19px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-topbar">
+        <img src="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5" alt="" class="login-topbar-logo">
+        <span class="login-topbar-title">Kavanah Analytics</span>
+    </div>
+
+    <div class="prompt-container">
+        <div class="prompt-card">
+            <div class="prompt-header">
+                <h1>Join <span class="prompt-org">{{ org_title }}</span> on Kavanah?</h1>
+                <p>
+                    Your email is at <strong>{{ domain }}</strong>, which
+                    <span class="prompt-org">{{ org_title }}</span> has set up for
+                    auto-join. Pick "Join" and you'll be added to
+                    <span class="prompt-org">{{ org_title }}</span> once you verify
+                    your email, or "Create my own" to start a separate organization.
+                </p>
+            </div>
+
+            <form method="POST" action="{{ url_for('analytics.onboarding_join_prompt_post') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+                <button type="submit" name="action" value="join" class="btn-primary">
+                    Join {{ org_title }}
+                </button>
+                <button type="submit" name="action" value="create_own" class="btn-secondary">
+                    Create my own organization
+                </button>
+            </form>
+
+            <div class="prompt-footnote">
+                Only an admin of <span class="prompt-org">{{ org_title }}</span> can list
+                a domain here. You can leave the org at any time from your account
+                settings.
+            </div>
+        </div>
+    </div>
+</body>
+</html>

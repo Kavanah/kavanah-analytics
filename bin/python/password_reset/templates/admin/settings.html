@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Settings - Password Reset{% endblock %}
+
+{% block body %}
+<div class="container admin-container">
+    <div class="header-bar">
+        <h2>Settings</h2>
+        <div>
+            {% if is_configured %}
+                <span class="status-badge configured">✓ Configured</span>
+            {% else %}
+                <span class="status-badge not-configured">✗ Not Configured</span>
+            {% endif %}
+            <a href="{{ url_for('view_audit_log') }}" class="btn btn-secondary btn-small" style="margin-left: 10px;">Audit Log</a>
+            <a href="{{ url_for('admin_logout') }}" class="btn btn-secondary btn-small" style="margin-left: 10px;">Logout</a>
+        </div>
+    </div>
+    
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="flash-messages">
+                {% for category, message in messages %}
+                    <div class="flash {{ category }}">{{ message }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+    
+    <form method="POST" action="{{ url_for('admin_settings') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <!-- SMTP Settings -->
+        <div class="section">
+            <h3>SMTP Settings (Email)</h3>
+            {% set env_managed = env_managed | default([]) %}
+            {% if env_managed %}
+            <p class="help-text">Fields marked "managed by environment" are set from SSM at
+               container start and cannot be edited here.</p>
+            {% endif %}
+
+            <div class="row">
+                <div class="form-group">
+                    <label for="smtp_host">SMTP Host</label>
+                    <input type="text" id="smtp_host" name="smtp_host"
+                           value="{{ settings.get('smtp_host', '') }}"
+                           placeholder="e.g., email-smtp.us-east-1.amazonaws.com"
+                           {{ 'disabled' if 'smtp_host' in env_managed }}>
+                    {% if 'smtp_host' in env_managed %}<p class="help-text">Managed by environment.</p>{% endif %}
+                </div>
+
+                <div class="form-group">
+                    <label for="smtp_port">SMTP Port</label>
+                    <input type="number" id="smtp_port" name="smtp_port"
+                           value="{{ settings.get('smtp_port', 587) }}"
+                           placeholder="587"
+                           {{ 'disabled' if 'smtp_port' in env_managed }}>
+                    {% if 'smtp_port' in env_managed %}<p class="help-text">Managed by environment.</p>{% endif %}
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="smtp_username">SMTP Username</label>
+                <input type="text" id="smtp_username" name="smtp_username"
+                       value="{{ settings.get('smtp_username', '') }}"
+                       placeholder="SMTP username or API key"
+                       {{ 'disabled' if 'smtp_username' in env_managed }}>
+                {% if 'smtp_username' in env_managed %}<p class="help-text">Managed by environment.</p>{% endif %}
+            </div>
+
+            <div class="form-group">
+                <label for="smtp_password">SMTP Password</label>
+                {% if 'smtp_password' in env_managed %}
+                <div class="pw-wrap">
+                    <input type="password" id="smtp_password" name="smtp_password" class="pw-input"
+                           placeholder="••••••••" disabled>
+                </div>
+                <p class="help-text">Managed by environment.</p>
+                {% else %}
+                <div class="pw-wrap">
+                    <input type="password" id="smtp_password" name="smtp_password" class="pw-input"
+                           placeholder="{{ '••••••••' if settings.get('smtp_password') else 'Enter SMTP password' }}">
+                    {% with pw_target="smtp_password" %}{% include "_pw_toggle.html" %}{% endwith %}
+                </div>
+                <p class="help-text">Leave blank to keep existing password.</p>
+                {% endif %}
+            </div>
+            
+            <div class="form-group">
+                <div class="checkbox-group">
+                    <input type="checkbox" id="smtp_use_tls" name="smtp_use_tls" 
+                           {{ 'checked' if settings.get('smtp_use_tls', True) else '' }}>
+                    <label for="smtp_use_tls" style="margin-bottom: 0;">Use TLS (recommended)</label>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="from_email">From Email Address</label>
+                <input type="email" id="from_email" name="from_email" 
+                       value="{{ settings.get('from_email', '') }}" 
+                       placeholder="e.g., noreply@yourdomain.com">
+                <p class="help-text">Must be a verified sender in your SMTP service.</p>
+            </div>
+        </div>
+        
+        <!-- App Settings -->
+        <div class="section">
+            <h3>Application Settings</h3>
+            
+            <div class="form-group">
+                <label for="app_url">Application URL</label>
+                <input type="text" id="app_url" name="app_url" 
+                       value="{{ settings.get('app_url', '') }}" 
+                       placeholder="e.g., https://your-domain.com/reset-password">
+                <p class="help-text">Full URL where this app is accessible (used in reset emails).</p>
+            </div>
+            
+            <div class="form-group">
+                <label for="admin_contact">Admin Contact Email</label>
+                <input type="email" id="admin_contact" name="admin_contact" 
+                       value="{{ settings.get('admin_contact', '') }}" 
+                       placeholder="e.g., admin@yourdomain.com">
+                <p class="help-text">Shown to users who don't have an email on file.</p>
+            </div>
+            
+            <div class="form-group">
+                <label for="token_expiry_minutes">Reset Link Expiry (minutes)</label>
+                <input type="number" id="token_expiry_minutes" name="token_expiry_minutes" 
+                       value="{{ settings.get('token_expiry_minutes', 60) }}" 
+                       min="5" max="1440">
+                <p class="help-text">How long reset links are valid (5-1440 minutes).</p>
+            </div>
+        </div>
+        
+        <button type="submit">Save Settings</button>
+    </form>
+    
+    <!-- Test Email -->
+    <div class="section" style="margin-top: 30px;">
+        <h3>Test Email</h3>
+        <form method="POST" action="{{ url_for('test_email') }}" style="display: flex; gap: 10px;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="email" name="test_email" placeholder="Enter email to test"
+                   style="flex: 1;" required>
+            <button type="submit" class="btn-small" style="width: auto;">Send Test</button>
+        </form>
+    </div>
+    
+    <!-- Change Admin Password -->
+    <div class="section" style="margin-top: 30px;">
+        <h3>Change Admin Password</h3>
+        <form method="POST" action="{{ url_for('admin_change_password') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-group">
+                <label for="current_password">Current Password</label>
+                <div class="pw-wrap">
+                    <input type="password" id="current_password" name="current_password" class="pw-input" required>
+                    {% with pw_target="current_password" %}{% include "_pw_toggle.html" %}{% endwith %}
+                </div>
+            </div>
+            <div class="row">
+                <div class="form-group">
+                    <label for="new_password">New Password</label>
+                    <div class="pw-wrap">
+                        <input type="password" id="new_password" name="new_password" class="pw-input" required>
+                        {% with pw_target="new_password" %}{% include "_pw_toggle.html" %}{% endwith %}
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="confirm_password">Confirm Password</label>
+                    <div class="pw-wrap">
+                        <input type="password" id="confirm_password" name="confirm_password" class="pw-input" required>
+                        {% with pw_target="confirm_password" %}{% include "_pw_toggle.html" %}{% endwith %}
+                    </div>
+                </div>
+            </div>
+            <button type="submit">Change Password</button>
+        </form>
+    </div>
+    
+    <div class="back-link" style="margin-top: 30px;">
+        <a href="{{ url_for('request_reset') }}">← View User Reset Page</a>
+    </div>
+</div>
+{% endblock %}

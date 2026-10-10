@@ -1,0 +1,32 @@
+{
+  "properties": {
+    "@timestamp": {"type": "date"},
+    "kibana_date": {"type": "date", "format": "yyyy-MM-dd"},
+    "post_created_time": {"type": "date"},
+
+    "post_id": {"type": "keyword"},
+    "post_message": {"type": "text"},
+    "post_type": {"type": "keyword"},
+    "post_permalink_url": {"type": "keyword"},
+
+    "post_comments": {"type": "long"},
+    "post_reactions_total": {"type": "long"},
+    "post_shares": {"type": "long"},
+    "post_impressions": {"type": "long"},
+    "post_impressions_unique": {"type": "long"},
+    "post_engaged_users": {"type": "long"},
+    "post_media_view": {"type": "long"},
+    "post_total_media_view_unique": {"type": "long"},
+    "post_clicks": {"type": "long"},
+
+    "fb_page_id": {"type": "keyword"},
+    "fb_page_name": {"type": "keyword"},
+
+    "team_title": {"type": "keyword"},
+    "team_esid": {"type": "keyword"},
+    "team_site_url": {"type": "keyword"},
+    "team_country": {"type": "keyword"},
+    "team_city": {"type": "keyword"},
+    "organization_title": {"type": "keyword"}
+  }
+}

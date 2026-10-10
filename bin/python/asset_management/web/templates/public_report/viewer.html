@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>{{ title }}</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js" integrity="sha384-pPi0zxBAoDu6+JXW/C68UZLvBUUtU+7zonhif43rqj7pxsGyqyqzcian2Rj37Rss" crossorigin="anonymous"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='dashboard_builder/builder.css') }}?v=20260424j">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #f0ece4; font-family: 'DM Sans', system-ui, sans-serif; color: #1a2744; }
+  body { min-height: 100vh; display: flex; flex-direction: column; }
+
+  .pr-header {
+    background: #fff;
+    border-bottom: 1px solid #e2ddd4;
+    padding: 14px 28px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+  .pr-title {
+    font-family: 'DM Serif Display', Georgia, serif;
+    font-size: 22px;
+    font-weight: 400;
+    margin: 0;
+    flex: 1 1 auto;
+    min-width: 200px;
+  }
+  .pr-time-range {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: #5a6a80;
+  }
+  .pr-time-range select,
+  .pr-time-range input[type=date] {
+    font-family: inherit;
+    font-size: 13px;
+    padding: 6px 10px;
+    border: 1px solid #d5dbdb;
+    border-radius: 6px;
+    background: #fff;
+  }
+  .pr-custom-range {
+    display: none;
+    align-items: center;
+    gap: 6px;
+  }
+  .pr-custom-range.visible { display: inline-flex; }
+  .pr-apply-btn {
+    font-family: inherit;
+    font-size: 13px;
+    padding: 6px 12px;
+    border: 0;
+    border-radius: 6px;
+    background: #1a2744;
+    color: #fff;
+    cursor: pointer;
+  }
+  .pr-apply-btn:hover { background: #2a3758; }
+
+  .pr-canvas { flex: 1; padding: 20px 28px; }
+  .db-chart-grid { display: grid; gap: 16px; }
+
+  .pr-loading, .pr-error {
+    text-align: center;
+    padding: 60px 20px;
+    color: #5a6a80;
+    font-size: 14px;
+  }
+  .pr-error { color: #a02c2c; }
+
+  /* Report/template slot takes full width */
+  .chart-slot.chart-type-report,
+  .chart-slot.chart-type-google_report,
+  .chart-slot.chart-type-combined_report { width: 100% !important; }
+
+  /* ── Responsive ────────────────────────────────────────────────────
+     Tablet: tighter header padding; time-range wraps under the title
+     when the viewport can't fit both on one row.
+     Phone: single-column header, smaller title, canvas padding reduced.
+     The Impact Report chart content itself (the .rpt block rendered by
+     charts.js) has its own fixed-width world map SVG — it'll scroll
+     horizontally on phones rather than squash, which is acceptable.
+  ─────────────────────────────────────────────────────────────────── */
+  @media (max-width: 768px) {
+    .pr-header { padding: 12px 16px; gap: 12px; }
+    .pr-title  { font-size: 19px; }
+    .pr-canvas { padding: 14px 16px; }
+  }
+  @media (max-width: 480px) {
+    .pr-header {
+      flex-direction: column;
+      align-items: flex-start;
+      padding: 12px 14px;
+    }
+    .pr-title { font-size: 18px; min-width: 0; }
+    .pr-time-range {
+      flex-wrap: wrap;
+      width: 100%;
+    }
+    .pr-time-range select { flex: 1 1 auto; }
+    .pr-custom-range { width: 100%; }
+    .pr-custom-range input[type=date] { flex: 1 1 40%; min-width: 0; }
+    .pr-canvas { padding: 12px 10px; }
+  }
+</style>
+</head>
+<body>
+  <header class="pr-header">
+    <h1 class="pr-title" id="pr-title">{{ title }}</h1>
+    {# time-range dropdown is hidden by default; publisher opts in
+       via "Display time selector" in the publish dialog. When visible, the
+       default preset is "Last 7 days" to match the new viewer default. #}
+    {% if display_time_selector %}
+    <div class="pr-time-range">
+      <label for="pr-time-preset">Time range:</label>
+      <select id="pr-time-preset">
+        <option value="">All time</option>
+        <option value="now-7d/d" selected>Last 7 days</option>
+        <option value="now-30d/d">Last 30 days</option>
+        <option value="now-90d/d">Last 90 days</option>
+        <option value="now-6M/d">Last 6 months</option>
+        <option value="now-1y/d">Last 12 months</option>
+        <option value="custom">Custom range&hellip;</option>
+      </select>
+      <div class="pr-custom-range" id="pr-custom-range">
+        <input type="date" id="pr-time-from">
+        <span>to</span>
+        <input type="date" id="pr-time-to">
+        <button class="pr-apply-btn" id="pr-apply-custom">Apply</button>
+      </div>
+    </div>
+    {% endif %}
+  </header>
+
+  <main class="pr-canvas">
+    <div id="pr-status" class="pr-loading">Loading report&hellip;</div>
+    <div class="db-chart-grid" id="chart-grid" style="display:none;"></div>
+  </main>
+
+  <script nonce="{{ csp_nonce }}">
+    // ── Wire up public mode for charts.js ─────────────────────────────
+    const DASHBOARD_STATE = { id: null, charts: {}, global_date_range: null };
+
+    // charts.js uses DASHBOARD_BASE as the URL prefix for its /api/query calls
+    // (and related endpoints). Setting this to "/public/" routes every query
+    // to the public API which validates the token + forces org/team scope.
+    const DASHBOARD_BASE = "/public/";
+
+    // Injected into every query body by _withExtraFilters (see charts.js).
+    window.PUBLIC_REPORT_TOKEN = {{ token | tojson }};
+
+    // default to Last 7 days so first render has a tight window.
+    // Selector (if shown) starts on the matching preset; changing the preset
+    // updates this and triggers a re-render.
+    window.DASHBOARD_TIME_RANGE = { from: 'now-7d/d', to: 'now' };
+
+    // Stubs for builder-only functions that charts.js may call on report charts.
+    function populateDisplayToggles() {}
+    function populateTableToggles()   {}
+
+    function escHtml(s) {
+      if (!s) return '';
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    const DASHBOARD_ID = {{ dashboard_id | tojson }};
+    const TOKEN = {{ token | tojson }};
+
+    async function loadAndRender() {
+      const statusEl = document.getElementById('pr-status');
+      const grid = document.getElementById('chart-grid');
+      try {
+        const res = await fetch(`/public/api/dashboards/${encodeURIComponent(TOKEN)}`);
+        if (!res.ok) throw new Error(`Failed to load report (${res.status})`);
+        const data = await res.json();
+
+        DASHBOARD_STATE.id = data.id;
+        DASHBOARD_STATE.title = data.title;
+        DASHBOARD_STATE.global_date_range = data.global_date_range || null;
+        DASHBOARD_STATE.charts = {};
+
+        const charts = Array.isArray(data.charts) ? data.charts : Object.values(data.charts || {});
+        grid.innerHTML = '';
+
+        charts.forEach(cfg => {
+          DASHBOARD_STATE.charts[cfg.chart_id] = cfg;
+          const slot = document.createElement('div');
+          slot.className = `chart-slot chart-type-${cfg.chart_type}`;
+          slot.id = `slot-${cfg.chart_id}`;
+          slot.innerHTML = `<div class="chart-render-area" id="chart-${escHtml(cfg.chart_id)}" style="padding:0;"></div>`;
+          grid.appendChild(slot);
+          queryAndRender(cfg.chart_id);
+        });
+
+        statusEl.style.display = 'none';
+        grid.style.display = '';
+      } catch (err) {
+        statusEl.className = 'pr-error';
+        statusEl.textContent = 'Unable to load this report.';
+        console.error('Public viewer error:', err);
+      }
+    }
+
+    function renderAllCharts() {
+      Object.keys(DASHBOARD_STATE.charts).forEach(chartId => queryAndRender(chartId));
+    }
+
+    function wireTimeRangeControls() {
+      const preset = document.getElementById('pr-time-preset');
+      const custom = document.getElementById('pr-custom-range');
+      const fromEl = document.getElementById('pr-time-from');
+      const toEl = document.getElementById('pr-time-to');
+      const applyBtn = document.getElementById('pr-apply-custom');
+      // when the publisher hides the selector, the controls are
+      // absent from the DOM — bail out so we don't NPE on the listeners.
+      if (!preset) return;
+
+      // ── Custom-range guards (mirrors) ──
+      // Public viewer is unauthenticated — guards prevent an anonymous
+      // user from picking a future date or reversing the range.
+      function _prTodayValue() {
+        const d = new Date();
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+      }
+      // Hard cap both inputs to today so the picker greys out future days.
+      if (fromEl) fromEl.max = _prTodayValue();
+      if (toEl)   toEl.max   = _prTodayValue();
+
+      function _prValidateRange() {
+        if (!fromEl || !toEl) return true;
+        const f = fromEl.value;
+        const t = toEl.value;
+        const today = _prTodayValue();
+        // NOTE: do NOT write min/max onto the inputs here. This runs on every
+        // `input` event — i.e. on each digit as the user types the year — and
+        // re-clamping the other input's min/max mid-keystroke makes the browser
+        // reject a partially-typed year (e.g. "2" parsed as year 0002 > max),
+        // which shows up as "the year field only accepts one digit" and blocks
+        // entering old dates. Validity is checked by comparing values below and
+        // toggling the button; the static future-date cap set once at init is
+        // enough.
+        const invalid = (f && f > today) || (t && t > today) || (f && t && f > t);
+        const blocked = invalid || !f || !t;
+        if (applyBtn) applyBtn.disabled = blocked;
+        return !invalid;
+      }
+      if (fromEl) {
+        fromEl.addEventListener('input',  _prValidateRange);
+        fromEl.addEventListener('change', _prValidateRange);
+      }
+      if (toEl) {
+        toEl.addEventListener('input',  _prValidateRange);
+        toEl.addEventListener('change', _prValidateRange);
+      }
+      _prValidateRange();
+      // bfcache restore — re-fire validator so previously valid dates
+      // re-enable Apply after back/forward navigation.
+      window.addEventListener('pageshow', _prValidateRange);
+      window.addEventListener('load',     _prValidateRange);
+
+      preset.addEventListener('change', () => {
+        if (preset.value === 'custom') {
+          custom.classList.add('visible');
+          // Re-derive the Apply state when the custom panel becomes visible
+          // — otherwise stale form values would carry the wrong disabled state.
+          _prValidateRange();
+          return;
+        }
+        custom.classList.remove('visible');
+        if (preset.value === '') {
+          window.DASHBOARD_TIME_RANGE = { from: '', to: '' };
+        } else {
+          window.DASHBOARD_TIME_RANGE = { from: preset.value, to: 'now' };
+        }
+        renderAllCharts();
+      });
+
+      applyBtn.addEventListener('click', () => {
+        // Defence-in-depth: validator disables the button while range is
+        // empty/invalid, but bail anyway in case a stale handler fired.
+        if (!_prValidateRange()) return;
+        if (!fromEl.value || !toEl.value) return;
+        window.DASHBOARD_TIME_RANGE = { from: fromEl.value, to: toEl.value };
+        renderAllCharts();
+      });
+    }
+
+  </script>
+  <script src="{{ url_for('static', filename='dashboard_builder/charts.js') }}?v=20261007a"></script>
+  <script nonce="{{ csp_nonce }}">
+    document.addEventListener('DOMContentLoaded', async () => {
+      wireTimeRangeControls();
+      await loadAndRender();
+    });
+  </script>
+</body>
+</html>

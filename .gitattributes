@@ -1,0 +1,40 @@
+# Shell scripts must keep LF line endings — CRLF breaks the shebang on Linux
+# (the kernel tries to exec `/bin/bash\r`). Forced regardless of core.autocrlf.
+*.sh text eol=lf
+deployment/attack-surface text eol=lf
+
+# Public-release export (bin/python/tools/publish_release.py). `git archive`
+# drops export-ignore paths, so these never reach the public snapshot repo.
+# The publish script independently asserts they are absent (belt and braces).
+# Note: git archive reads these from the REF being exported, not the worktree.
+internal export-ignore
+.gitmodules export-ignore
+plans export-ignore
+.security-scan export-ignore
+claude.md export-ignore
+CLAUDE.md export-ignore
+ONBOARDING.md export-ignore
+.github export-ignore
+deployment/public-overlay export-ignore
+docs/rotating-internal-repo-token.md export-ignore
+docs/server-setup.md export-ignore
+docs/investigations export-ignore
+# the SLM index allowlist names mission teams.
+deployment/slm-indices.txt export-ignore
+# Internal release process and tooling: the release-plan suite and its CSV
+# plumbing, the issue-tracker tooling, and the publisher itself. The public
+# snapshot is scrubbed of process references (tools/public_scrub.py); these
+# are left out because they ARE the process.
+tests/release_plans export-ignore
+bin/scripts/feature-updates export-ignore
+bin/python/tools/publish_release.py export-ignore
+bin/python/tools/public_scrub.py export-ignore
+bin/python/tools/dod_check.py export-ignore
+bin/python/tools/release_plan_to_stubs.py export-ignore
+bin/python/tools/release_plan_status_csv.py export-ignore
+bin/python/tools/release_plans.py export-ignore
+tests/tools/test_publish_release.py export-ignore
+tests/tools/test_public_scrub.py export-ignore
+tests/services/test_release_plan_to_stubs.py export-ignore
+tests/test_release_plan_report.py export-ignore
+docs/release-plan-workflow.md export-ignore

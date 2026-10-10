@@ -1,0 +1,62 @@
+{
+  "connector_id": "meta_ads",
+  "created_at": "2026-05-27T14:16:13.825223+00:00",
+  "description": "Line chart shows trends for IG reach, views, profile views",
+  "echarts_config": {
+    "charts": [
+      {
+        "aggregation": "sum",
+        "breakdown": null,
+        "cell_gradient_color": "#006d2c",
+        "cell_gradient_enabled": false,
+        "chart_id": "c1779890930922",
+        "chart_type": "line",
+        "data_view": "*_ig_insights",
+        "date_format": "",
+        "display_toggles": {},
+        "filters": [],
+        "height": "402.956px",
+        "hide_title": true,
+        "max_columns": 2,
+        "max_rows": 10,
+        "other_bucket": false,
+        "position": {
+          "col": 0,
+          "h": 4,
+          "row": 0,
+          "w": 6
+        },
+        "table_font_size": 12,
+        "title": "Line Chart",
+        "width": "997.086px",
+        "x_field": "kibana_date",
+        "x_field_type": "date",
+        "y_field_types": {
+          "ig_insight_profile_views": "numeric",
+          "ig_insight_reach": "numeric",
+          "ig_insight_views": "numeric"
+        },
+        "y_fields": [
+          "ig_insight_reach",
+          "ig_insight_views",
+          "ig_insight_profile_views"
+        ],
+        "y_max": "",
+        "y_min": ""
+      }
+    ],
+    "filters": [],
+    "global_date_range": null
+  },
+  "frozen_from_dashboard_id": null,
+  "menu_position": 2,
+  "menu_title": "Meta",
+  "name": "Instagram Performance",
+  "pack_id": "meta",
+  "placeholder_field": null,
+  "required_sources": [
+    "meta_ads"
+  ],
+  "template_id": "instagram_insights_trends",
+  "updated_at": "2026-05-27T15:06:24.788749+00:00"
+}

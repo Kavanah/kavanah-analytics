@@ -1,0 +1,6 @@
+# This directory stores:
+# - settings.json (SMTP and app configuration)
+# - tokens.json (active password reset tokens)
+#
+# These files are created automatically by the application.
+# Do not commit credentials to version control.

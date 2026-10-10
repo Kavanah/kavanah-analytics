@@ -1,0 +1,2791 @@
+{% extends "base_v2.html" %}
+
+{% block title %}Import Data - Kavanah Analytics Management Console{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Cloudscape overrides */
+    .btn { display:inline-flex; align-items:center; height:32px; padding:0 14px; font-family:var(--cs-font); font-size:var(--cs-font-size-m); font-weight:var(--cs-font-weight-medium); border-radius:var(--cs-radius-s); border:1px solid var(--cs-btn-normal-border); background:var(--cs-btn-normal-bg); color:var(--cs-btn-normal-text); cursor:pointer; text-decoration:none; transition:all var(--cs-transition-fast); }
+    .btn:hover { background:var(--cs-btn-normal-hover-bg); border-color:var(--cs-text-secondary); text-decoration:none; }
+    .btn-sm { height:28px; padding:0 10px; font-size:var(--cs-font-size-xs); }
+    .btn-success { background:var(--cs-btn-primary-bg); color:var(--cs-btn-primary-text); border-color:var(--cs-btn-primary-bg); font-weight:var(--cs-font-weight-bold); }
+    .btn-success:hover { background:var(--cs-btn-primary-bg-hover); border-color:var(--cs-btn-primary-bg-hover); }
+    .btn-secondary { background:var(--cs-btn-normal-bg); color:var(--cs-btn-normal-text); border-color:var(--cs-btn-normal-border); }
+    .btn-secondary:hover { background:var(--cs-btn-normal-hover-bg); }
+    .btn-danger { border-color:var(--cs-error); color:var(--cs-error); background:var(--cs-bg-primary); }
+    .btn-danger:hover { background:var(--cs-error-bg); }
+
+    .import-section {
+        margin-bottom: var(--cs-space-l);
+        padding: var(--cs-space-xl);
+        background: var(--cs-bg-primary);
+        border: 1px solid var(--cs-border-default);
+        border-radius: var(--cs-radius-m);
+        box-shadow: var(--cs-shadow-xs);
+    }
+    #section-csv {
+        margin-bottom: 0;
+    }
+    #section-csv .import-actions {
+        border-top: none;
+        margin-top: 0;
+        padding-top: 0;
+    }
+
+    .import-container {
+        max-width: none;
+    }
+
+    .import-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 20px;
+    }
+
+    .import-table td {
+        padding: 15px 10px;
+        vertical-align: middle;
+        border-bottom: 1px solid #ecf0f1;
+    }
+
+    .import-table tr:last-child td {
+        border-bottom: none;
+    }
+
+    .import-table .checkbox-cell {
+        width: 40px;
+        text-align: center;
+    }
+
+    .import-table .label-cell {
+        font-weight: 500;
+        color: var(--cs-text-heading, #000716);
+    }
+
+    .import-table .days-cell {
+        text-align: right;
+        white-space: nowrap;
+    }
+
+    .import-table .days-cell label {
+        display: inline;
+        margin-right: 10px;
+        font-weight: normal;
+        color: var(--cs-text-secondary, #5F6B7A);
+    }
+
+    .import-table input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        cursor: pointer;
+    }
+
+    .import-table input[type="number"] {
+        width: 70px;
+        padding: 8px;
+        text-align: center;
+    }
+
+    .import-table .file-cell {
+        text-align: right;
+    }
+
+    .import-table .file-input-wrapper {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 6px;
+    }
+
+    .import-table input[type="file"] {
+        position: absolute;
+        opacity: 0;
+        width: 0;
+        height: 0;
+    }
+
+    .import-table .file-input-label {
+        display: inline-block;
+        padding: 8px 16px;
+        background-color: #d5d5d5;
+        border: 1px solid #333;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        color: #495057;
+        transition: all 0.2s;
+        white-space: nowrap;
+    }
+
+    .import-table .file-input-label:hover:not(.disabled) {
+        background-color: #c0c0c0;
+        border-color: #000;
+    }
+
+    .import-table .file-input-label.disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        background-color: #e9ecef;
+    }
+
+    .import-table .file-name-display {
+        font-size: 12px;
+        color: var(--cs-text-secondary, #5F6B7A);
+        max-width: 300px;
+        word-break: break-all;
+        text-align: right;
+        min-height: 16px;
+    }
+
+    .date-inputs-cell {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 12px;
+        padding: 8px;
+    }
+
+    .mode-radio {
+        cursor: pointer;
+        margin-right: 4px;
+    }
+
+    .date-range-inputs {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .date-input {
+        width: 140px;
+        padding: 6px 8px;
+        border: 1px solid #bdc3c7;
+        border-radius: 4px;
+        font-size: 13px;
+    }
+
+    .date-input:focus {
+        outline: none;
+        border-color: var(--cs-btn-primary-bg, #0972D3);
+    }
+
+    .date-input:disabled {
+        background-color: #ecf0f1;
+        color: #95a5a6;
+        cursor: not-allowed;
+    }
+
+    .date-input.input-active {
+        border-color: var(--cs-btn-primary-bg, #0972D3);
+        border-width: 2px;
+    }
+
+    .days-input-group {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .days-input-group label {
+        font-weight: normal;
+        color: var(--cs-text-secondary, #5F6B7A);
+    }
+
+    .days-input-group input:disabled {
+        background-color: #ecf0f1;
+        color: #95a5a6;
+        cursor: not-allowed;
+    }
+
+    .days-input-group input.input-active {
+        border-color: var(--cs-btn-primary-bg, #0972D3);
+        border-width: 2px;
+    }
+
+    .import-actions {
+        margin-top: var(--cs-space-l);
+        display: flex;
+        gap: var(--cs-space-s);
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .delete-data-option {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-right: var(--cs-space-xs);
+        padding: 8px 14px;
+        background: var(--cs-warning-bg);
+        border: 1px solid #D4A72C;
+        border-radius: var(--cs-radius-s);
+        font-size: var(--cs-font-size-s);
+        color: var(--cs-warning);
+    }
+
+    .delete-data-option input[type="checkbox"] {
+        width: 16px;
+        height: 16px;
+        cursor: pointer;
+        accent-color: var(--cs-btn-primary-bg);
+    }
+
+    .delete-data-option label {
+        cursor: pointer;
+        margin: 0;
+    }
+
+    .log-viewer {
+        margin-top: 25px;
+        display: none;
+    }
+
+    .log-viewer.visible {
+        display: block;
+    }
+
+    .log-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+
+    .log-header h3 {
+        margin: 0;
+        font-size: 16px;
+        color: var(--cs-text-heading, #000716);
+    }
+
+    .log-status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        color: var(--cs-text-secondary, #5F6B7A);
+    }
+
+    .log-status.running {
+        color: #f39c12;
+    }
+
+    .log-status.completed {
+        color: #27ae60;
+    }
+
+    .log-spinner {
+        width: 14px;
+        height: 14px;
+        border: 2px solid #ecf0f1;
+        border-top-color: #f39c12;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+    }
+
+    .log-viewport {
+        background: #1e1e1e;
+        color: #d4d4d4;
+        font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+        font-size: 12px;
+        line-height: 18px;
+        border-radius: 5px;
+        height: 400px;
+        overflow-y: auto;
+        overflow-x: auto;
+        position: relative;
+    }
+
+    .log-items {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+    }
+
+    .log-line {
+        position: absolute;
+        left: 0;
+        right: 0;
+        padding: 0 15px;
+        height: 18px;
+        white-space: pre;
+        display: flex;
+        align-items: center;
+    }
+
+    .log-empty-msg {
+        padding: 15px;
+        color: var(--cs-text-secondary, #5F6B7A);
+        font-style: italic;
+    }
+
+    .log-content .log-error {
+        color: #f44747;
+    }
+
+    .log-content .log-success {
+        color: #6a9955;
+    }
+
+    .log-content .log-info {
+        color: #569cd6;
+    }
+
+    .log-content .log-warning {
+        color: #ce9178;
+    }
+
+    .log-actions {
+        margin-top: 10px;
+        display: flex;
+        gap: 10px;
+    }
+
+    /* ── Page layout ── */
+    .import-page-layout {
+        display: flex;
+        align-items: flex-start;
+        gap: 0;
+        min-height: 500px;
+    }
+
+    /* ── Left sidebar nav ── */
+    .import-nav {
+        width: 210px;
+        flex-shrink: 0;
+        background: var(--cs-text-heading, #000716);
+        border-radius: 6px 0 0 6px;
+        padding: 0;
+        align-self: stretch;
+        transition: width 0.2s ease;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    .import-nav.collapsed {
+        width: 32px;
+    }
+
+    .import-nav-header {
+        display: flex;
+        align-items: center;
+        padding: 6px 8px;
+        border-bottom: 1px solid #34495e;
+        flex-shrink: 0;
+    }
+
+    .import-nav-toggle {
+        background: none;
+        border: none;
+        color: #95a5a6;
+        cursor: pointer;
+        font-size: 13px;
+        padding: 2px 4px;
+        border-radius: 3px;
+        line-height: 1;
+        flex-shrink: 0;
+        transition: color 0.15s;
+    }
+
+    .import-nav-toggle:hover {
+        color: #ecf0f1;
+    }
+
+    .import-nav-title {
+        font-size: 11px;
+        font-weight: 700;
+        color: #95a5a6;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        margin-left: 6px;
+        white-space: nowrap;
+        overflow: hidden;
+    }
+
+    .import-nav.collapsed .import-nav-title,
+    .import-nav.collapsed .import-nav-items {
+        display: none;
+    }
+
+    .import-nav-items {
+        list-style: none;
+        margin: 0;
+        padding: 6px 0;
+    }
+
+    .import-nav-items li {
+        padding: 13px 18px;
+        color: #bdc3c7;
+        cursor: pointer;
+        font-size: 13px;
+        line-height: 1.4;
+        border-left: 3px solid transparent;
+        transition: background 0.15s, color 0.15s;
+    }
+
+    .import-nav-items li:hover {
+        background: #34495e;
+        color: #ecf0f1;
+    }
+
+    .import-nav-items li.active {
+        background: #1a252f;
+        color: #fff;
+        border-left-color: var(--cs-btn-primary-bg, #0972D3);
+        font-weight: 500;
+    }
+
+    /* ── Content area ── */
+    .import-content {
+        flex: 1;
+        min-width: 0;
+    }
+
+    /* ── Status section controls ── */
+    .status-controls {
+        display: flex;
+        gap: 20px;
+        align-items: flex-start;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+    }
+
+    .status-data-view-panel {
+        background: var(--cs-text-heading, #000716);
+        border-radius: 4px;
+        padding: 12px 14px;
+        min-width: 240px;
+    }
+
+    .status-data-view-panel label {
+        display: block;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        color: #95a5a6;
+        margin-bottom: 8px;
+        text-transform: uppercase;
+    }
+
+    .status-data-view-panel select {
+        width: 100%;
+        /* follow-up: dark panel — keep a LIGHT chevron and use
+         * background-color (not the `background` shorthand) so the global
+         * select chevron isn't reset to none, which (with appearance:none)
+         * would leave no arrow at all on this dark select. */
+        background-color: #1a252f;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='7'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23ecf0f1' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 8px center;
+        color: #ecf0f1;
+        border: 1px solid #566573;
+        border-radius: 4px;
+        padding: 7px 26px 7px 10px;
+        font-size: 13px;
+        cursor: pointer;
+    }
+
+    .status-data-view-panel select:focus {
+        outline: none;
+        border-color: var(--cs-btn-primary-bg, #0972D3);
+    }
+
+    .status-team-panel label {
+        display: block;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--cs-text-heading, #000716);
+        margin-bottom: 6px;
+    }
+
+    .status-team-panel select {
+        padding: 7px 10px;
+        border: 1px solid #bdc3c7;
+        border-radius: 4px;
+        font-size: 13px;
+        min-width: 200px;
+        color: var(--cs-text-heading, #000716);
+    }
+
+    .status-team-panel select:focus {
+        outline: none;
+        border-color: var(--cs-btn-primary-bg, #0972D3);
+    }
+
+    /* ── Stats display ── */
+    .status-stats {
+        margin-bottom: 20px;
+        padding: 14px 16px;
+        background: #f8f9fa;
+        border: 1px solid #ecf0f1;
+        border-radius: 4px;
+    }
+
+    .status-stats p {
+        margin: 0 0 8px 0;
+        font-size: 13px;
+        color: var(--cs-text-heading, #000716);
+    }
+
+    .status-stats p:last-child {
+        margin-bottom: 0;
+    }
+
+    .status-stats span {
+        font-weight: 600;
+    }
+
+    .status-date-range {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 10px;
+        font-size: 13px;
+        color: var(--cs-text-heading, #000716);
+    }
+
+    .status-date-range label {
+        font-weight: 600;
+        margin: 0;
+    }
+
+    .status-date-range input[type="date"] {
+        padding: 5px 8px;
+        border: 1px solid #bdc3c7;
+        border-radius: 4px;
+        font-size: 13px;
+    }
+
+    /* ── Backfill header above table ── */
+    .status-backfill-header {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 8px 14px;
+        background: #f0f4f8;
+        border: 1px solid #d5dde5;
+        border-radius: 4px 4px 0 0;
+    }
+
+    .status-backfill-label {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--cs-text-heading, #000716);
+    }
+
+    .status-backfill-inputs {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    .status-backfill-inputs span {
+        font-size: 12px;
+        color: #555;
+    }
+
+    /* force-refresh toggle row under the backfill inputs */
+    .status-backfill-force {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: #555;
+    }
+
+    .status-backfill-force label {
+        cursor: pointer;
+    }
+
+    .status-backfill-force .force-hint {
+        color: #7a7a7a;
+    }
+
+    .status-backfill-header input[type="date"] {
+        padding: 4px 6px;
+        border: 1px solid #bdc3c7;
+        border-radius: 4px;
+        font-size: 12px;
+        width: auto;
+        flex-shrink: 0;
+    }
+
+    .status-log-checkbox {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: #555;
+        font-weight: normal;
+        cursor: pointer;
+        margin-left: auto;
+    }
+
+    .status-log-checkbox input[type="checkbox"] {
+        cursor: pointer;
+    }
+
+    /* ── Monthly status table ── */
+    .status-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+    }
+
+    .status-table th {
+        text-align: left;
+        padding: 10px 12px;
+        background: #34495e;
+        color: #ecf0f1;
+        font-weight: 600;
+    }
+
+    /* Remove top radius so table sits flush under the backfill header */
+    .status-backfill-header + .status-table thead tr:first-child th:first-child { border-radius: 0; }
+    .status-backfill-header + .status-table thead tr:first-child th:last-child  { border-radius: 0; }
+
+    .status-table th.sortable {
+        cursor: pointer;
+        user-select: none;
+    }
+
+    .status-table th.sortable:hover {
+        background: var(--cs-text-heading, #000716);
+    }
+
+    .status-table td {
+        padding: 9px 12px;
+        border-bottom: 1px solid #ecf0f1;
+        color: var(--cs-text-heading, #000716);
+    }
+
+    .status-table tr:last-child td {
+        border-bottom: none;
+    }
+
+    .status-table tr:hover td {
+        background: #f8f9fa;
+    }
+
+    .status-table .no-data {
+        color: #95a5a6;
+        font-style: italic;
+    }
+
+    .btn-update {
+        padding: 4px 10px;
+        font-size: 12px;
+        background: var(--cs-btn-primary-bg, #0972D3);
+        color: #fff;
+        border: none;
+        border-radius: 3px;
+        cursor: pointer;
+    }
+
+    .btn-update:hover:not(:disabled) {
+        background: #2980b9;
+    }
+
+    .btn-update:disabled {
+        background: #bdc3c7;
+        color: var(--cs-text-secondary, #5F6B7A);
+        cursor: not-allowed;
+    }
+
+    /* ── Expand/collapse date rows ── */
+    .btn-expand {
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 11px;
+        color: var(--cs-text-secondary, #5F6B7A);
+        padding: 0 4px 0 0;
+        vertical-align: middle;
+        line-height: 1;
+    }
+
+    .btn-expand:hover {
+        color: var(--cs-text-heading, #000716);
+    }
+
+    .dates-row td {
+        background: #f4f6f8;
+        padding: 8px 12px;
+        border-bottom: 1px solid #e8ecef;
+    }
+
+    .dates-list {
+        display: grid;
+        grid-template-columns: repeat(5, auto);
+        gap: 6px;
+        justify-content: start;
+    }
+
+    .date-chip {
+        display: inline-block;
+        padding: 3px 8px;
+        background: #ecf0f1;
+        border: 1px solid #bdc3c7;
+        border-radius: 3px;
+        font-size: 12px;
+        cursor: pointer;
+        color: var(--cs-text-heading, #000716);
+        user-select: none;
+        text-align: center;
+        vertical-align: top;
+    }
+
+    .date-chip:hover {
+        background: #d5e8f5;
+        border-color: var(--cs-btn-primary-bg, #0972D3);
+    }
+
+    .date-chip.selected {
+        background: var(--cs-btn-primary-bg, #0972D3);
+        border-color: #2980b9;
+        color: #fff;
+    }
+
+    .date-chip .doc-count-badge {
+        display: block;
+        font-size: 10px;
+        color: var(--cs-text-secondary, #5F6B7A);
+        line-height: 1;
+        margin-top: 2px;
+    }
+
+    .date-chip.selected .doc-count-badge {
+        color: rgba(255, 255, 255, 0.85);
+    }
+
+    .date-chip.no-data-chip {
+        background: #fdf2e9;
+        border-color: #e8c49a;
+        color: #9a7d5a;
+        cursor: default;
+    }
+
+    .date-chip.no-data-chip:hover {
+        background: #fae5d3;
+        border-color: #d4a76a;
+    }
+
+    .date-chip.no-data-chip.selected {
+        background: #e8c49a;
+        border-color: #d4a76a;
+        color: #5a4228;
+    }
+
+    .date-chip.no-data-chip.selected .doc-count-badge {
+        color: #7a5c3a;
+    }
+
+    /* ── Document selector for multi-doc dates ── */
+    .doc-selector-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 4px;
+    }
+
+    .doc-selector-row label {
+        font-size: 12px;
+        color: #555;
+        white-space: nowrap;
+    }
+
+    .doc-selector-row select {
+        font-size: 12px;
+        padding: 2px 6px;
+        border: 1px solid #bdc3c7;
+        border-radius: 3px;
+        background: #fff;
+        width: 70px;
+    }
+
+    /* ── Status section side-by-side layout ── */
+    .status-columns {
+        display: flex;
+        gap: 20px;
+        align-items: flex-start;
+    }
+
+    .status-table-column {
+        flex: 0 1 auto;
+        min-width: 0;
+    }
+
+    .status-field-column {
+        flex: 1 1 340px;
+        min-width: 280px;
+    }
+
+    /* Make status table more compact */
+    .status-table th {
+        padding: 7px 10px;
+        font-size: 12px;
+    }
+
+    .status-table td {
+        padding: 6px 10px;
+        font-size: 13px;
+    }
+
+    /* ── Field value viewer ── */
+    #field-viewer-container {
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        overflow: hidden;
+    }
+
+    .field-viewer-controls {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 10px 12px;
+        background: #f4f6f8;
+        border-bottom: 1px solid #ddd;
+        font-size: 13px;
+    }
+
+    .field-viewer-controls-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .field-viewer-controls label {
+        font-weight: 600;
+        color: var(--cs-text-heading, #000716);
+        white-space: nowrap;
+    }
+
+    .field-search-input {
+        width: 100%;
+        padding: 4px 8px;
+        font-size: 13px;
+        border: 1px solid #bdc3c7;
+        border-bottom: none;
+        border-radius: 3px 3px 0 0;
+        box-sizing: border-box;
+        background: #f9f9f9;
+        color: var(--cs-text-heading, #000716);
+    }
+    .field-search-input + #field-viewer-field-select {
+        border-radius: 0 0 3px 3px;
+    }
+
+    #field-viewer-field-select {
+        width: 100%;
+        padding: 0;
+        font-size: 13px;
+        border: 1px solid #bdc3c7;
+        border-radius: 3px;
+        color: var(--cs-text-heading, #000716);
+        overflow-y: auto;
+    }
+
+    #field-viewer-field-select option {
+        padding: 4px 8px;
+    }
+
+    #field-viewer-field-select option:checked {
+        background: var(--cs-btn-primary-bg, #0972D3);
+        color: #fff;
+    }
+
+    .field-selector-wrapper {
+        width: 100%;
+    }
+
+    #field-viewer-panel {
+        min-height: 120px;
+        max-height: 320px;
+        overflow-y: auto;
+    }
+
+    .field-value-row {
+        display: flex;
+        align-items: baseline;
+        padding: 7px 12px;
+        border-bottom: 1px solid #ecf0f1;
+        font-size: 13px;
+        gap: 12px;
+    }
+
+    .field-value-row:last-child {
+        border-bottom: none;
+    }
+
+    .fvr-team {
+        min-width: 180px;
+        font-weight: 600;
+        color: var(--cs-text-heading, #000716);
+        flex-shrink: 0;
+    }
+
+    .fvr-value {
+        color: #555;
+        word-break: break-word;
+    }
+
+    /* ── All-fields table (single-team mode) ── */
+    .all-fields-table-wrap {
+        max-height: 500px;
+        overflow: auto;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+    }
+
+    .all-fields-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+        table-layout: fixed;
+    }
+
+    .all-fields-table th {
+        position: sticky;
+        top: 0;
+        background: #34495e;
+        color: #ecf0f1;
+        font-weight: 600;
+        padding: 7px 10px;
+        text-align: left;
+        z-index: 1;
+    }
+
+    .all-fields-table th .col-resizer {
+        position: absolute;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        width: 5px;
+        cursor: col-resize;
+        background: transparent;
+    }
+
+    .all-fields-table th .col-resizer:hover,
+    .all-fields-table th .col-resizer.dragging {
+        background: var(--cs-btn-primary-bg, #0972D3);
+    }
+
+    .all-fields-table td {
+        padding: 5px 10px;
+        border-bottom: 1px solid #ecf0f1;
+        color: var(--cs-text-heading, #000716);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .all-fields-table tr:hover td {
+        background: #f0f7ff;
+    }
+
+    .all-fields-table col.col-field { width: 50%; }
+    .all-fields-table col.col-value { width: 50%; }
+
+    /* field-name cell becomes a popup trigger when total_docs > 1. */
+    .all-fields-table td.field-clickable {
+        cursor: pointer;
+        color: var(--cs-link, #0972D3);
+    }
+    .all-fields-table td.field-clickable:hover {
+        text-decoration: underline;
+    }
+
+    /* Popup table that lists the clicked field's value for each doc. */
+    #field-across-docs-dialog {
+        min-width: 480px;
+        max-width: 720px;
+        max-height: 70vh;
+        padding: 16px 20px;
+        border: 1px solid #D5DBDB;
+        border-radius: 8px;
+    }
+    #field-across-docs-dialog h3 {
+        margin: 0 0 12px 0;
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--cs-text-heading, #000716);
+    }
+    #field-across-docs-dialog .field-name-display {
+        font-family: ui-monospace, "SF Mono", Menlo, monospace;
+        background: #f4f6f8;
+        padding: 2px 6px;
+        border-radius: 4px;
+    }
+    #field-across-docs-dialog .docs-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 8px;
+    }
+    #field-across-docs-dialog .docs-table th,
+    #field-across-docs-dialog .docs-table td {
+        padding: 6px 10px;
+        border-bottom: 1px solid #ecf0f1;
+        text-align: left;
+        font-size: 13px;
+    }
+    #field-across-docs-dialog .docs-table th {
+        background: #f4f6f8;
+        font-weight: 600;
+        color: var(--cs-text-heading, #000716);
+    }
+    #field-across-docs-dialog .docs-table .col-doc { width: 80px; }
+    #field-across-docs-dialog .docs-body-wrap {
+        overflow-y: auto;
+        max-height: calc(70vh - 140px);
+    }
+
+    .all-fields-filter {
+        width: 100%;
+        padding: 6px 10px;
+        font-size: 13px;
+        border: 1px solid #bdc3c7;
+        border-radius: 4px 4px 0 0;
+        border-bottom: none;
+        box-sizing: border-box;
+        background: #f9f9f9;
+        color: var(--cs-text-heading, #000716);
+    }
+
+    .all-fields-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 8px 10px;
+        background: #f4f6f8;
+        border: 1px solid #ddd;
+        border-bottom: none;
+        border-radius: 4px 4px 0 0;
+        font-size: 13px;
+    }
+
+    .all-fields-header label {
+        font-weight: 600;
+        color: var(--cs-text-heading, #000716);
+        white-space: nowrap;
+    }
+
+    /* ── Not Implemented dialog ── */
+    dialog {
+        border: 1px solid #bdc3c7;
+        border-radius: 6px;
+        padding: 24px 28px;
+        font-size: 14px;
+        color: var(--cs-text-heading, #000716);
+        min-width: 260px;
+        max-width: 420px;
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        margin: 0;
+    }
+
+    dialog p {
+        margin: 0 0 16px 0;
+        font-weight: 500;
+        line-height: 1.5;
+    }
+
+    dialog::backdrop {
+        background: rgba(0,0,0,0.4);
+    }
+
+    .dialog-actions {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+    }
+
+    .btn-danger {
+        background: #e74c3c;
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        padding: 6px 14px;
+        font-size: 13px;
+        cursor: pointer;
+        font-weight: 500;
+    }
+
+    .btn-danger:hover {
+        background: #c0392b;
+    }
+
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+</style>
+{% endblock %}
+
+{% block page_content %}
+<div style="padding: 20px;">
+<div class="import-content">
+
+<!-- ══ Section 1: Data Source Import Status ══ -->
+<div id="section-status" class="import-section">
+<div class="card import-container">
+    <h2>Data Source Import Status</h2>
+    <p style="color: var(--cs-text-secondary, #5F6B7A); margin-bottom: 20px;">
+        Select a data view and optionally a team to review import coverage.
+    </p>
+
+    <div class="status-controls">
+        <div class="status-data-view-panel">
+            <label>Data View</label>
+            <select id="status-data-view">
+                <option value="">— Select a data view —</option>
+            </select>
+        </div>
+        <div class="status-team-panel">
+            <label>Team</label>
+            <select id="status-team">
+                <option value="">All teams</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="status-stats" id="status-stats" style="display:none">
+        <p>Last pulled: <span id="status-last-pulled">—</span></p>
+        <p>Number of documents: <span id="status-doc-count">—</span></p>
+    </div>
+
+    <div class="status-columns" id="status-columns" style="display:none; margin-top: 16px;">
+        <div class="status-table-column">
+            <div id="status-table-container">
+                <div class="status-backfill-header">
+                    <span class="status-backfill-label">Backfill all missing data for date range</span>
+                    <div class="status-backfill-inputs">
+                        <input type="date" id="backfill-from-date">
+                        <span>to</span>
+                        <input type="date" id="backfill-to-date">
+                        <button class="btn-update" id="backfill-all-btn">Backfill</button>
+                    </div>
+                    <div class="status-backfill-force">
+                        <input type="checkbox" id="backfill-force-refresh" checked>
+                        <label for="backfill-force-refresh">Force refresh (overwrite existing data)
+                            <!-- say WHICH connectors honor the flag; it used to read
+                                 as universal while facebook_pages silently ignored it. -->
+                            <span class="force-hint">— uncheck to fill only missing days.
+                                Currently honored by Facebook Ads and Facebook Pages only;
+                                other connectors keep their skip-already-imported behavior.</span>
+                        </label>
+                    </div>
+                </div>
+                <table class="status-table">
+                    <thead>
+                        <tr>
+                            <th class="sortable" id="sort-year-header">Year <span id="sort-indicator">↕</span></th>
+                            <th>Month</th>
+                            <th>Days</th>
+                            <th>Backfill</th>
+                        </tr>
+                    </thead>
+                    <tbody id="status-table-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="status-field-column">
+            <!-- Single-team mode: show all fields in a two-column table -->
+            <div id="all-fields-container" style="display:none;">
+                <div class="all-fields-header">
+                    <label>Date: <span id="all-fields-date" style="font-weight:400; color:#555;">—</span></label>
+                    <label>Team: <span id="all-fields-team" style="font-weight:400; color:#555;">—</span></label>
+                    <div id="doc-selector-row" class="doc-selector-row" style="display:none;">
+                        <label>Document: <select id="doc-selector"></select></label>
+                    </div>
+                </div>
+                <input type="search" class="all-fields-filter" id="all-fields-filter" placeholder="Filter fields...">
+                <div class="all-fields-table-wrap">
+                    <table class="all-fields-table">
+                        <colgroup>
+                            <col class="col-field">
+                            <col class="col-value">
+                        </colgroup>
+                        <thead>
+                            <tr><th>Field<span class="col-resizer" id="col-resizer-field"></span></th><th>Value</th></tr>
+                        </thead>
+                        <tbody id="all-fields-body"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Multi-team / all-teams mode: pick a field, see values per team -->
+            <div id="field-viewer-container" style="display:none;">
+                <div class="field-viewer-controls">
+                    <div class="field-viewer-controls-row">
+                        <label>Date: <span id="field-viewer-date" style="font-weight:400; color:#555;">—</span></label>
+                    </div>
+                    <div class="field-selector-wrapper" id="field-selector-wrapper">
+                        <select id="field-viewer-field-select" size="12">
+                            <option value="" disabled>Loading fields...</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="field-viewer-panel">
+                    <p class="no-data" style="padding:12px; margin:0;">Select a field above to view values per team.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Inline import log for status page -->
+    <div id="status-log-viewer" class="log-viewer" style="margin-top:20px; display:none;">
+        <div class="log-header">
+            <h3>Import Log</h3>
+            <div id="status-log-status" class="log-status">
+                <span id="status-log-status-text">Ready</span>
+            </div>
+        </div>
+        <div id="status-log-viewport" class="log-viewport">
+            <div id="status-log-spacer"></div>
+            <div id="status-log-items" class="log-items"></div>
+        </div>
+        <div class="log-actions">
+            <button id="status-clear-log-btn" class="btn btn-secondary btn-sm">Clear Display</button>
+            <button id="status-cancel-import-btn" class="btn btn-danger btn-sm" style="display:none;">Cancel Import</button>
+            <button id="status-save-log-btn" class="btn btn-secondary btn-sm">Save As...</button>
+        </div>
+    </div>
+
+    <p id="status-loading" style="display:none; color:var(--cs-text-secondary, #5F6B7A); font-style:italic; margin-top:12px;">Loading...</p>
+    <p id="status-error" style="display:none; color:#e74c3c; margin-top:12px;"></p>
+</div>
+</div>
+
+<!-- Confirm dialog for backfill-all Backfill (with date range) -->
+<dialog id="status-run-import-dialog">
+    <p id="status-run-import-dialog-msg">Run import for <strong id="status-dialog-date-range"></strong>?</p>
+    <p id="status-run-import-no-dates-msg" style="display:none;">
+        Please enter a date range (From / To) above before running an import.
+    </p>
+    <div class="dialog-actions">
+        <button id="status-dialog-confirm-btn" class="btn btn-success btn-sm">Yes, Run Import</button>
+        <button id="status-dialog-cancel-btn" class="btn btn-secondary btn-sm">Cancel</button>
+    </div>
+</dialog>
+
+<!-- Confirm dialog for per-row Backfill Month (missing dates) -->
+<dialog id="status-missing-run-dialog">
+    <p>Run import for missing dates?</p>
+    <div class="dialog-actions">
+        <button id="status-missing-confirm-btn" class="btn btn-success btn-sm">Yes, Run Import</button>
+        <button id="status-missing-cancel-btn" class="btn btn-secondary btn-sm">Cancel</button>
+    </div>
+</dialog>
+
+<!-- Confirm dialog for single-team import -->
+<dialog id="status-team-import-dialog">
+    <p>Import data for <strong id="status-team-import-name"></strong>?</p>
+    <div class="dialog-actions">
+        <button id="status-team-import-confirm-btn" class="btn btn-success btn-sm">Yes, Run Import</button>
+        <button id="status-team-import-cancel-btn" class="btn btn-secondary btn-sm">Cancel</button>
+    </div>
+</dialog>
+
+<!-- Confirm dialog for cancelling a running import -->
+<dialog id="status-cancel-import-dialog">
+    <p>Cancel the running import?</p>
+    <div class="dialog-actions">
+        <button id="status-cancel-confirm-btn" class="btn btn-danger btn-sm">Yes, Cancel Import</button>
+        <button id="status-cancel-dismiss-btn" class="btn btn-secondary btn-sm">No, Keep Running</button>
+    </div>
+</dialog>
+
+<!-- per-field popup showing one row per doc for a (team, date) pair.
+     Triggered by clicking a field name in the all-fields table when there
+     are multiple docs for the day. -->
+<dialog id="field-across-docs-dialog">
+    <h3>
+        <span class="field-name-display" id="field-across-docs-name">field</span>
+        <span style="font-weight:400; color:var(--cs-text-secondary, #5F6B7A); margin-left:8px;">
+            across <span id="field-across-docs-count">0</span> docs
+            for <span id="field-across-docs-team">team</span>
+            on <span id="field-across-docs-date">date</span>
+        </span>
+    </h3>
+    <div class="docs-body-wrap">
+        <table class="docs-table">
+            <thead>
+                <tr><th class="col-doc">Doc</th><th>Value</th></tr>
+            </thead>
+            <tbody id="field-across-docs-body"></tbody>
+        </table>
+    </div>
+    <div class="dialog-actions" style="margin-top:12px;">
+        <button id="field-across-docs-close-btn" class="btn btn-secondary btn-sm">Close</button>
+    </div>
+</dialog>
+
+<!-- ══ Section 2: Import Assets from CSV ══ -->
+<!-- Hidden 2026-05-18 per a teammate — feature unused; keeping markup + JS in place pending removal decision -->
+<div id="section-csv" class="import-section" style="display: none;">
+<div class="card import-container">
+    <h2>Import Assets from CSV</h2>
+    <p style="color: var(--cs-text-secondary, #5F6B7A); margin-bottom: 20px;">
+        Upload a CSV file to bulk import assets. Fields for duplicate asset IDs will be updated.
+    </p>
+
+    <table class="import-table">
+        <tr>
+            <td class="checkbox-cell">
+                <input type="checkbox" id="import-asset-fb-pages" data-asset-type="facebook_pages">
+            </td>
+            <td class="label-cell">
+                <label for="import-asset-fb-pages">Facebook Pages</label>
+                <div style="font-size: 11px; color: var(--cs-text-secondary, #5F6B7A); margin-top: 4px; font-weight: normal;">
+                    Column names: Page Name, Page ID, Page Slug, Meta Business Portfolio (optional)
+                </div>
+            </td>
+            <td class="file-cell">
+                <div class="file-input-wrapper">
+                    <input type="file" id="file-fb-pages" accept=".csv" disabled>
+                    <label for="file-fb-pages" class="file-input-label disabled" id="label-fb-pages">Choose File</label>
+                    <div class="file-name-display" id="filename-fb-pages"></div>
+                </div>
+            </td>
+        </tr>
+        <tr>
+            <td class="checkbox-cell">
+                <input type="checkbox" id="import-asset-ig-accounts" data-asset-type="instagram_accounts">
+            </td>
+            <td class="label-cell">
+                <label for="import-asset-ig-accounts">Instagram Accounts</label>
+                <div style="font-size: 11px; color: var(--cs-text-secondary, #5F6B7A); margin-top: 4px; font-weight: normal;">
+                    Column names: Instagram Account, Account ID, Facebook Page, Meta Business Portfolio
+                </div>
+            </td>
+            <td class="file-cell">
+                <div class="file-input-wrapper">
+                    <input type="file" id="file-ig-accounts" accept=".csv" disabled>
+                    <label for="file-ig-accounts" class="file-input-label disabled" id="label-ig-accounts">Choose File</label>
+                    <div class="file-name-display" id="filename-ig-accounts"></div>
+                </div>
+            </td>
+        </tr>
+        <tr>
+            <td class="checkbox-cell">
+                <input type="checkbox" id="import-asset-fb-ad-accounts" data-asset-type="facebook_ad_accounts">
+            </td>
+            <td class="label-cell">
+                <label for="import-asset-fb-ad-accounts">Meta Ad Accounts</label>
+                <div style="font-size: 11px; color: var(--cs-text-secondary, #5F6B7A); margin-top: 4px; font-weight: normal;">
+                    Column names: Ad Account Name, Ad Account ID, Facebook App (optional), Facebook App User (optional), Meta Business Portfolio (optional)
+                </div>
+            </td>
+            <td class="file-cell">
+                <div class="file-input-wrapper">
+                    <input type="file" id="file-fb-ad-accounts" accept=".csv" disabled>
+                    <label for="file-fb-ad-accounts" class="file-input-label disabled" id="label-fb-ad-accounts">Choose File</label>
+                    <div class="file-name-display" id="filename-fb-ad-accounts"></div>
+                </div>
+            </td>
+        </tr>
+        <tr>
+            <td class="checkbox-cell">
+                <input type="checkbox" id="import-asset-organizations" data-asset-type="organizations">
+            </td>
+            <td class="label-cell">
+                <label for="import-asset-organizations">Organizations</label>
+                <div style="font-size: 11px; color: var(--cs-text-secondary, #5F6B7A); margin-top: 4px; font-weight: normal;">
+                    Column names: Org ID, Org Name
+                </div>
+            </td>
+            <td class="file-cell">
+                <div class="file-input-wrapper">
+                    <input type="file" id="file-organizations" accept=".csv" disabled>
+                    <label for="file-organizations" class="file-input-label disabled" id="label-organizations">Choose File</label>
+                    <div class="file-name-display" id="filename-organizations"></div>
+                </div>
+            </td>
+        </tr>
+        <tr>
+            <td class="checkbox-cell">
+                <input type="checkbox" id="import-asset-teams" data-asset-type="teams">
+            </td>
+            <td class="label-cell">
+                <label for="import-asset-teams">Teams</label>
+                <div style="font-size: 11px; color: var(--cs-text-secondary, #5F6B7A); margin-top: 4px; font-weight: normal;">
+                    Column names: Team ID, Team Name, Team Org, Team Language, Team Region, Team Country, Team City, Team GA4 Properties, Team Facebook Page, Team Instagram Profile, Team Disciple Tools Instance, Team Echo Instance, Team YouTube Channel Handles
+                </div>
+            </td>
+            <td class="file-cell">
+                <div class="file-input-wrapper">
+                    <input type="file" id="file-teams" accept=".csv" disabled>
+                    <label for="file-teams" class="file-input-label disabled" id="label-teams">Choose File</label>
+                    <div class="file-name-display" id="filename-teams"></div>
+                </div>
+            </td>
+        </tr>
+        <tr>
+            <td class="checkbox-cell">
+                <input type="checkbox" id="import-asset-youtube-channels" data-asset-type="youtube_channels">
+            </td>
+            <td class="label-cell">
+                <label for="import-asset-youtube-channels">YouTube Channels</label>
+                <div style="font-size: 11px; color: var(--cs-text-secondary, #5F6B7A); margin-top: 4px; font-weight: normal;">
+                    Column names: Channel Name, Channel Handle, Channel ID
+                </div>
+            </td>
+            <td class="file-cell">
+                <div class="file-input-wrapper">
+                    <input type="file" id="file-youtube-channels" accept=".csv" disabled>
+                    <label for="file-youtube-channels" class="file-input-label disabled" id="label-youtube-channels">Choose File</label>
+                    <div class="file-name-display" id="filename-youtube-channels"></div>
+                </div>
+            </td>
+        </tr>
+    </table>
+
+    <div class="import-actions">
+        <button id="run-asset-import-btn" class="btn btn-success" disabled>Import Assets</button>
+    </div>
+
+    <div id="asset-import-results" class="log-viewer" style="display: none;">
+        <div class="log-header">
+            <h3>Import Results</h3>
+        </div>
+        <div id="asset-import-content" class="log-content" style="height: auto; min-height: 100px; max-height: 300px;"></div>
+    </div>
+</div>
+</div>
+
+</div><!-- /.import-content -->
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script nonce="{{ csp_nonce }}">
+// Scroll to anchor section if URL has a hash (e.g. #section-status, #section-csv)
+if (window.location.hash) {
+    var target = document.querySelector(window.location.hash);
+    if (target) {
+        setTimeout(function() { target.scrollIntoView({ behavior: 'smooth' }); }, 200);
+    }
+}
+
+// ══════════════════════════════════════════════
+// Data Source Import Status section
+// ══════════════════════════════════════════════
+(function() {
+    const dataViewSelect = document.getElementById('status-data-view');
+    const teamSelect = document.getElementById('status-team');
+    const statsDiv = document.getElementById('status-stats');
+    const lastPulledEl = document.getElementById('status-last-pulled');
+    const docCountEl = document.getElementById('status-doc-count');
+    const fromDateInput = document.getElementById('backfill-from-date');
+    const toDateInput = document.getElementById('backfill-to-date');
+    const backfillAllBtn = document.getElementById('backfill-all-btn');
+    const statusColumns = document.getElementById('status-columns');
+
+    // ── Backfill date-range guards (mirrors dashboard-builder custom range) ──
+    // Hard cap both inputs to today, dynamically clamp the other end as
+    // the user picks each side, and keep Backfill disabled while the
+    // range is empty/invalid (future date, or from > to). The click
+    // handler below re-checks defensively in case some browser path
+    // skips the picker and types a value directly.
+    function _backfillTodayValue() {
+        const d = new Date();
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+    }
+    // Hard cap both inputs to today so the picker never offers future days.
+    if (fromDateInput) fromDateInput.max = _backfillTodayValue();
+    if (toDateInput)   toDateInput.max   = _backfillTodayValue();
+
+    function _backfillValidateRange() {
+        if (!fromDateInput || !toDateInput) return true;
+        const f = fromDateInput.value;
+        const t = toDateInput.value;
+        const today = _backfillTodayValue();
+        // NOTE: do NOT write min/max onto the inputs here. This handler fires
+        // on every `input` event — i.e. on each digit as the user types the
+        // year — and re-clamping the *other* input's min/max mid-keystroke
+        // makes the browser reject a partially-typed year (e.g. "2" parsed as
+        // year 0002 > max), which shows up as "the year field only accepts one
+        // digit". Validity is checked by comparing values below and toggling
+        // the button; the static future-date cap set once at init is enough.
+        const invalid = (f && f > today) || (t && t > today) || (f && t && f > t);
+        const blocked = invalid || !f || !t;
+        // the old "Import not available for Disciple Tools" OR-signal
+        // is gone — DT is pull-importable now (the dispatch approximates the
+        // range as a modified-since window).
+        if (backfillAllBtn) {
+            backfillAllBtn.disabled = blocked;
+        }
+        return !invalid;
+    }
+    if (fromDateInput) {
+        fromDateInput.addEventListener('input',  _backfillValidateRange);
+        fromDateInput.addEventListener('change', _backfillValidateRange);
+    }
+    if (toDateInput) {
+        toDateInput.addEventListener('input',  _backfillValidateRange);
+        toDateInput.addEventListener('change', _backfillValidateRange);
+    }
+    // Run once so the button starts disabled until both sides are valid.
+    _backfillValidateRange();
+    // Re-validate on pageshow / load so bfcache-restored dates re-enable
+    // Backfill (Chrome restores form values after DOMContentLoaded).
+    window.addEventListener('pageshow', _backfillValidateRange);
+    window.addEventListener('load',     _backfillValidateRange);
+
+    const tableBody = document.getElementById('status-table-body');
+    const loadingEl = document.getElementById('status-loading');
+    const errorEl = document.getElementById('status-error');
+
+    // Log viewer elements
+    const statusLogViewer = document.getElementById('status-log-viewer');
+    const statusLogViewport = document.getElementById('status-log-viewport');
+    const statusLogSpacer = document.getElementById('status-log-spacer');
+    const statusLogItems = document.getElementById('status-log-items');
+    const statusLogStatus = document.getElementById('status-log-status');
+    const statusLogStatusText = document.getElementById('status-log-status-text');
+    const statusCancelImportBtn = document.getElementById('status-cancel-import-btn');
+
+    let monthlyData = [];
+    let sortAsc = false; // default: newest first (descending)
+    let allTeams = []; // full team list loaded once from filter-options
+    let selectedDate = null;
+    let fieldsLoaded = false;
+
+    // Import log state
+    const STATUS_LOG_LINE_HEIGHT = 18;
+    const STATUS_LOG_OVERSCAN = 5;
+    let statusLogLines = [];
+    let statusLogOffset = 0;
+    let statusLogAutoScroll = true;
+    let statusLogPollingInterval = null;
+    let statusStatusPollingInterval = null;
+    let statusCurrentImportId = null;
+    let pendingImportConfig = null;
+
+    // Format an ISO timestamp nicely
+    function formatTimestamp(iso) {
+        if (!iso) return '—';
+        try {
+            const d = new Date(iso);
+            return d.toLocaleString();
+        } catch (e) {
+            return iso;
+        }
+    }
+
+    // Render the monthly table rows
+    function renderTable(disableImport) {
+        const sorted = [...monthlyData].sort((a, b) => {
+            const diff = a.year !== b.year ? a.year - b.year : a.month - b.month;
+            return sortAsc ? diff : -diff;
+        });
+
+        tableBody.innerHTML = sorted.map(row => {
+            const noData = row.dates_pulled === 0 && !row.no_data_dates;
+            const noDataOnly = row.dates_pulled === 0 && row.no_data_dates > 0;
+            const coveredDays = row.dates_pulled + (row.no_data_dates || 0);
+            const full = coveredDays >= row.total_days;
+            const datesPulledText = noDataOnly
+                ? '<span class="no-data">No ad data</span>'
+                : noData
+                    ? '<span class="no-data">No data</span>'
+                    : row.no_data_dates
+                        ? `${row.dates_pulled}/${row.total_days} <span class="no-data">(${row.no_data_dates} no ad data)</span>`
+                        : `${row.dates_pulled}/${row.total_days}`;
+            const btnDisabled = (full || disableImport) ? 'disabled' : '';
+            const btnTitle = disableImport ? 'title="Import not available for Disciple Tools"' : '';
+            const hasDates = row.dates && row.dates.length > 0;
+            const expandBtn = hasDates
+                ? `<button class="btn-expand" data-year="${row.year}" data-month="${row.month}" title="Show individual dates">▶</button>`
+                : '';
+            const datesRowId = `dates-${row.year}-${row.month}`;
+            const chips = hasDates
+                ? row.dates.map(d => {
+                    const dateStr = typeof d === 'object' ? d.date : d;
+                    const docCount = typeof d === 'object' ? (d.doc_count || 1) : 1;
+                    const isNoData = typeof d === 'object' && d.no_data;
+                    if (isNoData) {
+                        return `<span class="date-chip no-data-chip" data-date="${dateStr}" title="No ad data for this date">` +
+                            `${dateStr}<span class="doc-count-badge">No data</span></span>`;
+                    }
+                    const countBadge = docCount > 1
+                        ? `<span class="doc-count-badge">${docCount} docs</span>`
+                        : '';
+                    return `<span class="date-chip" data-date="${dateStr}" data-doc-count="${docCount}">${dateStr}${countBadge}</span>`;
+                }).join('')
+                : '';
+            return `<tr class="month-row">
+                <td>${expandBtn}${row.year}</td>
+                <td>${row.month_name}</td>
+                <td>${datesPulledText}</td>
+                <td><button class="btn-update" ${btnDisabled} ${btnTitle} data-year="${row.year}" data-month="${row.month}">Backfill Month</button></td>
+            </tr>
+            <tr class="dates-row" id="${datesRowId}" style="display:none">
+                <td colspan="4"><div class="dates-list">${chips}</div></td>
+            </tr>`;
+        }).join('');
+
+        // Attach expand button listeners
+        tableBody.querySelectorAll('.btn-expand').forEach(btn => {
+            btn.addEventListener('click', () => toggleDatesRow(btn.dataset.year, btn.dataset.month, btn));
+        });
+
+        // Attach date chip listeners
+        tableBody.querySelectorAll('.date-chip').forEach(chip => {
+            chip.addEventListener('click', () => selectDate(chip.dataset.date));
+        });
+
+        // Attach Update button listeners
+        tableBody.querySelectorAll('.btn-update:not([disabled])').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const year = parseInt(btn.dataset.year);
+                const month = parseInt(btn.dataset.month);
+
+                // Find existing dates for this month from the status data
+                const monthData = monthlyData.find(m => m.year === year && m.month === month);
+                const existingDates = new Set(
+                    (monthData?.dates || []).map(d => typeof d === 'object' ? d.date : d)
+                );
+
+                // Compute missing dates only
+                const totalDays = new Date(year, month, 0).getDate();
+                const todayStr = new Date().toISOString().slice(0, 10);
+                const missingDates = [];
+                for (let day = 1; day <= totalDays; day++) {
+                    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                    if (dateStr > todayStr) break;
+                    if (!existingDates.has(dateStr)) missingDates.push(dateStr);
+                }
+                if (missingDates.length === 0) return;
+
+                // If team is selected, include team_ids
+                const teamFilter = selectedTeamFilterValue(teamSelect);
+                pendingImportConfig = { dates: missingDates.join(',') };
+                if (teamFilter) pendingImportConfig.team_ids = teamFilter;
+
+                document.getElementById('status-missing-run-dialog').showModal();
+            });
+        });
+    }
+
+    // Load stats from backend
+    async function loadStatusData() {
+        const dataView = dataViewSelect.value;
+        if (!dataView) {
+            statsDiv.style.display = 'none';
+            statusColumns.style.display = 'none';
+            errorEl.style.display = 'none';
+            return;
+        }
+
+        const params = new URLSearchParams({ data_view: dataView });
+        if (teamSelect.value) params.set('team', teamSelect.value);
+
+        loadingEl.style.display = 'block';
+        errorEl.style.display = 'none';
+        statsDiv.style.display = 'none';
+        statusColumns.style.display = 'none';
+
+        try {
+            const resp = await fetch(URL_DATA_SOURCE_STATUS + '?' + params.toString());
+            const data = await resp.json();
+
+            loadingEl.style.display = 'none';
+
+            if (!data.success) {
+                errorEl.textContent = 'Error: ' + (data.error || 'Unknown error');
+                errorEl.style.display = 'block';
+                return;
+            }
+
+            lastPulledEl.textContent = formatTimestamp(data.last_pulled);
+            docCountEl.textContent = data.document_count.toLocaleString();
+            statsDiv.style.display = 'block';
+
+            // the push-plugin-era DT lockout ("Import not available
+            // for Disciple Tools") is removed — DT is a pull connector now.
+            // Backfill semantics for DT: the range start becomes a
+            // modified-since window; "Backfill Month" (a dates list, which
+            // the DT dispatch has no flag for) runs a FULL sync — cheap at
+            // DT scale and strictly more complete.
+            backfillAllBtn.title = '';
+            _backfillValidateRange();
+
+            // Always show the backfill controls + month table once a data view
+            // is selected. A team with zero docs needs the Backfill button
+            // visible so an initial import can be triggered.
+            // per-month Backfill is no longer disabled for DT.
+            monthlyData = data.monthly_summary || [];
+            renderTable(false);
+            statusColumns.style.display = 'flex';
+
+            if (monthlyData.length > 0) {
+                autoSelectMostRecentDate();
+            }
+        } catch (e) {
+            loadingEl.style.display = 'none';
+            errorEl.textContent = 'Request failed: ' + e.message;
+            errorEl.style.display = 'block';
+        }
+    }
+
+    // URLs injected by Jinja to work correctly behind the /assets/ nginx prefix
+    const URL_DATA_VIEWS = '{{ url_for("dashboard_builder.list_data_views") }}';
+    const URL_FILTER_OPTIONS = '{{ url_for("get_dashboard_filter_options") }}';
+    const URL_DATA_SOURCE_STATUS = '{{ url_for("get_data_source_status") }}';
+    const URL_DATA_VIEW_TEAMS = '{{ url_for("get_data_view_teams") }}';
+    const URL_FIELD_VALUES = '{{ url_for("get_field_values") }}';
+    const URL_ALL_FIELD_VALUES = '{{ url_for("get_all_field_values") }}';
+    const URL_FIELD_VALUES_ACROSS_DOCS = '{{ url_for("get_field_values_across_docs") }}';
+    const URL_DATA_VIEW_FIELDS_BASE = '{{ url_for("dashboard_builder.get_fields", data_view_id="__DV__") }}';
+
+    // Load data views from Kibana
+    async function loadDataViews() {
+        try {
+            const resp = await fetch(URL_DATA_VIEWS);
+            const data = await resp.json();
+            if (!data.success) return;
+
+            (data.data_views || []).forEach(view => {
+                const opt = document.createElement('option');
+                opt.value = view.id;
+                opt.textContent = view.label || view.id;
+                dataViewSelect.appendChild(opt);
+            });
+        } catch (e) {
+            console.error('Failed to load data views:', e);
+        }
+    }
+
+    // Load teams from filter options (called once on page load)
+    async function loadTeams() {
+        try {
+            const resp = await fetch(URL_FILTER_OPTIONS);
+            const data = await resp.json();
+            if (!data.success) return;
+            allTeams = data.teams || [];
+            refreshTeamDropdown(null); // no data-view-specific info yet
+        } catch (e) {
+            console.error('Failed to load teams:', e);
+        }
+    }
+
+    // Rebuild the team dropdown, marking teams with no data in the current data view.
+    // teamsWithData: Set/Array of team titles that have data, or null to show all without labels.
+    function refreshTeamDropdown(teamsWithData) {
+        const currentValue = teamSelect.value;
+        teamSelect.innerHTML = '<option value="">All teams</option>';
+        allTeams.forEach(team => {
+            const opt = document.createElement('option');
+            opt.value = team.title;
+            // carry the team ESID so the import run can send a
+            // collision-safe filter. Value stays the title (every other
+            // reader and the dashboard endpoints are title-keyed).
+            if (team.esid) opt.dataset.esid = team.esid;
+            const hasData = teamsWithData === null || teamsWithData.has(team.title);
+            opt.textContent = hasData ? team.title : team.title + ' — No data';
+            if (!hasData) opt.style.color = '#95a5a6';
+            teamSelect.appendChild(opt);
+        });
+        // Restore previously selected value if it still exists
+        if (currentValue) teamSelect.value = currentValue;
+    }
+
+    // the collision-safe team_ids value for an import run: the
+    // selected team's ESID when available (data-esid on the option), else the
+    // title (pre-ESID fallback; preserves today's behavior). `sel` is the
+    // <select> element. Returns '' when no team is selected (all teams).
+    function selectedTeamFilterValue(sel) {
+        if (!sel || !sel.value) return '';
+        const opt = sel.selectedOptions && sel.selectedOptions[0];
+        return (opt && opt.dataset && opt.dataset.esid) ? opt.dataset.esid : sel.value;
+    }
+
+    // Fetch which teams have data for the given data view, then refresh the dropdown
+    async function refreshTeamsForDataView(dataView) {
+        if (!dataView) {
+            refreshTeamDropdown(null);
+            return;
+        }
+        try {
+            const resp = await fetch(URL_DATA_VIEW_TEAMS + '?data_view=' + encodeURIComponent(dataView));
+            const data = await resp.json();
+            if (!data.success) { refreshTeamDropdown(null); return; }
+            refreshTeamDropdown(new Set(data.teams_with_data));
+        } catch (e) {
+            console.error('Failed to load data view teams:', e);
+            refreshTeamDropdown(null);
+        }
+    }
+
+    // Sort by Year header click
+    document.getElementById('sort-year-header').addEventListener('click', () => {
+        sortAsc = !sortAsc;
+        document.getElementById('sort-indicator').textContent = sortAsc ? '↑' : '↓';
+        renderTable();
+    });
+
+    // ── Field viewer functions ──
+
+    function toggleDatesRow(year, month, btn) {
+        const row = document.getElementById(`dates-${year}-${month}`);
+        if (!row) return;
+        const expanded = row.style.display !== 'none';
+        row.style.display = expanded ? 'none' : 'table-row';
+        btn.textContent = expanded ? '▶' : '▼';
+    }
+
+    function selectDate(date) {
+        document.querySelectorAll('.date-chip.selected').forEach(c => c.classList.remove('selected'));
+        document.querySelectorAll(`.date-chip[data-date="${date}"]`).forEach(c => c.classList.add('selected'));
+
+        selectedDate = date;
+
+        const singleTeam = teamSelect.value;
+        if (singleTeam) {
+            // Single-team mode: show all fields table
+            document.getElementById('field-viewer-container').style.display = 'none';
+            document.getElementById('all-fields-container').style.display = 'block';
+            document.getElementById('all-fields-date').textContent = date;
+            document.getElementById('all-fields-team').textContent = singleTeam;
+            document.getElementById('doc-selector-row').style.display = 'none';
+            loadAllFieldValues(dataViewSelect.value, date, singleTeam, 0);
+        } else {
+            // Multi-team mode: show field selector
+            document.getElementById('all-fields-container').style.display = 'none';
+            document.getElementById('field-viewer-container').style.display = 'block';
+            document.getElementById('field-viewer-date').textContent = date;
+
+            if (!fieldsLoaded) {
+                loadFieldsForDataView(dataViewSelect.value);
+            }
+
+            const fieldEl = document.getElementById('field-viewer-field-select');
+            const currentField = fieldEl ? fieldEl.value : '';
+            if (currentField) {
+                loadFieldValues(dataViewSelect.value, date, currentField);
+            } else {
+                renderFieldValues([]);
+            }
+        }
+    }
+
+    function autoSelectMostRecentDate() {
+        // Find the most recent month row that has dates
+        const sorted = [...monthlyData].sort((a, b) => {
+            const diff = a.year !== b.year ? a.year - b.year : a.month - b.month;
+            return -diff; // newest first
+        });
+
+        for (const row of sorted) {
+            if (row.dates && row.dates.length > 0) {
+                // Expand this month's date row
+                const btn = tableBody.querySelector(`.btn-expand[data-year="${row.year}"][data-month="${row.month}"]`);
+                if (btn) {
+                    const datesRow = document.getElementById(`dates-${row.year}-${row.month}`);
+                    if (datesRow && datesRow.style.display === 'none') {
+                        datesRow.style.display = 'table-row';
+                        btn.textContent = '▼';
+                    }
+                }
+                // Select the most recent date in this month
+                const dateStrs = row.dates.map(d => typeof d === 'object' ? d.date : d);
+                const mostRecent = [...dateStrs].sort().pop();
+                if (mostRecent) selectDate(mostRecent);
+                return;
+            }
+        }
+    }
+
+    function _makeSearchableSelect(selectEl) {
+        const allOptions = Array.from(selectEl.options).map(o => ({ value: o.value, text: o.textContent }));
+        if (selectEl._searchInput) {
+            selectEl._searchInput.value = '';
+            selectEl._allOptions = allOptions;
+            return;
+        }
+        const searchInput = document.createElement('input');
+        searchInput.type = 'search';
+        searchInput.className = 'field-search-input';
+        searchInput.placeholder = 'Filter fields...';
+        selectEl._searchInput = searchInput;
+        selectEl._allOptions = allOptions;
+        selectEl.parentNode.insertBefore(searchInput, selectEl);
+        searchInput.addEventListener('input', () => {
+            const q = searchInput.value.toLowerCase();
+            const currentVal = selectEl.value;
+            selectEl.innerHTML = '';
+            (selectEl._allOptions || []).forEach(({ value, text }) => {
+                if (!q || value === '' || text.toLowerCase().includes(q)) {
+                    const opt = document.createElement('option');
+                    opt.value = value;
+                    opt.textContent = text;
+                    selectEl.appendChild(opt);
+                }
+            });
+            selectEl.value = currentVal;
+        });
+    }
+
+    async function loadFieldsForDataView(dataView) {
+        if (!dataView) return;
+        const url = URL_DATA_VIEW_FIELDS_BASE.replace('__DV__', encodeURIComponent(dataView));
+        try {
+            const resp = await fetch(url);
+            const data = await resp.json();
+            if (data.success && data.fields) {
+                fieldsLoaded = true;
+                const sel = document.getElementById('field-viewer-field-select');
+                sel.innerHTML = data.fields.map(f => `<option value="${f.name}">${f.name} (${f.type})</option>`).join('');
+                _makeSearchableSelect(sel);
+
+                // Auto-select first field and load its values
+                if (sel.options.length > 0 && selectedDate) {
+                    sel.value = sel.options[0].value;
+                    loadFieldValues(dataView, selectedDate, sel.value);
+                }
+            }
+        } catch (e) {
+            console.error('Failed to load fields:', e);
+        }
+    }
+
+    // ── All-fields table (single-team mode) ──
+
+    let allFieldsData = []; // cached for filtering
+    let currentDocIndex = 0; // currently selected document index
+    let currentTotalDocs = 1; // drives field-name click affordance
+
+    async function loadAllFieldValues(dataView, date, team, docIndex) {
+        const body = document.getElementById('all-fields-body');
+        body.innerHTML = '<tr><td colspan="2" style="padding:12px; color:var(--cs-text-secondary, #5F6B7A); font-style:italic;">Loading...</td></tr>';
+        document.getElementById('all-fields-filter').value = '';
+        if (docIndex === undefined) docIndex = 0;
+        currentDocIndex = docIndex;
+
+        try {
+            const params = new URLSearchParams({ data_view: dataView, date, team, doc_index: docIndex });
+            const resp = await fetch(URL_ALL_FIELD_VALUES + '?' + params.toString());
+            const data = await resp.json();
+            if (data.success) {
+                allFieldsData = data.fields || [];
+                currentTotalDocs = data.total_docs || 1;
+                renderAllFields(allFieldsData);
+
+                // Show/hide document selector dropdown
+                const totalDocs = currentTotalDocs;
+                const selectorRow = document.getElementById('doc-selector-row');
+                if (totalDocs > 1) {
+                    const selector = document.getElementById('doc-selector');
+                    // Only rebuild options if count changed or selector is empty
+                    if (selector.options.length !== totalDocs) {
+                        selector.innerHTML = '';
+                        for (let i = 0; i < totalDocs; i++) {
+                            const opt = document.createElement('option');
+                            opt.value = i;
+                            opt.textContent = `Doc ${i + 1}`;
+                            selector.appendChild(opt);
+                        }
+                    }
+                    selector.value = docIndex;
+                    selectorRow.style.display = 'flex';
+                } else {
+                    selectorRow.style.display = 'none';
+                }
+            } else {
+                body.innerHTML = `<tr><td colspan="2" style="padding:12px; color:#e74c3c;">Error: ${data.error || 'Unknown'}</td></tr>`;
+            }
+        } catch (e) {
+            body.innerHTML = `<tr><td colspan="2" style="padding:12px; color:#e74c3c;">Request failed: ${e.message}</td></tr>`;
+        }
+    }
+
+    function renderAllFields(fields) {
+        const body = document.getElementById('all-fields-body');
+        if (!fields || fields.length === 0) {
+            body.innerHTML = '<tr><td colspan="2" style="padding:12px; color:var(--cs-text-secondary, #5F6B7A); font-style:italic;">No data for the selected team and date.</td></tr>';
+            return;
+        }
+        // only mark field-name cells clickable when there's more than
+        // one doc — otherwise the popup would just show the same value once.
+        const clickable = currentTotalDocs > 1;
+        const fieldCellClass = clickable ? ' class="field-clickable" data-action="show-field-across-docs"' : '';
+        body.innerHTML = fields.map(f => {
+            const val = (f.value === null || f.value === undefined)
+                ? '<em style="color:#95a5a6">—</em>'
+                : (typeof f.value === 'object' ? escapeAllFieldsHtml(JSON.stringify(f.value)) : escapeAllFieldsHtml(String(f.value)));
+            const safeName = escapeAllFieldsHtml(f.name);
+            const clickTitle = clickable ? `Click to compare ${safeName} across all ${currentTotalDocs} docs` : safeName;
+            return `<tr><td${fieldCellClass} data-field-name="${safeName}" title="${clickTitle}">${safeName}</td><td title="${escapeAllFieldsHtml(String(f.value ?? ''))}">${val}</td></tr>`;
+        }).join('');
+    }
+
+    function escapeAllFieldsHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // field-name cell click → fetch + render popup with the field's
+    // value for every doc on this (team, date). The popup body is built with
+    // DOM methods (textContent, createElement) so external value strings can
+    // never be parsed as HTML, regardless of what comes back from ES.
+    document.getElementById('all-fields-body').addEventListener('click', function(e) {
+        const cell = e.target.closest('td[data-action="show-field-across-docs"]');
+        if (!cell) return;
+        if (currentTotalDocs <= 1) return; // belt and braces — class shouldn't be set
+        const fieldName = cell.getAttribute('data-field-name');
+        if (!fieldName) return;
+        showFieldAcrossDocsDialog(fieldName);
+    });
+
+    function _setFieldAcrossDocsLoading(tbody) {
+        tbody.replaceChildren();
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 2;
+        td.textContent = 'Loading...';
+        td.style.padding = '8px';
+        td.style.fontStyle = 'italic';
+        td.style.color = 'var(--cs-text-secondary, #5F6B7A)';
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+    }
+
+    function _setFieldAcrossDocsMessage(tbody, message, color) {
+        tbody.replaceChildren();
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 2;
+        td.textContent = message;
+        td.style.padding = '8px';
+        if (color) td.style.color = color;
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+    }
+
+    function _renderFieldAcrossDocsRows(tbody, values) {
+        tbody.replaceChildren();
+        for (const row of values) {
+            const tr = document.createElement('tr');
+            const docCell = document.createElement('td');
+            docCell.textContent = `Doc ${row.doc_index + 1}`;
+            const valCell = document.createElement('td');
+            if (row.value === null || row.value === undefined) {
+                const em = document.createElement('em');
+                em.style.color = '#95a5a6';
+                em.textContent = '—';
+                valCell.appendChild(em);
+            } else if (typeof row.value === 'object') {
+                valCell.textContent = JSON.stringify(row.value);
+            } else {
+                valCell.textContent = String(row.value);
+            }
+            tr.appendChild(docCell);
+            tr.appendChild(valCell);
+            tbody.appendChild(tr);
+        }
+    }
+
+    async function showFieldAcrossDocsDialog(fieldName) {
+        const dlg = document.getElementById('field-across-docs-dialog');
+        const tbody = document.getElementById('field-across-docs-body');
+
+        document.getElementById('field-across-docs-name').textContent = fieldName;
+        document.getElementById('field-across-docs-count').textContent = String(currentTotalDocs);
+        document.getElementById('field-across-docs-team').textContent = teamSelect.value || '—';
+        document.getElementById('field-across-docs-date').textContent = selectedDate || '—';
+        _setFieldAcrossDocsLoading(tbody);
+        if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', '');
+
+        try {
+            const params = new URLSearchParams({
+                data_view: dataViewSelect.value,
+                date: selectedDate,
+                team: teamSelect.value,
+                field: fieldName,
+            });
+            const resp = await fetch(URL_FIELD_VALUES_ACROSS_DOCS + '?' + params.toString());
+            const data = await resp.json();
+            if (!data.success) {
+                _setFieldAcrossDocsMessage(tbody, `Error: ${data.error || 'Unknown'}`, '#e74c3c');
+                return;
+            }
+            const values = data.values || [];
+            if (values.length === 0) {
+                _setFieldAcrossDocsMessage(tbody, 'No documents matched.');
+                return;
+            }
+            _renderFieldAcrossDocsRows(tbody, values);
+        } catch (err) {
+            _setFieldAcrossDocsMessage(tbody, `Request failed: ${err.message}`, '#e74c3c');
+        }
+    }
+
+    document.getElementById('field-across-docs-close-btn').addEventListener('click', function() {
+        const dlg = document.getElementById('field-across-docs-dialog');
+        if (typeof dlg.close === 'function') dlg.close(); else dlg.removeAttribute('open');
+    });
+
+    document.getElementById('all-fields-filter').addEventListener('input', function() {
+        const q = this.value.toLowerCase();
+        if (!q) {
+            renderAllFields(allFieldsData);
+            return;
+        }
+        const filtered = allFieldsData.filter(f => {
+            const valStr = f.value === null || f.value === undefined ? '' : String(f.value);
+            return f.name.toLowerCase().includes(q) || valStr.toLowerCase().includes(q);
+        });
+        renderAllFields(filtered);
+    });
+
+    // ── Column resizer for all-fields table ──
+    (function() {
+        const resizer = document.getElementById('col-resizer-field');
+        if (!resizer) return;
+        const table = resizer.closest('table');
+        const colField = table.querySelector('col.col-field');
+        const colValue = table.querySelector('col.col-value');
+        let startX, startFieldW, startValueW, tableW;
+
+        resizer.addEventListener('mousedown', function(e) {
+            e.preventDefault();
+            resizer.classList.add('dragging');
+            tableW = table.offsetWidth;
+            startX = e.clientX;
+            startFieldW = colField.offsetWidth || tableW * 0.5;
+            startValueW = colValue.offsetWidth || tableW * 0.5;
+
+            function onMove(e) {
+                const dx = e.clientX - startX;
+                const newFieldW = Math.max(80, Math.min(tableW - 80, startFieldW + dx));
+                const pct = (newFieldW / tableW) * 100;
+                colField.style.width = pct + '%';
+                colValue.style.width = (100 - pct) + '%';
+            }
+            function onUp() {
+                resizer.classList.remove('dragging');
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onUp);
+            }
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+        });
+    })();
+
+    // Document selector: switch between multiple docs on the same date
+    document.getElementById('doc-selector').addEventListener('change', function() {
+        const docIdx = parseInt(this.value, 10);
+        if (!isNaN(docIdx) && selectedDate) {
+            loadAllFieldValues(dataViewSelect.value, selectedDate, teamSelect.value, docIdx);
+        }
+    });
+
+    async function loadFieldValues(dataView, date, field) {
+        const panel = document.getElementById('field-viewer-panel');
+        panel.innerHTML = '<p class="no-data" style="padding:12px; margin:0;">Loading...</p>';
+        try {
+            const params = new URLSearchParams({ data_view: dataView, date, field });
+            if (teamSelect.value) params.set('team', teamSelect.value);
+            const resp = await fetch(URL_FIELD_VALUES + '?' + params.toString());
+            const data = await resp.json();
+            if (data.success) {
+                renderFieldValues(data.values);
+            } else {
+                panel.innerHTML = `<p class="no-data" style="padding:12px; margin:0; color:#e74c3c;">Error: ${data.error || 'Unknown error'}</p>`;
+            }
+        } catch (e) {
+            panel.innerHTML = `<p class="no-data" style="padding:12px; margin:0; color:#e74c3c;">Request failed: ${e.message}</p>`;
+        }
+    }
+
+    function renderFieldValues(values) {
+        const panel = document.getElementById('field-viewer-panel');
+        if (!values || values.length === 0) {
+            panel.innerHTML = '<p class="no-data" style="padding:12px; margin:0;">No data for the selected field and date.</p>';
+            return;
+        }
+        panel.innerHTML = values.map(v => {
+            const display = (v.value === null || v.value === undefined)
+                ? '<em class="no-data">—</em>'
+                : (typeof v.value === 'object' ? JSON.stringify(v.value) : String(v.value));
+            return `<div class="field-value-row"><span class="fvr-team">${v.team_title}</span><span class="fvr-value">${display}</span></div>`;
+        }).join('');
+    }
+
+    document.getElementById('field-viewer-field-select').addEventListener('change', function() {
+        if (this.value && selectedDate) {
+            loadFieldValues(dataViewSelect.value, selectedDate, this.value);
+        }
+    });
+
+    // Reload on control changes
+    dataViewSelect.addEventListener('change', async () => {
+        // Reset field viewer state when data view changes
+        selectedDate = null;
+        fieldsLoaded = false;
+        document.getElementById('field-viewer-container').style.display = 'none';
+        document.getElementById('all-fields-container').style.display = 'none';
+        // Reset field selector
+        const fvSel = document.getElementById('field-viewer-field-select');
+        fvSel.innerHTML = '<option value="" disabled>Loading fields...</option>';
+        if (fvSel._searchInput) { fvSel._searchInput.remove(); fvSel._searchInput = null; }
+        renderFieldValues([]);
+        await refreshTeamsForDataView(dataViewSelect.value);
+        loadStatusData();
+    });
+    teamSelect.addEventListener('change', function() {
+        loadStatusData();
+        // If a date is already selected, re-select it to switch between modes
+        if (selectedDate) {
+            selectDate(selectedDate);
+        }
+    });
+
+    // ── Backfill all button ──
+    document.getElementById('backfill-all-btn').addEventListener('click', () => {
+        const from = fromDateInput.value;
+        const to = toDateInput.value;
+        const selectedTeam = document.getElementById('status-team').value;
+        // Defence-in-depth: the validator above disables the button while
+        // the range is invalid, but a stale handler (e.g. button enabled
+        // before the validator wires up) shouldn't be able to launch an
+        // import for a future date or a reversed range. Bail silently in
+        // those cases — the picker already shows the invalid state.
+        if (!_backfillValidateRange()) return;
+
+        if (!from || !to) {
+            document.getElementById('status-run-import-dialog-msg').style.display = 'none';
+            document.getElementById('status-run-import-no-dates-msg').style.display = 'block';
+            document.getElementById('status-dialog-confirm-btn').style.display = 'none';
+            document.getElementById('status-run-import-dialog').showModal();
+        } else if (selectedTeam) {
+            // Single-team import — show dedicated confirmation dialog.
+            // Display the title; send the ESID as the filter.
+            document.getElementById('status-team-import-name').textContent = selectedTeam;
+            const teamFilter = selectedTeamFilterValue(document.getElementById('status-team'));
+            pendingImportConfig = { start_date: from, end_date: to, team_ids: teamFilter };
+            document.getElementById('status-team-import-dialog').showModal();
+        } else {
+            document.getElementById('status-dialog-date-range').textContent = `${from} to ${to}`;
+            document.getElementById('status-run-import-dialog-msg').style.display = 'block';
+            document.getElementById('status-run-import-no-dates-msg').style.display = 'none';
+            document.getElementById('status-dialog-confirm-btn').style.display = 'inline-block';
+            pendingImportConfig = { start_date: from, end_date: to };
+            document.getElementById('status-run-import-dialog').showModal();
+        }
+    });
+
+    // ── Dialog confirm / cancel handlers ──
+    document.getElementById('status-dialog-confirm-btn').addEventListener('click', () => {
+        document.getElementById('status-run-import-dialog').close();
+        if (pendingImportConfig) runStatusImport(pendingImportConfig);
+    });
+    document.getElementById('status-dialog-cancel-btn').addEventListener('click', () => {
+        document.getElementById('status-run-import-dialog').close();
+    });
+    document.getElementById('status-team-import-confirm-btn').addEventListener('click', () => {
+        document.getElementById('status-team-import-dialog').close();
+        if (pendingImportConfig) runStatusImport(pendingImportConfig);
+    });
+    document.getElementById('status-team-import-cancel-btn').addEventListener('click', () => {
+        document.getElementById('status-team-import-dialog').close();
+        pendingImportConfig = null;
+    });
+    document.getElementById('status-missing-confirm-btn').addEventListener('click', () => {
+        document.getElementById('status-missing-run-dialog').close();
+        if (pendingImportConfig) runStatusImport(pendingImportConfig);
+    });
+    document.getElementById('status-missing-cancel-btn').addEventListener('click', () => {
+        document.getElementById('status-missing-run-dialog').close();
+    });
+    document.getElementById('status-cancel-confirm-btn').addEventListener('click', async () => {
+        document.getElementById('status-cancel-import-dialog').close();
+        if (!statusCurrentImportId) return;
+        try {
+            const url = '{{ url_for("cancel_import", import_id="PLACEHOLDER") }}'.replace('PLACEHOLDER', statusCurrentImportId);
+            await fetch(url, { method: 'POST' });
+        } catch (e) { /* ignore */ }
+        setStatusImportCompleted();
+        appendToStatusLog('\n[Import canceled by user]');
+        statusCancelImportBtn.style.display = 'none';
+        statusCurrentImportId = null;
+    });
+    document.getElementById('status-cancel-dismiss-btn').addEventListener('click', () => {
+        document.getElementById('status-cancel-import-dialog').close();
+    });
+
+    // ── Cancel Import button ──
+    statusCancelImportBtn.addEventListener('click', () => {
+        document.getElementById('status-cancel-import-dialog').showModal();
+    });
+
+    // ── Status log: Clear / Save ──
+    document.getElementById('status-clear-log-btn').addEventListener('click', () => {
+        statusLogLines = [];
+        updateStatusLogSpacer();
+        renderStatusLogLines();
+    });
+    document.getElementById('status-save-log-btn').addEventListener('click', async () => {
+        if (statusLogLines.length === 0) { alert('No log content to save.'); return; }
+        const tmp = document.createElement('div');
+        const plain = statusLogLines.map(html => { tmp.innerHTML = html; return tmp.textContent; });
+        const content = plain.join('\n');
+        const today = new Date().toISOString().slice(0, 10);
+        const filename = 'import-log-' + today + '.txt';
+        if (window.showSaveFilePicker) {
+            try {
+                const fh = await window.showSaveFilePicker({ suggestedName: filename, types: [{ description: 'Text files', accept: { 'text/plain': ['.txt'] } }] });
+                const w = await fh.createWritable(); await w.write(content); await w.close();
+            } catch (err) { if (err.name !== 'AbortError') alert('Save failed: ' + err.message); }
+        } else {
+            const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([content], { type: 'text/plain' })), download: filename });
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        }
+    });
+
+    // ── Status log functions ──
+
+    function getImportSourceFromDataView(dataViewId, dataViewLabel) {
+        const id = (dataViewId || '').toLowerCase();
+        const label = (dataViewLabel || '').toLowerCase();
+        // Facebook Page Insights — check before general Facebook
+        if (id.includes('fb_page') || id.includes('facebook_page') || label.includes('facebook page')) return 'facebook_pages';
+        // Facebook Ads (id: *fb_insights, label: "Facebook data view")
+        if (id.includes('fb_insights') || id.includes('fb_ad') || label.includes('facebook')) return 'facebook_ads';
+        // Echo
+        if (id.includes('echo') || label.includes('echo')) return 'echo';
+        // Google Ads
+        if (id.includes('google_ads') || label.includes('google ads')) return 'google_ads';
+        // Google Analytics
+        if (id.includes('ga_metrics') || id.includes('google_analytics') || label.includes('google analytics')) return 'google_analytics';
+        // Instagram
+        if (id.includes('ig_insights') || id.includes('instagram') || label.includes('instagram')) return 'instagram';
+        // YouTube
+        if (id.includes('youtube') || label.includes('youtube')) return 'youtube';
+        // Chatwoot
+        if (id.includes('chatwoot') || label.includes('chatwoot')) return 'chatwoot';
+        // Bitly — "*_bitly_clicks" / "Bitly Clicks" data view
+        if (id.includes('bitly') || label.includes('bitly')) return 'bitly';
+        // TikTok — "*_tiktok_organic" / "TikTok Organic" data view
+        if (id.includes('tiktok') || label.includes('tiktok')) return 'tiktok';
+        // Disciple Tools — matches both the team-keyed
+        // "*_disciple_tools" / "Disciple Tools (by team)" view and the legacy
+        // "disciple-tools" alias view. Either way the dispatch runs the pull
+        // importer (never promote_staging), which writes the team-keyed
+        // indices.
+        if (id.includes('disciple') || label.includes('disciple')) return 'disciple_tools';
+        return null;
+    }
+
+    function escapeStatusHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function highlightStatusLine(line) {
+        const lower = line.toLowerCase();
+        if (lower.includes('error') || lower.includes('failed') || lower.includes('exception') || lower.includes('access denied'))
+            return `<span class="log-error">${escapeStatusHtml(line)}</span>`;
+        if (lower.includes('success') || lower.includes('completed') || lower.includes('imported'))
+            return `<span class="log-success">${escapeStatusHtml(line)}</span>`;
+        if (lower.includes('warning') || lower.includes('warn'))
+            return `<span class="log-warning">${escapeStatusHtml(line)}</span>`;
+        if (lower.includes('checking') || lower.includes('running') || lower.includes('fetching') || lower.includes('processing') || lower.includes('starting'))
+            return `<span class="log-info">${escapeStatusHtml(line)}</span>`;
+        return escapeStatusHtml(line);
+    }
+
+    // Keep the spacer height in sync with statusLogLines.length. The spacer
+    // only needs updating when total changes, not on every scroll — touching
+    // it from renderStatusLogLines on the scroll path triggered a layout
+    // reset that visibly jumped the viewport when scrolling a completed log.
+    function updateStatusLogSpacer() {
+        statusLogSpacer.style.height = (statusLogLines.length * STATUS_LOG_LINE_HEIGHT) + 'px';
+    }
+
+    function renderStatusLogLines() {
+        const total = statusLogLines.length;
+        if (total === 0) {
+            statusLogSpacer.style.height = '0px';
+            statusLogItems.innerHTML = '<div class="log-empty-msg">Waiting for log output...</div>';
+            return;
+        }
+        const scrollTop = statusLogViewport.scrollTop;
+        const viewportH = statusLogViewport.clientHeight;
+        let start = Math.max(0, Math.floor(scrollTop / STATUS_LOG_LINE_HEIGHT) - STATUS_LOG_OVERSCAN);
+        let end = Math.min(total, Math.ceil((scrollTop + viewportH) / STATUS_LOG_LINE_HEIGHT) + STATUS_LOG_OVERSCAN);
+        let html = '';
+        for (let i = start; i < end; i++) {
+            html += `<div class="log-line" style="top:${i * STATUS_LOG_LINE_HEIGHT}px">${statusLogLines[i]}</div>`;
+        }
+        statusLogItems.innerHTML = html;
+    }
+
+    let statusLogProgrammaticScroll = false;  // guard against scroll ↔ render loop
+
+    function appendToStatusLog(content) {
+        if (!content) return;
+        for (const line of content.split('\n')) {
+            statusLogLines.push(highlightStatusLine(line));
+        }
+        updateStatusLogSpacer();
+        renderStatusLogLines();
+        if (statusLogAutoScroll) {
+            statusLogProgrammaticScroll = true;
+            statusLogViewport.scrollTop = statusLogViewport.scrollHeight;
+            // Reset after the browser processes the scroll event
+            requestAnimationFrame(() => { statusLogProgrammaticScroll = false; });
+        }
+    }
+
+    // Coalesce scroll-driven re-renders to one per animation frame: a fast
+    // wheel or End-key scroll fires many native scroll events per frame and
+    // re-rendering on each one was the source of the viewport jitter.
+    let statusLogScrollRafPending = false;
+    statusLogViewport.addEventListener('scroll', () => {
+        if (statusLogProgrammaticScroll) return;
+        if (statusLogScrollRafPending) return;
+        statusLogScrollRafPending = true;
+        requestAnimationFrame(() => {
+            statusLogScrollRafPending = false;
+            const dist = statusLogViewport.scrollHeight - statusLogViewport.scrollTop - statusLogViewport.clientHeight;
+            statusLogAutoScroll = dist < STATUS_LOG_LINE_HEIGHT * 3;
+            renderStatusLogLines();
+        });
+    });
+
+    function setStatusLogStatus(status, text) {
+        statusLogStatus.className = 'log-status ' + status;
+        if (status === 'running') {
+            statusLogStatusText.innerHTML = '<div class="log-spinner"></div> ' + text;
+        } else {
+            statusLogStatusText.textContent = text;
+        }
+    }
+
+    function setStatusImportRunning() {
+        document.getElementById('backfill-all-btn').disabled = true;
+        statusCancelImportBtn.style.display = 'inline-block';
+        setStatusLogStatus('running', 'Import running...');
+    }
+
+    function setStatusImportCompleted(statusText) {
+        // Re-derive disabled state from the validator (range + DT title)
+        // instead of unconditionally enabling — otherwise an invalid
+        // range would survive an import completion.
+        _backfillValidateRange();
+        statusCancelImportBtn.style.display = 'none';
+        // caller can pass a custom completion message (e.g. a skip
+        // with no linked account); default to the plain "Completed".
+        setStatusLogStatus('completed', statusText || 'Completed');
+        stopStatusLogPolling();
+        stopStatusStatusPolling();
+    }
+
+    function startStatusLogPolling() {
+        if (statusLogPollingInterval) return;
+        fetchStatusLogContent();
+        statusLogPollingInterval = setInterval(fetchStatusLogContent, 1000);
+    }
+
+    function stopStatusLogPolling() {
+        if (statusLogPollingInterval) { clearInterval(statusLogPollingInterval); statusLogPollingInterval = null; }
+    }
+
+    function startStatusStatusPolling(importId) {
+        if (statusStatusPollingInterval) return;
+        statusStatusPollingInterval = setInterval(() => {
+            if (statusCurrentImportId) fetchStatusImportStatus(statusCurrentImportId);
+        }, 2000);
+    }
+
+    function stopStatusStatusPolling() {
+        if (statusStatusPollingInterval) { clearInterval(statusStatusPollingInterval); statusStatusPollingInterval = null; }
+    }
+
+    async function fetchStatusLogContent() {
+        try {
+            const resp = await fetch(`{{ url_for('get_log_content') }}?offset=${statusLogOffset}`);
+            const data = await resp.json();
+            if (data.exists && data.content) {
+                appendToStatusLog(data.content);
+                statusLogOffset = data.offset;
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    async function fetchStatusImportStatus(importId) {
+        try {
+            const url = '{{ url_for("get_import_status", import_id="PLACEHOLDER") }}'.replace('PLACEHOLDER', importId);
+            const resp = await fetch(url);
+            const status = await resp.json();
+            if (status.found && status.completed) {
+                // a connector with no linked account (or any result
+                // carrying a message) writes NOTHING to the log file, so the log
+                // viewer would just sit on "Waiting for log output..." and the
+                // user sees no explanation. Surface each result message into the
+                // log viewer (where they're already looking) and reflect a skip
+                // in the status line, so "no linked account" is visible.
+                const results = Array.isArray(status.results) ? status.results : [];
+                const messages = results.filter(r => r && r.message).map(r => r.message);
+                if (messages.length) appendToStatusLog(messages.join('\n'));
+                const anySkipped = results.some(r => r && r.skipped);
+                setStatusImportCompleted(anySkipped ? 'Completed — nothing imported (see message above)' : undefined);
+                statusCurrentImportId = null;
+                setTimeout(stopStatusLogPolling, 3000);
+                setTimeout(loadStatusData, 2000);
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    async function runStatusImport(config) {
+        const dataViewId = dataViewSelect.value;
+        const dataViewLabel = dataViewSelect.options[dataViewSelect.selectedIndex]?.text || '';
+        const source = getImportSourceFromDataView(dataViewId, dataViewLabel);
+
+        if (!source) {
+            alert('Cannot determine import source for this data view.');
+            return;
+        }
+
+        // Show log viewer and mark as running before the request
+        statusLogViewer.style.display = 'block';
+        setStatusImportRunning();
+
+        // "Force refresh" toggle (default checked). When on, re-pull
+        // and overwrite already-imported days; when off, gap-fill only (keep the
+        // idempotency skip). Backend applies it FB-ads-only; harmless to send for
+        // other sources. Default true if the control isn't present.
+        const forceEl = document.getElementById('backfill-force-refresh');
+        const forceRefresh = forceEl ? forceEl.checked : true;
+
+        try {
+            // Always clear the log file on the server before starting so the display
+            // only shows the current import — no stale content from previous runs
+            const resp = await fetch('{{ url_for("run_imports") }}', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ imports: [{ source, force_refresh: forceRefresh, ...config }], delete_log: true })
+            });
+            const data = await resp.json();
+            if (!data.success) {
+                setStatusImportCompleted();
+                alert('Failed to start import: ' + (data.error || 'Unknown error'));
+                return;
+            }
+            // Clear display and start polling only after server has cleared the log
+            statusLogLines = [];
+            statusLogOffset = 0;
+            statusLogAutoScroll = true;
+            updateStatusLogSpacer();
+            renderStatusLogLines();
+            if (data.import_id) {
+                statusCurrentImportId = data.import_id;
+                startStatusStatusPolling(data.import_id);
+            }
+            startStatusLogPolling();
+        } catch (e) {
+            setStatusImportCompleted();
+            alert('Failed to start import: ' + e.message);
+        }
+    }
+
+    // Init
+    loadDataViews();
+    loadTeams();
+    window.addEventListener('importCompleted', () => setTimeout(loadStatusData, 2000));
+})();
+
+// Asset CSV Import functionality
+(function() {
+    const assetCheckboxes = document.querySelectorAll('input[type="checkbox"][data-asset-type]');
+    const runAssetImportBtn = document.getElementById('run-asset-import-btn');
+    const assetImportResults = document.getElementById('asset-import-results');
+    const assetImportContent = document.getElementById('asset-import-content');
+
+    // Map asset types to file input IDs
+    function getFileInputId(assetType) {
+        const mapping = {
+            'instagram_accounts': 'file-ig-accounts',
+            'facebook_pages': 'file-fb-pages',
+            'facebook_ad_accounts': 'file-fb-ad-accounts',
+            'teams': 'file-teams',
+            'organizations': 'file-organizations',
+            'youtube_channels': 'file-youtube-channels'
+        };
+        return mapping[assetType] || 'file-' + assetType;
+    }
+
+    // Enable/disable file input based on checkbox state
+    assetCheckboxes.forEach(checkbox => {
+        const assetType = checkbox.dataset.assetType;
+        const fileInputId = getFileInputId(assetType);
+        const fileInput = document.getElementById(fileInputId);
+        const label = document.getElementById('label-' + fileInputId.replace('file-', ''));
+
+        checkbox.addEventListener('change', () => {
+            fileInput.disabled = !checkbox.checked;
+            // Toggle label disabled class
+            if (label) {
+                if (checkbox.checked) {
+                    label.classList.remove('disabled');
+                } else {
+                    label.classList.add('disabled');
+                }
+            }
+            if (!checkbox.checked) {
+                fileInput.value = '';
+                // Clear filename display
+                const filenameDisplay = document.getElementById('filename-' + fileInputId.replace('file-', ''));
+                if (filenameDisplay) {
+                    filenameDisplay.textContent = '';
+                }
+            }
+            updateImportButtonState();
+        });
+
+        fileInput.addEventListener('change', () => {
+            // Update filename display
+            const filenameDisplay = document.getElementById('filename-' + getFileInputId(assetType).replace('file-', ''));
+            if (filenameDisplay && fileInput.files && fileInput.files.length > 0) {
+                filenameDisplay.textContent = fileInput.files[0].name;
+            } else if (filenameDisplay) {
+                filenameDisplay.textContent = '';
+            }
+            updateImportButtonState();
+        });
+    });
+
+    // Update import button state
+    function updateImportButtonState() {
+        let hasFile = false;
+
+        assetCheckboxes.forEach(checkbox => {
+            if (checkbox.checked) {
+                const assetType = checkbox.dataset.assetType;
+                const fileInput = document.getElementById(getFileInputId(assetType));
+                if (fileInput.files && fileInput.files.length > 0) {
+                    hasFile = true;
+                }
+            }
+        });
+
+        runAssetImportBtn.disabled = !hasFile;
+    }
+
+    // Escape HTML
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // Display import results
+    function displayResults(result) {
+        assetImportResults.style.display = 'block';
+
+        let html = '';
+
+        if (result.success) {
+            html += `<span class="log-success">Import completed successfully!</span>\n\n`;
+            html += `Imported: ${result.imported_count}\n`;
+            if (result.updated_count !== undefined && result.updated_count > 0) {
+                html += `Updated: ${result.updated_count}\n`;
+            }
+            html += `Skipped (no changes): ${result.skipped_count}\n`;
+
+            if (result.error_count > 0) {
+                html += `<span class="log-warning">Messages: ${result.error_count}</span>\n`;
+            }
+        } else {
+            html += `<span class="log-error">Import failed!</span>\n`;
+            if (result.error) {
+                html += `<span class="log-error">${escapeHtml(result.error)}</span>\n`;
+            }
+        }
+
+        if (result.errors && result.errors.length > 0) {
+            html += '\n<span class="log-info">Message details:</span>\n';
+            result.errors.forEach(err => {
+                const lineInfo = err.line > 0 ? `Line ${err.line}: ` : '';
+                // Color code based on message content
+                let cssClass = 'log-info';
+                if (err.message.toLowerCase().includes('failed') || err.message.toLowerCase().includes('error')) {
+                    cssClass = 'log-error';
+                } else if (err.message.toLowerCase().includes('updated')) {
+                    cssClass = 'log-success';
+                } else if (err.message.toLowerCase().includes('skipped') || err.message.toLowerCase().includes('no echo tenant')) {
+                    cssClass = 'log-warning';
+                }
+                html += `<span class="${cssClass}">  ${lineInfo}${escapeHtml(err.message)}</span>\n`;
+            });
+        }
+
+        assetImportContent.innerHTML = html;
+    }
+
+    // Handle import button click
+    runAssetImportBtn.addEventListener('click', async () => {
+        // Find checked checkbox with file
+        let selectedType = null;
+        let selectedFile = null;
+
+        assetCheckboxes.forEach(checkbox => {
+            if (checkbox.checked) {
+                const assetType = checkbox.dataset.assetType;
+                const fileInput = document.getElementById(getFileInputId(assetType));
+                if (fileInput.files && fileInput.files.length > 0) {
+                    selectedType = assetType;
+                    selectedFile = fileInput.files[0];
+                }
+            }
+        });
+
+        if (!selectedType || !selectedFile) {
+            alert('Please select an asset type and choose a CSV file.');
+            return;
+        }
+
+        // Disable button during import
+        runAssetImportBtn.disabled = true;
+        runAssetImportBtn.textContent = 'Importing...';
+
+        try {
+            const formData = new FormData();
+            formData.append('asset_type', selectedType);
+            formData.append('file', selectedFile);
+
+            const response = await fetch('{{ url_for("import_assets_csv") }}', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+            displayResults(result);
+
+        } catch (error) {
+            displayResults({
+                success: false,
+                error: 'Request failed: ' + error.message,
+                errors: []
+            });
+        } finally {
+            runAssetImportBtn.disabled = false;
+            runAssetImportBtn.textContent = 'Import Assets';
+            updateImportButtonState();
+            window.dispatchEvent(new Event('importCompleted'));
+        }
+    });
+})();
+</script>
+{% endblock %}

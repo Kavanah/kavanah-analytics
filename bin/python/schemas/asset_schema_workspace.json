@@ -1,0 +1,33 @@
+{
+  "dynamic_templates": [
+    {
+      "strings_as_keyword": {
+        "match_mapping_type": "string",
+        "mapping": {
+          "type": "keyword",
+          "ignore_above": 8191
+        }
+      }
+    }
+  ],
+  "properties": {
+    "workspace_title": {
+      "type": "keyword"
+    },
+    "workspace_slug": {
+      "type": "keyword"
+    },
+    "is_agency": {
+      "type": "keyword"
+    },
+    "timezone": {
+      "type": "keyword"
+    },
+    "currency": {
+      "type": "keyword"
+    },
+    "fiscal_year_start_month": {
+      "type": "keyword"
+    }
+  }
+}

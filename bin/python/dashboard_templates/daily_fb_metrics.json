@@ -1,0 +1,102 @@
+{
+  "connector_id": "meta_ads",
+  "created_at": "2026-05-29T22:34:40.886704+00:00",
+  "description": "Daily followers, post impressions, media views, video views, and post engagements",
+  "echarts_config": {
+    "charts": [
+      {
+        "aggregation": "sum",
+        "breakdown": null,
+        "cell_gradient_color": "#006d2c",
+        "cell_gradient_enabled": false,
+        "chart_id": "c1780080877341",
+        "chart_type": "table",
+        "data_view": "*_fb_page_insights",
+        "date_format": "",
+        "display_toggles": {},
+        "filters": [],
+        "height": "272.997px",
+        "hide_title": true,
+        "max_columns": 2,
+        "max_rows": 10,
+        "other_bucket": false,
+        "position": {
+          "col": 0,
+          "h": 4,
+          "row": 0,
+          "w": 6
+        },
+        "table_columns": [
+          {
+            "aggregation": "sum",
+            "field": "page_follows",
+            "format": "000,",
+            "label": "Followers"
+          },
+          {
+            "aggregation": "sum",
+            "field": "page_posts_impressions_organic",
+            "format": "000,",
+            "label": "Page Posts Impressions (Organic)"
+          },
+          {
+            "aggregation": "sum",
+            "field": "page_media_view",
+            "format": "000,",
+            "label": "Media Views"
+          },
+          {
+            "aggregation": "sum",
+            "field": "page_total_media_view_unique",
+            "format": "000,",
+            "label": "Unique Media Views"
+          },
+          {
+            "aggregation": "sum",
+            "field": "page_video_views",
+            "format": "000,",
+            "label": "Video Views"
+          },
+          {
+            "aggregation": "sum",
+            "field": "page_post_engagements",
+            "format": "000,",
+            "label": "Post Engagements "
+          }
+        ],
+        "table_font_size": 12,
+        "title": "Table",
+        "width": "961.086px",
+        "x_field": "kibana_date",
+        "x_field_type": "date",
+        "x_label": "Date",
+        "y_field_labels": {
+          "page_posts_impressions_organic": "Page Posts Impressions (Organic)"
+        },
+        "y_fields": [
+          "page_follows",
+          "page_posts_impressions_organic",
+          "page_media_view",
+          "page_total_media_view_unique",
+          "page_video_views",
+          "page_post_engagements"
+        ],
+        "y_max": "",
+        "y_min": ""
+      }
+    ],
+    "filters": [],
+    "global_date_range": null
+  },
+  "frozen_from_dashboard_id": "24ffbc32-6899-4ab5-9858-c382fc422b90",
+  "menu_position": 4,
+  "menu_title": "Meta Pages",
+  "name": "Daily FB Metrics",
+  "pack_id": "meta",
+  "placeholder_field": null,
+  "required_sources": [
+    "meta_ads"
+  ],
+  "template_id": "daily_fb_metrics",
+  "updated_at": "2026-05-29T22:34:40.886704+00:00"
+}

@@ -1,0 +1,18 @@
+{
+  "env": {
+    "browser": true,
+    "es6": true
+  },
+  "parserOptions": {
+    "ecmaVersion": 2020
+  },
+  "rules": {
+    "no-undef": "warn",
+    "no-unused-vars": "warn",
+    "no-console": "off",
+    "no-redeclare": "error",
+    "no-dupe-keys": "error",
+    "no-duplicate-case": "error",
+    "no-unreachable": "error"
+  }
+}

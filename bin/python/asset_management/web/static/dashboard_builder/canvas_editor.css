@@ -1,0 +1,624 @@
+/* Canvas Builder editor foundation.
+ *
+ * Visual direction: dense desktop editor matching the existing Builder's
+ * Cloudscape-dark topbar over a neutral light workarea (same idiom the
+ * prototype established).
+ *
+ * Editor chrome (rulers, guides, grid, margin guides, panel) carries
+ * .cv-chrome and/or is gated on body.mode-edit — the page div itself is the
+ * exact DOM the published viewer will render, so chrome can never
+ * leak into published output structurally.
+ */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  display: flex; flex-direction: column;
+  font-family: var(--cs-font-family, -apple-system, "Segoe UI", Roboto, sans-serif);
+  background: #e8ebef; overflow: hidden;
+}
+
+/* ── Topbar ── */
+/* Two fixed rows: document & view controls on top, the Insert toolbar
+   below. In-row wrapping stays as the last-resort fallback for narrow
+   windows — better than clipping Zoom/Preview off the right edge (labels
+   themselves stay one-line). */
+.cv-topbar {
+  flex-shrink: 0; display: flex; flex-direction: column;
+  background: #232F3E; color: #fff; font-size: 13px;
+}
+.cv-topbar-row {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 12px; flex-wrap: wrap; row-gap: 6px;
+}
+.cv-topbar-row + .cv-topbar-row { border-top: 1px solid #37475a; }
+.cv-topbar .cv-insert-label {
+  font-weight: 700; text-transform: uppercase; letter-spacing: .4px;
+  font-size: 10px; color: #8a97a5; white-space: nowrap;
+}
+.cv-topbar .cv-back {
+  color: #b8c4cf; text-decoration: none; font-size: 12px; margin-right: 4px;
+  white-space: nowrap;
+}
+.cv-topbar .cv-back:hover { color: #fff; }
+.cv-topbar .cv-title { font-weight: 600; white-space: nowrap; flex-shrink: 0; }
+.cv-topbar .cv-doc-title {
+  width: 190px; font-size: 13px; padding: 5px 8px; border-radius: 6px;
+  border: 1px solid #4a5866; background: #2f3e4e; color: #fff;
+  /* follow-up: the only shrinkable topbar item — it gives up
+     width before the bar wraps to a second row. */
+  flex-shrink: 1; min-width: 90px;
+}
+.cv-topbar .cv-doc-title:focus { outline: 2px solid #0972d3; }
+.cv-topbar button, .cv-topbar select {
+  font-size: 12px; padding: 5px 8px; border-radius: 6px;
+  border: 1px solid #4a5866; background: #2f3e4e; color: #fff; cursor: pointer;
+  /* follow-up: labels never wrap — a crowded topbar (more + buttons
+     as the epic grows) was two-lining "+ Text" / "From report…". */
+  white-space: nowrap; flex-shrink: 0;
+}
+.cv-topbar button:hover:not(:disabled) { background: #3c4d5f; }
+.cv-topbar button:disabled { opacity: .45; cursor: default; }
+.cv-topbar button.cv-primary { background: #0972d3; border-color: #0972d3; }
+.cv-topbar .cv-spacer { flex: 1; }
+
+/* ── live org/team/time filter bar (the Dashboard Builder's
+   topbar filters). Editor chrome outside the page div — never leaks into
+   published output. ── */
+.cv-live-filters {
+  flex-shrink: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 6px 14px; background: #fbfcfd; border-bottom: 1px solid #d5dbdb;
+  font-size: 12px; color: #414d5c;
+}
+.cv-live-filters .cv-lf-title {
+  font-weight: 700; text-transform: uppercase; letter-spacing: .4px;
+  font-size: 10px; color: #5f6b7a;
+}
+.cv-live-filters label { font-weight: 600; white-space: nowrap; }
+.cv-live-filters select, .cv-live-filters input[type="date"] {
+  font-size: 12px; padding: 4px 6px; border: 1px solid #aab7b8;
+  border-radius: 5px; background: #fff; max-width: 220px;
+}
+.cv-live-filters .cv-lf-sep { width: 1px; height: 18px; background: #d5dbdb; }
+.cv-live-filters button {
+  font-size: 11px; padding: 4px 10px; border-radius: 5px;
+  border: 1px solid #aab7b8; background: #fff; color: #414d5c; cursor: pointer;
+}
+.cv-live-filters button:hover:not(:disabled) { background: #f2f5f7; }
+.cv-live-filters button:disabled { opacity: .45; cursor: default; }
+.cv-live-filters .cv-lf-note { margin-left: auto; color: #8a97a5; font-size: 11px; }
+
+/* ── Main split: workarea + settings panel ── */
+.cv-main { flex: 1; display: flex; min-height: 0; }
+
+/* Block layout + margin:0 auto, NOT flex centering — a centered flex child
+   that overflows its scroll container gets clipped unreachably on the leading
+   side at zoom > 100%. */
+.cv-workarea { flex: 1; overflow: auto; padding: 28px; }
+.cv-scaler { margin: 0 auto; }
+
+.cv-page-wrap { position: relative; transform-origin: top left; }
+.cv-page {
+  position: absolute; background: #fff; overflow: hidden;
+  box-shadow: 0 2px 12px rgba(0,0,0,.18);
+}
+body.mode-view .cv-page { box-shadow: 0 1px 6px rgba(0,0,0,.12); }
+
+/* ── Rulers (editor chrome) ── */
+.cv-ruler, .cv-ruler-corner {
+  position: absolute; background: #f4f6f8; overflow: hidden;
+  border: 1px solid #d5dbdb; color: #5f6b7a;
+}
+.cv-ruler-corner { left: 0; top: 0; }
+/* Minor tick every 10px, major every 100px, drawn as layered gradients. */
+.cv-ruler-top {
+  top: 0; cursor: copy;
+  background-image:
+    repeating-linear-gradient(to right, transparent 0, transparent 99px, #8a97a5 99px, #8a97a5 100px),
+    repeating-linear-gradient(to right, transparent 0, transparent 9px, #ccd4dc 9px, #ccd4dc 10px);
+  background-size: 100% 100%, 100% 45%;
+  background-position: 0 0, 0 100%;
+  background-repeat: no-repeat, repeat;
+}
+.cv-ruler-left {
+  left: 0; cursor: copy;
+  background-image:
+    repeating-linear-gradient(to bottom, transparent 0, transparent 99px, #8a97a5 99px, #8a97a5 100px),
+    repeating-linear-gradient(to bottom, transparent 0, transparent 9px, #ccd4dc 9px, #ccd4dc 10px);
+  background-size: 100% 100%, 45% 100%;
+  background-position: 0 0, 100% 0;
+  background-repeat: no-repeat, repeat;
+}
+.cv-ruler-label {
+  position: absolute; font-size: 8px; line-height: 1; pointer-events: none;
+  color: #5f6b7a;
+}
+.cv-ruler-top .cv-ruler-label { top: 2px; }
+.cv-ruler-left .cv-ruler-label { left: 1px; }
+
+/* ── Page overlays: grid, margins (editor chrome, inside the page) ── */
+.cv-grid { position: absolute; inset: 0; pointer-events: none; z-index: 9000; }
+.cv-margins {
+  position: absolute; pointer-events: none; z-index: 9001;
+  border: 1px dashed #b58ee0;
+}
+
+/* ── Guides (editor chrome, inside the page) ── */
+.cv-guide { position: absolute; z-index: 9002; }
+.cv-guide-v { top: 0; bottom: 0; width: 1px; background: #00a1c9; cursor: col-resize; }
+.cv-guide-h { left: 0; right: 0; height: 1px; background: #00a1c9; cursor: row-resize; }
+/* Fatter invisible hit area so a 1px line is grabbable. */
+.cv-guide::after { content: ""; position: absolute; }
+.cv-guide-v::after { left: -3px; right: -3px; top: 0; bottom: 0; }
+.cv-guide-h::after { top: -3px; bottom: -3px; left: 0; right: 0; }
+
+/* ── Canvas objects (shared by edit + view; manipulation lands) ── */
+.cv-object { position: absolute; overflow: hidden; }
+.cv-object.cv-text {
+  padding: 6px 8px; font-size: 15px; line-height: 1.4; color: #16191f;
+  white-space: pre-wrap; word-break: break-word;
+}
+.cv-object.cv-placeholder {
+  display: flex; align-items: center; justify-content: center;
+  border: 1px dashed #aab7b8; border-radius: 6px; color: #5f6b7a;
+  font-size: 12px; background: #fafbfc;
+}
+
+/* ── Editor chrome gating ── */
+body.mode-view .cv-chrome { display: none !important; }
+
+/* ── Settings panel (edit mode only) ── */
+.cv-panel {
+  flex-shrink: 0; width: 280px; overflow-y: auto; padding: 14px;
+  background: #fff; border-left: 1px solid #d5dbdb; font-size: 12px;
+  color: #16191f;
+}
+body.mode-view .cv-panel { display: none; }
+.cv-panel h3 {
+  font-size: 12px; text-transform: uppercase; letter-spacing: .4px;
+  color: #414d5c; margin: 16px 0 8px;
+}
+.cv-panel h3:first-child { margin-top: 0; }
+.cv-field { margin-bottom: 8px; flex: 1; }
+.cv-field-row { display: flex; gap: 8px; }
+.cv-field label { display: block; margin-bottom: 3px; font-weight: 600; color: #414d5c; }
+.cv-field input[type="number"], .cv-field input[type="text"], .cv-field select {
+  width: 100%; font-size: 12px; padding: 5px 6px;
+  border: 1px solid #aab7b8; border-radius: 5px; background: #fff;
+}
+.cv-field input[type="color"] { width: 100%; height: 30px; padding: 2px; border: 1px solid #aab7b8; border-radius: 5px; background: #fff; }
+.cv-field input[type="file"] { width: 100%; font-size: 11px; }
+.cv-check { display: flex; align-items: center; gap: 6px; margin: 6px 0; font-size: 12px; cursor: pointer; }
+.cv-seg { display: flex; border: 1px solid #aab7b8; border-radius: 6px; overflow: hidden; }
+.cv-seg-btn {
+  flex: 1; font-size: 12px; padding: 6px 0; border: none; background: #fff;
+  color: #414d5c; cursor: pointer;
+}
+.cv-seg-btn + .cv-seg-btn { border-left: 1px solid #aab7b8; }
+.cv-seg-btn.active { background: #0972d3; color: #fff; font-weight: 600; }
+.cv-mini-btn {
+  margin-top: 6px; font-size: 11px; padding: 4px 10px; border-radius: 5px;
+  border: 1px solid #aab7b8; background: #fff; color: #414d5c; cursor: pointer;
+}
+.cv-mini-btn:hover { background: #f2f5f7; }
+.cv-hint { margin-top: 10px; color: #5f6b7a; font-size: 11px; line-height: 1.45; }
+
+/* per-binding row filters (field = value pairs). */
+.cv-filter-row { display: flex; gap: 4px; align-items: center; margin-bottom: 4px; }
+.cv-filter-row select, .cv-filter-row input[type="text"] {
+  flex: 1; min-width: 0; font-size: 12px; padding: 5px 6px;
+  border: 1px solid #aab7b8; border-radius: 5px; background: #fff;
+}
+.cv-filter-row .cv-mini-btn { margin-top: 0; padding: 4px 7px; flex: none; }
+
+/* calculated-field panel: variable rows wrap (name + four
+   controls don't fit one panel line) and the formula error box mirrors the
+   builder's inline formula error styling. */
+.cv-calc-var-row {
+  display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
+  margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px dashed #e2ddd4;
+}
+.cv-calc-var-row select, .cv-calc-var-row input[type="text"] {
+  flex: 1 1 45%; min-width: 0; font-size: 12px; padding: 5px 6px;
+  border: 1px solid #aab7b8; border-radius: 5px; background: #fff;
+}
+.cv-calc-var-row .cv-calc-var-name { flex: 0 1 30%; font-weight: 600; }
+.cv-calc-var-row .cv-mini-btn { margin-top: 0; padding: 4px 7px; flex: none; }
+.cv-calc-err {
+  margin-top: 4px; color: #d91515; font-size: 11px; line-height: 1.4;
+}
+
+/* theme cards (Page setup panel) + apply-theme confirm modal. */
+.cv-theme-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.cv-theme-card {
+  display: flex; flex-direction: column; gap: 6px; padding: 8px;
+  border: 1px solid #aab7b8; border-radius: 8px; background: #fff;
+  cursor: pointer; text-align: left;
+}
+.cv-theme-card:hover { border-color: #0972d3; }
+.cv-theme-card.active { border-color: #0972d3; box-shadow: 0 0 0 1px #0972d3; }
+.cv-theme-swatch {
+  display: flex; height: 14px; border-radius: 4px; overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, .08);
+}
+.cv-theme-swatch span { flex: 1; }
+.cv-theme-card-name { font-size: 11px; font-weight: 600; color: #16191f; }
+.cv-theme-modal-body { padding: 14px; font-size: 13px; line-height: 1.5; }
+.cv-theme-modal-actions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+.cv-theme-modal-actions button {
+  font-size: 12px; padding: 6px 12px; border-radius: 5px;
+  border: 1px solid #aab7b8; background: #fff; color: #414d5c; cursor: pointer;
+}
+.cv-theme-modal-actions button:hover { background: #f2f5f7; }
+.cv-theme-modal-actions button.cv-theme-primary {
+  background: #0972d3; border-color: #0972d3; color: #fff; font-weight: 600;
+}
+.cv-theme-modal-actions button.cv-theme-primary:hover { background: #075aab; }
+
+/* ── Open modal ── */
+.cv-modal {
+  position: fixed; inset: 0; z-index: 600; display: none;
+  align-items: center; justify-content: center; background: rgba(0,0,0,.45);
+}
+.cv-modal.visible { display: flex; }
+.cv-modal-box {
+  background: #fff; border-radius: 8px; width: min(560px, 92vw);
+  max-height: 76vh; display: flex; flex-direction: column; overflow: hidden;
+}
+.cv-modal-box header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; border-bottom: 1px solid #e9ebed;
+  font-size: 13px; font-weight: 600;
+}
+.cv-modal-box header button { border: none; background: none; font-size: 15px; cursor: pointer; }
+.cv-open-list { overflow-y: auto; padding: 6px 0; }
+.cv-open-row {
+  display: flex; align-items: center; gap: 8px; padding: 8px 14px;
+  font-size: 13px; cursor: pointer;
+}
+.cv-open-row:hover { background: #f2f8fd; }
+.cv-open-row .cv-open-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-open-row .cv-open-date { color: #5f6b7a; font-size: 11px; }
+/* seed rows: title over a template-description line (the same
+   line the Choose a Template dialog shows), kinds on the right. */
+.cv-open-row .cv-open-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.cv-open-row .cv-open-main .cv-open-title { flex: none; }
+.cv-open-row .cv-open-desc { color: #5f6b7a; font-size: 11px; line-height: 1.35; }
+.cv-open-row button {
+  font-size: 11px; padding: 3px 8px; border-radius: 5px;
+  border: 1px solid #aab7b8; background: #fff; cursor: pointer;
+}
+.cv-open-row button:hover { background: #f2f5f7; }
+.cv-open-empty { padding: 18px 14px; color: #5f6b7a; font-size: 12px; }
+
+/* ── Toast ── */
+.cv-toast {
+  position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);
+  z-index: 700; display: none; padding: 9px 16px; border-radius: 6px;
+  background: #232F3E; color: #fff; font-size: 12px;
+  box-shadow: 0 3px 10px rgba(0,0,0,.3); max-width: 70vw;
+}
+.cv-toast.visible { display: block; }
+.cv-toast.error { background: #d13212; }
+
+/* ══ object layer: seeded reports, data fields, icons, sections ══ */
+
+.cv-topbar .cv-sep { width: 1px; align-self: stretch; margin: 2px 1px; background: #4a5866; }
+
+body.mode-edit .cv-object { cursor: move; user-select: none; }
+body.mode-edit .cv-object.selected { outline: 2px solid #0972d3; }
+.cv-object.editing { cursor: text; user-select: text; outline: 2px dashed #0972d3; }
+
+/* Inset so .cv-object's overflow:hidden can't clip it. */
+.cv-resize-handle {
+  position: absolute; right: 0; bottom: 0; width: 12px; height: 12px;
+  background: #0972d3; border: 2px solid #fff; border-radius: 3px 0 0 0;
+  cursor: nwse-resize; box-shadow: 0 1px 3px rgba(0,0,0,.3); z-index: 5;
+}
+
+/* Live data field — card idiom matching the report KPI tiles. */
+.cv-object.cv-data-field {
+  display: flex; flex-direction: column; justify-content: center; gap: 4px;
+  padding: 12px 16px; background: #fff; border: 1px solid #e2ddd4;
+  border-radius: 10px; box-shadow: 0 2px 10px rgba(26,39,68,.06);
+}
+.cv-data-field .cv-df-value {
+  font-size: 26px; font-weight: 700; color: #1a2744; line-height: 1.1;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cv-data-field .cv-df-label {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+  color: #8da0b8; font-weight: 600; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cv-data-field.cv-df-unbound { border-style: dashed; border-color: #aab7b8; }
+.cv-data-field.cv-df-unbound .cv-df-value { font-size: 13px; font-weight: 500; color: #5f6b7a; }
+.cv-data-field.cv-df-error { border-color: #d13212; }
+.cv-data-field.cv-df-error .cv-df-value { color: #d13212; }
+/* broken-binding badge, edit mode only: preview must render
+   exactly what the published viewer does (a plain em dash). */
+body.mode-edit .cv-data-field.cv-df-error::after {
+  content: 'broken binding';
+  position: absolute; top: 2px; right: 6px;
+  font-size: 9px; font-weight: 700; letter-spacing: .5px;
+  text-transform: uppercase; color: #d13212; pointer-events: none;
+}
+
+/* Icon object */
+.cv-object.cv-icon { display: flex; align-items: center; justify-content: center; }
+.cv-object.cv-icon img { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+
+/* Placeholder for unconvertible seeded elements — visible, never silent. */
+.cv-object.cv-placeholder-obj {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; padding: 12px; text-align: center;
+  border: 2px dashed #c9953c; border-radius: 10px; background: #fdf8ee;
+}
+.cv-placeholder-obj .cv-ph-label { font-size: 14px; font-weight: 700; color: #7a5b1c; }
+.cv-placeholder-obj .cv-ph-reason { font-size: 11px; color: #8a7340; max-width: 90%; }
+
+/* Selected-object panel */
+.cv-obj-type {
+  font-weight: 500; font-size: 11px; color: #5f6b7a; text-transform: none;
+  letter-spacing: 0; margin-left: 6px;
+}
+.cv-obj-actions { display: flex; gap: 6px; margin-top: 10px; }
+.cv-mini-btn.cv-danger { border-color: #d13212; color: #d13212; }
+.cv-mini-btn.cv-danger:hover { background: #fdf3f1; }
+.cv-panel-rule { border: none; border-top: 1px solid #e9ebed; margin: 14px 0; }
+
+/* Icon library modal grid */
+.cv-icon-grid {
+  overflow-y: auto; padding: 14px; display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 10px;
+}
+.cv-icon-choice {
+  aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
+  padding: 10px; border: 1px solid #d5dbdb; border-radius: 8px;
+  background: #fff; cursor: pointer;
+}
+.cv-icon-choice:hover { border-color: #0972d3; background: #f2f8fd; }
+.cv-icon-choice img { width: 100%; height: 100%; object-fit: contain; }
+
+/* ══ follow-up — report-faithful table cells, snapping, history ══ */
+
+/* Bar-style text (title/group headers with a fill) centers vertically. */
+.cv-object.cv-text { display: flex; flex-direction: column; justify-content: center; }
+
+/* grouped_table cell variant: colored column-header strip over a white
+   value cell, flush 1px borders — mirrors .gt-table in builder.css. */
+.cv-object.cv-data-field.cv-df-cell {
+  padding: 0; gap: 0; border-radius: 0; box-shadow: none;
+  border: 1px solid #E9EBED; justify-content: stretch; align-items: stretch;
+}
+.cv-df-cell .cv-df-label {
+  flex: 0 0 55%; display: flex; align-items: center; justify-content: center;
+  padding: 3px 6px; text-transform: none; letter-spacing: 0; font-weight: 700;
+  white-space: normal; text-overflow: clip; line-height: 1.15; text-align: center;
+}
+.cv-df-cell .cv-df-value {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  font-weight: 500; white-space: nowrap;
+}
+.cv-df-cell.cv-df-unbound { border-style: dashed; }
+
+/* Smart-guide snap lines while dragging */
+.cv-snapline { position: absolute; z-index: 9600; pointer-events: none; background: #e91e8c; }
+.cv-snapline-v { top: 0; bottom: 0; width: 1px; }
+.cv-snapline-h { left: 0; right: 0; height: 1px; }
+
+/* Align-to-page button row */
+.cv-align-row { display: flex; gap: 4px; }
+.cv-align-row .cv-mini-btn { flex: 1; padding: 4px 0; font-size: 13px; line-height: 1; }
+
+/* Chrome-free metric for styled card layouts (canva Summary Report seed). */
+.cv-object.cv-data-field.cv-df-plain {
+  background: transparent; border: none; box-shadow: none;
+  border-radius: 0; padding: 4px 6px; gap: 2px;
+}
+.cv-df-plain .cv-df-label {
+  text-transform: none; letter-spacing: 0; white-space: normal;
+  line-height: 1.2; overflow: visible;
+}
+.cv-df-plain.cv-df-unbound { border: 1px dashed #aab7b8; }
+
+/* Rubber-band multi-select */
+.cv-marquee {
+  position: absolute; z-index: 9550; pointer-events: none;
+  border: 1px solid #0972d3; background: rgba(9,114,211,.08);
+}
+
+/* ══ lock: a locked object selects (gray dashed outline, no move
+   cursor, no resize handle) but every manipulation no-ops until unlocked. */
+body.mode-edit .cv-object.cv-locked { cursor: default; }
+body.mode-edit .cv-object.cv-locked.selected { outline: 2px dashed #5f6b7a; }
+
+/* rotate handle: inset top-center circle (like the resize handle,
+   .cv-object's overflow:hidden would clip anything outside). */
+.cv-rotate-handle {
+  position: absolute; top: 2px; left: 50%; margin-left: -7px;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: #fff; border: 2px solid #0972d3;
+  cursor: grab; box-shadow: 0 1px 3px rgba(0,0,0,.3); z-index: 5;
+}
+.cv-rotate-handle:active { cursor: grabbing; }
+
+/* group selection: dashed bounding box around the whole group
+   with ONE resize handle that scales every member proportionally. Only the
+   handle takes pointer events so the box never blocks clicks on members. */
+.cv-group-box {
+  position: absolute; z-index: 9500; pointer-events: none;
+  border: 1px dashed #0972d3; border-radius: 2px;
+}
+.cv-group-resize-handle {
+  position: absolute; right: -6px; bottom: -6px; width: 12px; height: 12px;
+  background: #0972d3; border: 2px solid #fff; border-radius: 3px;
+  cursor: nwse-resize; box-shadow: 0 1px 3px rgba(0,0,0,.3);
+  pointer-events: auto;
+}
+
+
+/* Right-click context menu */
+/* ══ rich text: block rules + floating formatting toolbar ══ */
+
+/* Rich blocks inside a text box (editor; keep in step with the .cvv-text
+   equivalents in canvas_view.html / canvas_viewer.html). */
+.cv-object.cv-text p { margin: 0; }
+.cv-object.cv-text ul, .cv-object.cv-text ol { margin: 0; padding-left: 1.4em; }
+
+.cv-rich-toolbar {
+  position: fixed; z-index: 9700; display: none; align-items: center; gap: 4px;
+  background: #fff; border: 1px solid #d5dbdb; border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.18); padding: 5px 7px;
+}
+.cv-rich-toolbar.visible { display: flex; }
+.cv-rich-toolbar button {
+  border: 1px solid transparent; background: none; border-radius: 5px;
+  min-width: 26px; padding: 4px 6px; font-size: 12px; color: #16191f;
+  cursor: pointer; line-height: 1;
+}
+.cv-rich-toolbar button:hover { background: #f2f8fd; }
+.cv-rich-toolbar button.active { background: #0972d3; color: #fff; }
+.cv-rich-toolbar select {
+  font-size: 12px; padding: 3px 4px; border: 1px solid #d5dbdb;
+  border-radius: 5px; background: #fff; max-width: 84px;
+}
+.cv-rt-sep { width: 1px; align-self: stretch; margin: 2px 3px; background: #e4e9ec; }
+.cv-rt-swatches { display: flex; align-items: center; gap: 3px; }
+.cv-rt-swatch {
+  width: 16px; height: 16px; min-width: 16px !important; padding: 0 !important;
+  border: 1px solid #aab7b8 !important; border-radius: 4px !important;
+}
+.cv-rt-swatch:hover { transform: scale(1.15); }
+
+.cv-ctx-menu {
+  position: fixed; z-index: 9800; display: none; min-width: 170px;
+  background: #fff; border: 1px solid #d5dbdb; border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.18); padding: 4px; flex-direction: column;
+}
+.cv-ctx-menu.visible { display: flex; }
+.cv-ctx-menu button {
+  display: flex; justify-content: space-between; align-items: center; gap: 16px;
+  border: none; background: none; text-align: left; width: 100%;
+  padding: 7px 10px; font-size: 12px; color: #16191f; border-radius: 5px; cursor: pointer;
+}
+.cv-ctx-menu button:hover:not(:disabled) { background: #f2f8fd; }
+.cv-ctx-menu button:disabled { color: #aab7b8; cursor: default; }
+.cv-ctx-menu .cv-ctx-kbd { font-size: 10px; color: #8a98a8; }
+
+
+/* ══ shapes + images. The shared renderers set everything else
+   inline; only the callout's rich-text block rules live here (keep in step
+   with the .cvv-shape equivalents in canvas_view.html / canvas_viewer.html). */
+.cv-object.cv-shape, .cv-object.cv-image { background: transparent; }
+.cv-object.cv-shape .cvs-text p { margin: 0; }
+.cv-object.cv-shape .cvs-text ul, .cv-object.cv-shape .cvs-text ol { margin: 0; padding-left: 1.4em; }
+
+/* Rotate-mode toggle: rotation handle only on demand */
+.cv-mini-btn.active { background: #0972d3; border-color: #0972d3; color: #fff; }
+#cv-rotation-field .cv-field-row { display: flex; gap: 6px; align-items: center; }
+#cv-rotation-field input { flex: 1; min-width: 0; }
+
+/* == -- AI chat side panel (foundation: chat Q&A + attachments).
+   Editor chrome: lives beside the settings panel inside .cv-main, hidden in
+   preview mode like .cv-panel -- it can never leak into published output. */
+.cv-ai-panel {
+  flex-shrink: 0; width: 320px; display: flex; flex-direction: column;
+  background: #fff; border-left: 1px solid #d5dbdb; font-size: 12px;
+  color: #16191f; min-height: 0;
+}
+body.mode-view .cv-ai-panel { display: none !important; }
+.cv-ai-head {
+  flex-shrink: 0; display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px; border-bottom: 1px solid #e9ebed;
+}
+.cv-ai-head .cv-ai-title {
+  font-weight: 700; text-transform: uppercase; letter-spacing: .4px;
+  font-size: 11px; color: #414d5c; flex: 1;
+}
+.cv-ai-head .cv-mini-btn { margin-top: 0; }
+.cv-ai-close {
+  border: none; background: none; cursor: pointer; font-size: 13px;
+  color: #5f6b7a; padding: 2px 4px;
+}
+.cv-ai-close:hover { color: #16191f; }
+.cv-ai-messages { flex: 1; overflow-y: auto; padding: 12px; min-height: 0; }
+.cv-ai-empty { color: #8a97a5; font-size: 11px; line-height: 1.5; }
+.cv-ai-msg {
+  margin-bottom: 10px; padding: 8px 10px; border-radius: 8px;
+  line-height: 1.45; white-space: pre-wrap; overflow-wrap: break-word;
+}
+.cv-ai-msg.user { background: #e7f1fb; margin-left: 24px; }
+.cv-ai-msg.assistant { background: #f2f5f7; margin-right: 24px; }
+.cv-ai-msg.error { background: #fdf3f1; color: #d13212; margin-right: 24px; }
+.cv-ai-msg .cv-ai-files {
+  display: block; margin-top: 4px; font-size: 10px; color: #5f6b7a;
+  font-style: italic;
+}
+/* dashboard-proposal card + flagged-field list */
+.cv-ai-proposal { border: 1px solid #c6d3e0; background: #ffffff; }
+.cv-ai-proposal-title { font-weight: 700; font-size: 12px; color: #0f1b2a; }
+.cv-ai-proposal-meta { font-size: 10px; color: #5f6b7a; margin-top: 2px; }
+.cv-ai-proposal-summary { font-size: 11px; color: #414d5c; margin-top: 6px; }
+.cv-ai-proposal-preview {
+  margin-top: 8px; padding: 5px 12px; border: none; border-radius: 14px;
+  background: #0972d3; color: #fff; font-size: 11px; font-weight: 600;
+  cursor: pointer;
+}
+.cv-ai-proposal-preview:hover { background: #075aa8; }
+/* modification card change rows (+ add / − remove / ± update) */
+.cv-ai-change { font-size: 11px; color: #414d5c; margin-top: 4px; font-family: 'Courier New', monospace; }
+.cv-ai-change.add { color: #037f51; }
+.cv-ai-change.remove { color: #ba2e2e; }
+.cv-ai-change.update { color: #8a5a00; }
+.cv-ai-issues { margin-top: 8px; padding: 6px 8px; border-radius: 6px; background: #fff7ed; }
+.cv-ai-issues-head { font-size: 10px; font-weight: 700; color: #8a5a00; }
+.cv-ai-issue { font-size: 10px; color: #6b4d00; margin-top: 3px; }
+.cv-ai-issues-note { font-size: 10px; color: #8a5a00; font-style: italic; margin-top: 5px; }
+.cv-ai-typing { color: #8a97a5; font-size: 11px; margin-bottom: 10px; }
+.cv-ai-typing::after { content: '...'; animation: cvAiDots 1.2s steps(4) infinite; }
+@keyframes cvAiDots { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75% { content: '...'; } }
+.cv-ai-attach-strip {
+  flex-shrink: 0; display: flex; flex-wrap: wrap; gap: 4px; padding: 0 12px;
+}
+.cv-ai-attach-strip:not(:empty) { padding-bottom: 6px; }
+.cv-ai-chip {
+  display: inline-flex; align-items: center; gap: 4px; max-width: 100%;
+  padding: 2px 6px; border: 1px solid #aab7b8; border-radius: 10px;
+  background: #f2f5f7; font-size: 10px; color: #414d5c;
+}
+.cv-ai-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px; }
+.cv-ai-chip button {
+  border: none; background: none; cursor: pointer; color: #5f6b7a;
+  font-size: 10px; padding: 0;
+}
+.cv-ai-inputrow {
+  flex-shrink: 0; display: flex; align-items: flex-end; gap: 6px;
+  padding: 8px 12px; border-top: 1px solid #e9ebed;
+}
+.cv-ai-inputrow textarea {
+  flex: 1; resize: none; font-size: 12px; font-family: inherit;
+  padding: 6px 8px; border: 1px solid #aab7b8; border-radius: 6px;
+  min-height: 40px; max-height: 120px;
+}
+.cv-ai-inputrow textarea:focus { outline: 2px solid #0972d3; border-color: #0972d3; }
+.cv-ai-inputrow button {
+  font-size: 12px; padding: 6px 10px; border-radius: 6px; cursor: pointer;
+  border: 1px solid #aab7b8; background: #fff; color: #414d5c;
+}
+.cv-ai-inputrow button.cv-primary {
+  background: #0972d3; border-color: #0972d3; color: #fff;
+}
+.cv-ai-inputrow button:disabled { opacity: .45; cursor: default; }
+/* the attach "+" renders slightly larger than the row's default
+   button text so it reads as an affordance, without growing the button box. */
+#cv-ai-attach { font-size: 17px; font-weight: 600; line-height: 1; padding: 5px 11px; }
+.cv-ai-footrow {
+  flex-shrink: 0; display: flex; align-items: center; gap: 8px;
+  padding: 0 12px 10px; font-size: 11px; color: #5f6b7a;
+}
+.cv-ai-footrow .cv-ai-complex { display: flex; align-items: center; gap: 4px; margin: 0; }
+.cv-ai-model { margin-left: auto; font-size: 10px; color: #8a97a5; }
+/* current-cycle workspace AI spend, right of the model tier.
+   Slightly darker than the tier label: it's the number users act on. */
+.cv-ai-spend { font-size: 10px; color: #5f6b7a; white-space: nowrap; }

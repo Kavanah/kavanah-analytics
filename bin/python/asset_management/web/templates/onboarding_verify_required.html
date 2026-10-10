@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verify your email · Kavanah Analytics</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/cloudscape.css') }}">
+    <style>
+        body {
+            background: var(--cs-bg-page);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 84px 20px 40px;
+        }
+        .login-topbar {
+            position: fixed; top: 0; left: 0; right: 0;
+            height: 56px;
+            background: var(--cs-nav-bg);
+            display: flex; align-items: center;
+            padding: 0 24px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+            z-index: 10;
+        }
+        .login-topbar-logo { height: 24px; width: auto; margin-right: 12px; }
+        .login-topbar-title { font-size: 17px; font-weight: 700; color: #FFFFFF; }
+
+        .verify-shell { width: 100%; max-width: 480px; }
+        .card {
+            background: var(--cs-bg-primary);
+            border: 1px solid var(--cs-border-default);
+            border-radius: var(--cs-radius-l);
+            box-shadow: var(--cs-shadow-m);
+            padding: 36px 36px 28px;
+            text-align: center;
+        }
+        .icon-circle {
+            width: 56px;
+            height: 56px;
+            margin: 0 auto 16px;
+            border-radius: 50%;
+            background: #f3f7fc;
+            display: flex; align-items: center; justify-content: center;
+            color: var(--cs-accent, #0972d3);
+        }
+        .icon-circle svg { width: 28px; height: 28px; }
+        h1 {
+            font-size: 22px; font-weight: 700;
+            color: var(--cs-text-heading);
+            margin: 0 0 8px;
+        }
+        p.lead {
+            font-size: 14px;
+            color: var(--cs-text-secondary);
+            margin: 0 0 22px;
+            line-height: 1.5;
+        }
+        .email-strong { color: var(--cs-text-heading); font-weight: 600; }
+        .btn-row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+        .btn {
+            display: inline-block;
+            padding: 9px 18px;
+            border-radius: var(--cs-radius-s);
+            font-size: 14px;
+            font-weight: 600;
+            line-height: 1.4;
+            cursor: pointer;
+            text-decoration: none;
+            border: 1px solid transparent;
+        }
+        .btn-primary {
+            background: var(--cs-btn-primary-bg);
+            color: #FFFFFF;
+            border-color: var(--cs-btn-primary-bg);
+        }
+        .btn-primary:hover { background: var(--cs-btn-primary-bg-hover); }
+        /* visible disabled state (matches step-5 +
+           #ws-delete-btn:disabled). */
+        .btn-primary:disabled,
+        .btn-primary:disabled:hover {
+            background: var(--cs-btn-primary-bg);
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .btn-ghost {
+            background: transparent;
+            color: var(--cs-text-link);
+            border-color: var(--cs-border-default);
+        }
+        .btn-ghost:hover { background: var(--cs-bg-page); }
+        .helper {
+            font-size: 12px;
+            color: var(--cs-text-disabled);
+            margin: 18px 0 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-topbar">
+        <img src="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5" alt="" class="login-topbar-logo">
+        <span class="login-topbar-title">Kavanah Analytics</span>
+    </div>
+
+    <main class="verify-shell">
+        <div class="card" data-testid="verify-required-card">
+            <div class="icon-circle" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                    <polyline points="22,6 12,13 2,6"/>
+                </svg>
+            </div>
+            <h1>Verify your email</h1>
+            <p class="lead">
+                {% if user_email %}
+                We sent a verification link to <span class="email-strong">{{ user_email }}</span>. Click it to confirm your address, then refresh this page to continue.
+                {% else %}
+                We sent a verification link to the email on your account. Click it to confirm your address, then refresh this page to continue.
+                {% endif %}
+            </p>
+
+            <div class="btn-row">
+                <a class="btn btn-primary"
+                   href="{{ url_for('analytics.onboarding_verify_required_check') }}"
+                   data-testid="verify-required-refresh-btn">I've verified — refresh</a>
+                <a class="btn btn-ghost"
+                   href="{{ url_for('analytics.logout') }}"
+                   data-testid="verify-required-logout-btn">Sign out</a>
+            </div>
+
+            <p class="helper">
+                Didn't get the email? Check your spam folder, or sign out and sign back in to trigger a fresh verification send on your next signup.
+            </p>
+        </div>
+    </main>
+</body>
+</html>

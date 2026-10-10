@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <meta name="session-idle-timeout" content="{{ session_idle_timeout|default(0) }}">
+  <title>Canvas Prototype</title>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/session-timeout.js') }}?v=20260615b"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/cloudscape.css') }}">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      display: flex; flex-direction: column;
+      font-family: var(--cs-font-family, -apple-system, "Segoe UI", Roboto, sans-serif);
+      background: #e8ebef; overflow: hidden;
+    }
+
+    /* ── Topbar ── */
+    .cp-topbar {
+      flex-shrink: 0; display: flex; align-items: center; gap: 10px;
+      padding: 8px 14px; background: #232F3E; color: #fff; font-size: 13px;
+    }
+    .cp-topbar .cp-title { font-weight: 600; margin-right: 6px; }
+    .cp-topbar .cp-throwaway {
+      font-size: 11px; padding: 2px 8px; border-radius: 10px;
+      background: #B7791F; color: #fff; font-weight: 600; letter-spacing: .3px;
+    }
+    .cp-topbar button, .cp-topbar select {
+      font-size: 12px; padding: 5px 10px; border-radius: 6px;
+      border: 1px solid #4a5866; background: #2f3e4e; color: #fff; cursor: pointer;
+    }
+    .cp-topbar button:hover { background: #3c4d5f; }
+    .cp-topbar button.cp-primary { background: #0972d3; border-color: #0972d3; }
+    .cp-topbar .cp-spacer { flex: 1; }
+
+    /* ── Work area / page ── */
+    /* Block layout + margin:0 auto, NOT flex justify-content:center — a
+       centered flex child that overflows its scroll container gets clipped
+       unreachably on the leading side (the zoom>100% "can't scroll to the
+       left edge" trap). Auto margins collapse to 0 on overflow instead. */
+    .cp-workarea { flex: 1; overflow: auto; padding: 32px; }
+    .cp-page-scaler { margin: 0 auto; }
+    .cp-page {
+      position: relative; background: #fff; transform-origin: top left;
+      box-shadow: 0 2px 12px rgba(0,0,0,.18); overflow: hidden;
+    }
+    body.mode-view .cp-page { box-shadow: 0 1px 6px rgba(0,0,0,.12); }
+
+    /* ── Canvas objects ── */
+    .cp-object { position: absolute; user-select: none; }
+    body.mode-edit .cp-object { cursor: grab; }
+    body.mode-edit .cp-object:hover { outline: 1px dashed #8ab6e8; }
+    body.mode-edit .cp-object.selected { outline: 2px solid #0972d3; }
+    .cp-object.editing { cursor: text; user-select: text; }
+
+    .cp-object.cp-text {
+      padding: 6px 8px; font-size: 15px; line-height: 1.4; color: #16191f;
+      overflow: hidden; white-space: pre-wrap; word-break: break-word;
+    }
+    .cp-object.cp-text:focus { outline: 2px solid #0972d3; background: #f5f9ff; }
+
+    .cp-object.cp-data-field {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 2px; padding: 8px; text-align: center; overflow: hidden;
+      /* Opaque card — without a background, z-order changes are invisible. */
+      background: #fff; border: 1px solid #d5dbdb; border-radius: 6px;
+    }
+    .cp-data-field .cp-df-value { font-size: 34px; font-weight: 700; color: #0972d3; line-height: 1.1; }
+    .cp-data-field .cp-df-label { font-size: 11px; color: #5f6b7a; word-break: break-all; }
+    .cp-data-field.cp-df-unbound { border: 1px dashed #aab7b8; color: #5f6b7a; }
+    .cp-data-field.cp-df-unbound .cp-df-value { font-size: 14px; font-weight: 500; color: #5f6b7a; }
+    .cp-data-field.cp-df-error { border: 1px dashed #d13212; }
+    .cp-data-field.cp-df-error .cp-df-value { font-size: 13px; font-weight: 500; color: #d13212; }
+
+    /* Resize handle — editor chrome, hidden in view mode */
+    .cp-resize-handle {
+      position: absolute; right: -6px; bottom: -6px; width: 12px; height: 12px;
+      background: #0972d3; border: 2px solid #fff; border-radius: 3px;
+      cursor: se-resize; display: none; z-index: 10000;
+    }
+    body.mode-edit .cp-object.selected .cp-resize-handle { display: block; }
+    body.mode-view .cp-resize-handle { display: none !important; }
+
+    /* ── Selection toolbar ── */
+    .cp-sel-toolbar {
+      position: fixed; display: none; gap: 4px; z-index: 500;
+      background: #232F3E; padding: 4px 6px; border-radius: 6px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.3);
+    }
+    body.mode-edit .cp-sel-toolbar.visible { display: flex; }
+    .cp-sel-toolbar button {
+      font-size: 11px; padding: 3px 8px; border: none; border-radius: 4px;
+      background: #3c4d5f; color: #fff; cursor: pointer;
+    }
+    .cp-sel-toolbar button:hover { background: #52657a; }
+    .cp-sel-toolbar .cp-z-indicator {
+      font-size: 11px; color: #b8c4cf; align-self: center; padding: 0 4px;
+      white-space: nowrap;
+    }
+
+    /* ── Side config panel (data-field binding) ── */
+    .cp-config {
+      position: fixed; top: 56px; right: 16px; width: 280px; z-index: 400;
+      background: #fff; border: 1px solid #d5dbdb; border-radius: 8px;
+      box-shadow: 0 4px 16px rgba(0,0,0,.15); padding: 14px; display: none;
+      font-size: 12px; color: #16191f;
+    }
+    body.mode-edit .cp-config.visible { display: block; }
+    .cp-config h3 { font-size: 13px; margin-bottom: 10px; }
+    .cp-config label { display: block; margin: 8px 0 3px; font-weight: 600; color: #414d5c; }
+    .cp-config select {
+      width: 100%; font-size: 12px; padding: 5px 6px;
+      border: 1px solid #aab7b8; border-radius: 5px; background: #fff;
+    }
+    .cp-config .cp-config-apply {
+      margin-top: 12px; width: 100%; padding: 7px 0; font-size: 12px; font-weight: 600;
+      background: #0972d3; color: #fff; border: none; border-radius: 6px; cursor: pointer;
+    }
+    .cp-config .cp-config-hint { margin-top: 8px; color: #5f6b7a; font-size: 11px; line-height: 1.4; }
+
+    /* ── Doc JSON modal ── */
+    .cp-json-modal {
+      position: fixed; inset: 0; z-index: 600; display: none;
+      align-items: center; justify-content: center; background: rgba(0,0,0,.45);
+    }
+    .cp-json-modal.visible { display: flex; }
+    .cp-json-modal .cp-json-box {
+      background: #fff; border-radius: 8px; width: min(720px, 90vw);
+      max-height: 80vh; display: flex; flex-direction: column; overflow: hidden;
+    }
+    .cp-json-box header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 14px; border-bottom: 1px solid #e9ebed; font-size: 13px; font-weight: 600;
+    }
+    .cp-json-box header button { border: none; background: none; font-size: 16px; cursor: pointer; }
+    .cp-json-box pre {
+      overflow: auto; padding: 14px; font-size: 11px; line-height: 1.5;
+      font-family: "Consolas", "Monaco", monospace; background: #f6f8fa;
+    }
+  </style>
+</head>
+<body class="mode-edit">
+  <div class="cp-topbar">
+    <span class="cp-title">Canvas Builder Prototype</span>
+    <span class="cp-throwaway">throwaway</span>
+    <button id="cp-add-text" type="button">+ Text box</button>
+    <button id="cp-add-field" type="button">+ Data field</button>
+    <span class="cp-spacer"></span>
+    <label for="cp-zoom" style="font-size:12px;">Zoom</label>
+    <select id="cp-zoom">
+      <option value="0.5">50%</option>
+      <option value="0.75">75%</option>
+      <option value="1" selected>100%</option>
+      <option value="1.25">125%</option>
+    </select>
+    <button id="cp-show-json" type="button">Doc JSON</button>
+    <button id="cp-mode-toggle" type="button" class="cp-primary">View published</button>
+  </div>
+
+  <div class="cp-workarea" id="cp-workarea">
+    <div class="cp-page-scaler" id="cp-page-scaler">
+      <div class="cp-page" id="cp-page"></div>
+    </div>
+  </div>
+
+  <div class="cp-sel-toolbar" id="cp-sel-toolbar">
+    <button id="cp-edit-text" type="button" title="Edit text (or double-click the box)">Edit</button>
+    <button id="cp-z-fwd" type="button" title="Bring forward">Fwd</button>
+    <button id="cp-z-back" type="button" title="Send backward">Back</button>
+    <span id="cp-z-indicator" class="cp-z-indicator"></span>
+    <button id="cp-delete" type="button" title="Delete object">Delete</button>
+  </div>
+
+  <div class="cp-config" id="cp-config">
+    <h3>Data field binding</h3>
+    <label for="cp-cfg-dv">Data view</label>
+    <select id="cp-cfg-dv"><option value="">Loading…</option></select>
+    <label for="cp-cfg-field">Field (numeric)</label>
+    <select id="cp-cfg-field"><option value="">Pick a data view first</option></select>
+    <label for="cp-cfg-agg">Aggregation</label>
+    <select id="cp-cfg-agg">
+      <option value="sum">Sum</option>
+      <option value="avg">Average</option>
+      <option value="max">Max</option>
+      <option value="min">Min</option>
+    </select>
+    <button class="cp-config-apply" id="cp-cfg-apply" type="button">Apply binding</button>
+    <div class="cp-config-hint">
+      The value resolves through the real <code>/api/query</code> metric path —
+      live data, tenant scope enforced server-side. Nothing is baked.
+    </div>
+  </div>
+
+  <div class="cp-json-modal" id="cp-json-modal">
+    <div class="cp-json-box">
+      <header>
+        <span>Canvas document (schema v1, in-memory)</span>
+        <button id="cp-json-close" type="button" aria-label="Close">✕</button>
+      </header>
+      <pre id="cp-json-pre"></pre>
+    </div>
+  </div>
+
+  <script src="{{ url_for('static', filename='dashboard_builder/canvas_prototype.js') }}?v=20260707c"></script>
+</body>
+</html>

@@ -1,0 +1,684 @@
+{% extends "base_v2.html" %}
+
+{% block title %}Manage {{ provider_label }} connection - Kavanah Analytics{% endblock %}
+
+{% block extra_css %}
+<style>
+.cn-page {
+    padding: var(--cs-space-l);
+    max-width: 960px;
+    margin: 0 auto;
+}
+
+.cn-back-link {
+    display: inline-block;
+    margin-bottom: var(--cs-space-s);
+    color: var(--cs-text-secondary);
+    text-decoration: none;
+    font-size: var(--cs-font-size-body-s, 13px);
+}
+.cn-back-link:hover { color: var(--cs-color-primary, #0972D3); }
+
+.cn-page-header {
+    margin-bottom: var(--cs-space-l);
+}
+
+.cn-page-title {
+    font-size: var(--cs-font-size-display-l, 24px);
+    font-weight: var(--cs-font-weight-bold);
+    color: var(--cs-text-primary);
+    margin: 0 0 var(--cs-space-xxs) 0;
+}
+
+.cn-page-description {
+    font-size: var(--cs-font-size-body-m, 14px);
+    color: var(--cs-text-secondary);
+    margin: 0;
+    line-height: 1.5;
+}
+
+.cn-card {
+    background: var(--cs-bg-primary);
+    border: 1px solid var(--cs-border-divider);
+    border-radius: var(--cs-radius-m);
+    padding: var(--cs-space-l);
+    margin-bottom: var(--cs-space-m);
+}
+
+.cn-card-title {
+    font-size: var(--cs-font-size-body-l, 16px);
+    font-weight: var(--cs-font-weight-bold);
+    color: var(--cs-text-primary);
+    margin: 0 0 var(--cs-space-s) 0;
+}
+
+.cn-meta-grid {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: 8px 16px;
+    font-size: var(--cs-font-size-body-s, 13px);
+}
+@media (max-width: 600px) {
+    .cn-meta-grid { grid-template-columns: 1fr; }
+    .cn-meta-grid dt { margin-top: 8px; }
+}
+
+.cn-meta-grid dt {
+    color: var(--cs-text-secondary);
+    margin: 0;
+}
+.cn-meta-grid dd {
+    color: var(--cs-text-primary);
+    margin: 0;
+    word-break: break-word;
+}
+
+.cn-status-chip {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+}
+.cn-status-active { background: rgba(46, 160, 67, 0.15); color: #1F7A2E; }
+.cn-status-expired { background: rgba(207, 34, 46, 0.15); color: #CF222E; }
+.cn-status-revoked { background: rgba(110, 119, 129, 0.18); color: #4B5563; }
+.cn-status-pending_token { background: rgba(217, 119, 6, 0.15); color: #9A5008; }
+
+.cn-expires-badge {
+    margin-left: 8px;
+    font-size: 12px;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: rgba(9, 114, 211, 0.08);
+    color: var(--cs-color-primary, #0972D3);
+}
+.cn-expires-badge.is-warn { background: rgba(217, 119, 6, 0.12); color: #9A5008; }
+.cn-expires-badge.is-expired { background: rgba(207, 34, 46, 0.12); color: #CF222E; }
+
+.cn-scope-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.cn-scope-item {
+    background: var(--cs-bg-secondary, #F4F5F7);
+    border: 1px solid var(--cs-border-divider);
+    border-radius: var(--cs-radius-s);
+    padding: 3px 9px;
+    font-size: 12px;
+    color: var(--cs-text-primary);
+}
+.cn-scope-raw {
+    color: var(--cs-text-secondary);
+    margin-left: 4px;
+    font-family: var(--cs-font-family-mono, monospace);
+}
+
+.cn-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.cn-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border: 1px solid var(--cs-border-divider);
+    border-radius: var(--cs-radius-s);
+    background: var(--cs-bg-primary);
+    color: var(--cs-text-primary);
+    font-size: var(--cs-font-size-body-s, 13px);
+    font-weight: 500;
+    cursor: pointer;
+    text-decoration: none;
+}
+.cn-btn:hover { border-color: var(--cs-color-primary, #0972D3); }
+.cn-btn[disabled],
+.cn-btn.is-disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+.cn-btn-danger { color: #CF222E; }
+.cn-btn-danger:hover { border-color: #CF222E; }
+
+.cn-action-hint {
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--cs-text-secondary);
+    line-height: 1.4;
+}
+
+.cn-asset-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--cs-font-size-body-s, 13px);
+}
+.cn-asset-table th {
+    text-align: left;
+    color: var(--cs-text-secondary);
+    font-weight: 500;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--cs-border-divider);
+}
+.cn-asset-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--cs-border-divider);
+    color: var(--cs-text-primary);
+}
+.cn-asset-table tr:last-child td { border-bottom: none; }
+.cn-asset-empty {
+    color: var(--cs-text-secondary);
+    font-style: italic;
+    font-size: var(--cs-font-size-body-s, 13px);
+}
+
+.cn-shared-chip {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: rgba(9, 114, 211, 0.10);
+    color: var(--cs-color-primary, #0972D3);
+    font-size: 12px;
+    font-weight: 500;
+}
+
+/* one-shot banner after the OAuth callback redirects
+   back to this page. Two flavours: success after a clean reauthorise,
+   warning after a failure. */
+.cn-banner {
+    margin-bottom: var(--cs-space-m);
+    padding: 10px 14px;
+    border-radius: var(--cs-radius-m);
+    border: 1px solid;
+    font-size: var(--cs-font-size-body-s, 13px);
+    line-height: 1.5;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.cn-banner-success {
+    background: rgba(46, 160, 67, 0.08);
+    border-color: rgba(46, 160, 67, 0.40);
+    color: #1F7A2E;
+}
+.cn-banner-warn {
+    background: rgba(217, 119, 6, 0.10);
+    border-color: rgba(217, 119, 6, 0.40);
+    color: #9A5008;
+}
+
+/* staged partial-coverage re-auth panel. */
+.cn-pending { align-items: flex-start; }
+.cn-pending-body { flex: 1; min-width: 0; }
+.cn-pending-body p { margin: 0 0 8px; }
+.cn-pending-headline { font-weight: 600; }
+.cn-pending-table { margin: 6px 0 10px; width: 100%; }
+.cn-pending-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* disconnect confirmation modal. Lightweight overlay
+   pattern mirroring data_connectors.html's wizard modal chrome. */
+.cn-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+.cn-modal-overlay.is-open { display: flex; }
+
+.cn-modal {
+    background: var(--cs-bg-primary);
+    border-radius: var(--cs-radius-m);
+    max-width: 480px;
+    width: calc(100% - 32px);
+    padding: var(--cs-space-l);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+}
+.cn-modal-title {
+    font-size: var(--cs-font-size-body-l, 16px);
+    font-weight: var(--cs-font-weight-bold);
+    margin: 0 0 var(--cs-space-s) 0;
+    color: var(--cs-text-primary);
+}
+.cn-modal-body {
+    font-size: var(--cs-font-size-body-s, 13px);
+    color: var(--cs-text-primary);
+    line-height: 1.5;
+    margin: 0 0 var(--cs-space-m) 0;
+}
+.cn-modal-body strong { color: #CF222E; }
+.cn-modal-error {
+    color: #CF222E;
+    font-size: 12px;
+    margin-bottom: var(--cs-space-s);
+    min-height: 1em;
+}
+.cn-modal-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+.cn-btn-primary {
+    background: var(--cs-color-primary, #0972D3);
+    color: #fff;
+    border-color: var(--cs-color-primary, #0972D3);
+}
+.cn-btn-primary:hover { filter: brightness(0.95); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="cn-page">
+    <a class="cn-back-link" href="{{ url_for('data_connectors.index') }}">&larr; Back to Data Connectors</a>
+
+    {# reauth-callback banner. The OAuth callback redirects
+       back here with ?reauth=ok on success or ?reauth=error&code=<reason>
+       on failure. Banner is one-shot (auto-hidden by JS after the
+       initial render only — we don't strip the param from the URL bar
+       on purpose; a refresh re-shows the banner so an interrupted user
+       doesn't lose context). #}
+    {% set _reauth = request.args.get('reauth', '') %}
+    {% if _reauth == 'ok' %}
+    <div class="cn-banner cn-banner-success" role="status">
+        <i class="fas fa-check-circle"></i>
+        <div>Connection reauthorised. The new token is in use immediately for the next import.</div>
+    </div>
+    {% elif _reauth == 'error' %}
+    {% set _code = request.args.get('code', '') %}
+    <div class="cn-banner cn-banner-warn" role="alert">
+        <i class="fas fa-exclamation-triangle"></i>
+        <div>
+            Reauthorise didn't complete{% if _code %} (<code>{{ _code }}</code>){% endif %}.
+            The previous token (if any) is unchanged. You can try again from the Manage section below.
+        </div>
+    </div>
+    {% elif _reauth == 'discarded' %}
+    <div class="cn-banner cn-banner-success" role="status">
+        <i class="fas fa-check-circle"></i>
+        <div>New token discarded. The previous token stays in use; nothing about this connection changed.</div>
+    </div>
+    {% elif _reauth == 'partial' and not pending_reauth %}
+    <div class="cn-banner cn-banner-warn" role="status">
+        <i class="fas fa-info-circle"></i>
+        <div>The re-authorisation that sent you here has already been resolved (accepted or discarded). Nothing is pending.</div>
+    </div>
+    {% endif %}
+
+    {# a staged partial-coverage re-auth. The
+       callback parked the new token because it reaches only some of the
+       linked assets; nothing changes until someone accepts or discards it
+       here. Rendered from the connection's pending_* fields, so it survives a
+       reload and shows regardless of how the viewer arrived. #}
+    {% if pending_reauth %}
+    <div class="cn-banner cn-banner-warn cn-pending" role="alert" id="cn-pending-reauth"
+         data-resolve-url="{{ pending_reauth.resolve_url }}">
+        <i class="fas fa-exclamation-triangle"></i>
+        <div class="cn-pending-body">
+            <p class="cn-pending-headline">A re-authorisation is waiting for a decision.</p>
+            <p>
+                <strong>{{ pending_reauth.by or 'Someone' }}</strong> re-authorised this connection
+                {% if pending_reauth.at %}on {{ pending_reauth.at }}{% endif %}. The new token reaches
+                <strong>{{ pending_reauth.covered }} of {{ pending_reauth.total }}</strong> linked assets.
+                Nothing has changed yet &mdash; the previous token is still in use.
+            </p>
+            {% if pending_reauth.failed %}
+            <table class="cn-asset-table cn-pending-table">
+                <thead><tr><th>Not reachable with the new token</th><th>Type</th><th>Why</th></tr></thead>
+                <tbody>
+                {% for f in pending_reauth.failed %}
+                <tr>
+                    <td>{{ f.asset_name }}</td>
+                    <td>{{ f.asset_type }}</td>
+                    <td>{% if f.error_code %}<code>#{{ f.error_code }}</code> {% endif %}{{ f.error }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% endif %}
+            {% if pending_reauth.can_resolve %}
+            <p class="cn-pending-actions">
+                <button type="button" class="cn-btn cn-btn-primary" id="cn-pending-accept">
+                    <i class="fas fa-check"></i> Accept the new token
+                </button>
+                <button type="button" class="cn-btn cn-btn-danger" id="cn-pending-discard">
+                    <i class="fas fa-times"></i> Discard it, keep the current one
+                </button>
+            </p>
+            <p class="cn-action-hint">
+                Accepting switches imports to the new token and the assets above stop importing until
+                someone with access to them re-authorises. Discarding leaves everything as it was.
+            </p>
+            <div class="cn-modal-error" id="cn-pending-error"></div>
+            {% else %}
+            <p class="cn-action-hint">
+                Only {{ principal or 'the connection owner' }}, a workspace administrator, or a superuser can
+                accept or discard it.
+            </p>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <header class="cn-page-header">
+        <h1 class="cn-page-title">
+            {{ provider_label }} connection
+            {% if org_shared %}<span class="cn-shared-chip" title="This connection is shared across your organisation's workspaces.">Shared with org</span>{% endif %}
+        </h1>
+        <p class="cn-page-description">
+            View this connection's token health, scopes, and the assets it grants
+            access to. Use the actions below to reauthorise or disconnect.
+        </p>
+    </header>
+
+    <section class="cn-card" aria-labelledby="cn-overview-title">
+        <h2 class="cn-card-title" id="cn-overview-title">Overview</h2>
+        <dl class="cn-meta-grid">
+            <dt>Label</dt>
+            <dd>{{ label or provider_account_id or connection_esid }}</dd>
+
+            <dt>Provider</dt>
+            <dd>{{ provider_label }}</dd>
+
+            <dt>Provider account ID</dt>
+            <dd>{{ provider_account_id or '(none)' }}</dd>
+
+            <dt>Status</dt>
+            <dd>
+                <span class="cn-status-chip cn-status-{{ status }}">{{ status }}</span>
+            </dd>
+
+            <dt>Token expires</dt>
+            <dd>
+                {% if token_expires_at %}
+                    {{ token_expires_at }}
+                    {% if expires_label %}
+                        {% set _cls = '' %}
+                        {% if expires_days is not none and expires_days <= 0 %}{% set _cls = 'is-expired' %}
+                        {% elif expires_days is not none and expires_days <= 14 %}{% set _cls = 'is-warn' %}{% endif %}
+                        <span class="cn-expires-badge {{ _cls }}">{{ expires_label }}</span>
+                    {% endif %}
+                {% else %}
+                    <span style="color: var(--cs-text-secondary);">no expiry recorded</span>
+                {% endif %}
+            </dd>
+
+            {% if provider in ('facebook', 'instagram') %}
+            {# Meta's 90-day data-access window. Only a person's
+               re-authorisation resets it; the nightly token refresh does not. #}
+            <dt>Meta data access expires</dt>
+            <dd>
+                {% if data_access_expires_at %}
+                    {{ data_access_expires_at }}
+                    {% if data_access_label %}
+                        {% set _dcls = '' %}
+                        {% if data_access_days is not none and data_access_days <= 0 %}{% set _dcls = 'is-expired' %}
+                        {% elif data_access_days is not none and data_access_days <= data_access_warn_days %}{% set _dcls = 'is-warn' %}{% endif %}
+                        <span class="cn-expires-badge {{ _dcls }}">{{ data_access_label }}</span>
+                    {% endif %}
+                    <span class="cn-scope-raw">Re-authorising resets the 90-day window.</span>
+                {% else %}
+                    <span style="color: var(--cs-text-secondary);">not recorded — populated at the next re-authorisation</span>
+                {% endif %}
+            </dd>
+            {% endif %}
+
+            <dt>Connection owner</dt>
+            <dd>{{ principal or '(unknown)' }}</dd>
+
+            <dt>Created</dt>
+            <dd>{{ created_at or '(unknown)' }}</dd>
+
+            <dt>Last updated</dt>
+            <dd>{{ updated_at or '(unknown)' }}</dd>
+        </dl>
+    </section>
+
+    <section class="cn-card" aria-labelledby="cn-scopes-title">
+        <h2 class="cn-card-title" id="cn-scopes-title">Permissions granted</h2>
+        {% if scopes %}
+        <ul class="cn-scope-list">
+            {% for s in scopes %}
+            <li class="cn-scope-item" title="{{ s.raw }}">
+                {{ s.friendly }}
+                {% if s.friendly != s.raw %}<span class="cn-scope-raw">({{ s.raw }})</span>{% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="cn-asset-empty">No scopes recorded on this connection.</p>
+        {% endif %}
+    </section>
+
+    <section class="cn-card" aria-labelledby="cn-assets-title">
+        <h2 class="cn-card-title" id="cn-assets-title">Assets connected</h2>
+        {% if assets %}
+        <table class="cn-asset-table">
+            <thead>
+                <tr>
+                    <th>Type</th>
+                    <th>Provider ID</th>
+                    <th>Label</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for a in assets %}
+                <tr>
+                    <td>{{ a.asset_type }}</td>
+                    <td><code>{{ a.provider_asset_id }}</code></td>
+                    <td>{{ a.label or '(no label)' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="cn-asset-empty">No assets are linked to this connection yet.</p>
+        {% endif %}
+    </section>
+
+    <section class="cn-card" aria-labelledby="cn-actions-title">
+        <h2 class="cn-card-title" id="cn-actions-title">Manage</h2>
+        <div class="cn-actions">
+            {# Reauthorize is a plain GET so the OAuth
+               roundtrip can begin without a form POST. Meta providers: the
+               route mints state in flask.session, redirects to Meta, and the
+               shared callback at /onboarding/step-7/oauth-callback detects
+               the reauth flow and bounces back to this page.
+               YouTube instead mints state on the account doc and
+               redirects to fb_oauth_server /youtube/<auth_url>, whose
+               callback lands the token on the account doc (canonical for the
+               importer) and shows its own success page. #}
+            {% if can_reauthorize %}
+            <a class="cn-btn" href="{{ reauthorize_url }}">
+                <i class="fas fa-sync"></i> Reauthorize
+            </a>
+            {% elif viewer_is_principal and status != 'revoked' %}
+            <button type="button" class="cn-btn is-disabled" disabled
+                    title="Reauthorize isn't available for {{ provider_label }}. {{ provider_label }} credentials are managed automatically.">
+                <i class="fas fa-sync"></i> Reauthorize
+            </button>
+            {% endif %}
+
+            {% if can_disconnect %}
+            <button type="button" class="cn-btn cn-btn-danger" id="cn-disconnect-btn">
+                <i class="fas fa-unlink"></i> Disconnect
+            </button>
+            {% elif viewer_is_principal and status == 'revoked' %}
+            <button type="button" class="cn-btn is-disabled" disabled
+                    title="This connection is already disconnected. Run the wizard's set-up flow to re-link it.">
+                <i class="fas fa-unlink"></i> Disconnected
+            </button>
+            {% endif %}
+        </div>
+        {% if not viewer_is_principal %}
+        <p class="cn-action-hint">
+            You're viewing this connection because it's shared across the
+            workspace. Only {{ principal or 'the connection owner' }} can
+            reauthorise or disconnect it.
+        </p>
+        {% elif status == 'revoked' %}
+        <p class="cn-action-hint">
+            This connection was disconnected. Imports against this token are
+            paused; the legacy assets it was linked to are unaffected. To
+            restore data flow, re-link the source through the Data Connectors
+            page.
+        </p>
+        {% elif not can_reauthorize %}
+        <p class="cn-action-hint">
+            Reauthorize isn't available for {{ provider_label }} connections.
+            {{ provider_label }} credentials are managed at the platform level
+            and refresh automatically.
+        </p>
+        {% endif %}
+    </section>
+</div>
+
+{# disconnect confirmation modal. Rendered only when the
+   viewer actually has the action available, so we don't ship the chrome
+   to read-only viewers. #}
+{% if can_disconnect %}
+<div class="cn-modal-overlay" id="cn-disconnect-modal" role="dialog" aria-modal="true" aria-labelledby="cn-disconnect-title">
+    <div class="cn-modal">
+        <h3 class="cn-modal-title" id="cn-disconnect-title">Disconnect this connection?</h3>
+        <div class="cn-modal-body">
+            Disconnecting will <strong>pause imports</strong> for this connection
+            immediately. Your existing data stays in place — only future runs
+            are paused. The provider-side OAuth grant is not revoked at
+            {{ provider_label }}; to revoke there, visit your
+            {{ provider_label }} account settings.
+        </div>
+        <div class="cn-modal-error" id="cn-disconnect-error"></div>
+        <div class="cn-modal-actions">
+            <button type="button" class="cn-btn" id="cn-disconnect-cancel">Cancel</button>
+            <button type="button" class="cn-btn cn-btn-danger" id="cn-disconnect-confirm">
+                <i class="fas fa-unlink"></i> Disconnect
+            </button>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+{% if can_disconnect %}
+<script nonce="{{ csp_nonce }}">
+(function () {
+    const btn = document.getElementById("cn-disconnect-btn");
+    const modal = document.getElementById("cn-disconnect-modal");
+    const cancelBtn = document.getElementById("cn-disconnect-cancel");
+    const confirmBtn = document.getElementById("cn-disconnect-confirm");
+    const errorEl = document.getElementById("cn-disconnect-error");
+    if (!btn || !modal || !cancelBtn || !confirmBtn) return;
+
+    const disconnectUrl = {{ disconnect_url|tojson }};
+    const csrfMeta = document.querySelector("meta[name='csrf-token']");
+    const csrfToken = csrfMeta ? csrfMeta.getAttribute("content") : "";
+
+    function openModal() {
+        errorEl.textContent = "";
+        confirmBtn.disabled = false;
+        modal.classList.add("is-open");
+    }
+    function closeModal() {
+        modal.classList.remove("is-open");
+    }
+
+    btn.addEventListener("click", openModal);
+    cancelBtn.addEventListener("click", closeModal);
+    // Backdrop click does NOT close the dialog (site-wide change — an accidental
+    // outside-click shouldn't dismiss it). Escape / Cancel / X close it.
+    // Escape closes the dialog when it's open.
+    document.addEventListener("keydown", function (ev) {
+        if (ev.key === "Escape" && modal.classList.contains("is-open")) {
+            closeModal();
+        }
+    });
+
+    confirmBtn.addEventListener("click", async function () {
+        errorEl.textContent = "";
+        confirmBtn.disabled = true;
+        try {
+            const resp = await fetch(disconnectUrl, {
+                method: "POST",
+                credentials: "same-origin",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRF-Token": csrfToken,
+                },
+            });
+            let data = {};
+            try { data = await resp.json(); } catch (_e) { /* keep empty */ }
+            if (!resp.ok || !data.success) {
+                errorEl.textContent = data.error || ("Disconnect failed (HTTP " + resp.status + ")");
+                confirmBtn.disabled = false;
+                return;
+            }
+            // Reload so the page re-renders with status=revoked, the
+            // Reauthorize/Disconnect buttons collapse, and the hint
+            // copy updates to the post-disconnect message.
+            window.location.reload();
+        } catch (err) {
+            errorEl.textContent = "Network error: " + err.message;
+            confirmBtn.disabled = false;
+        }
+    });
+})();
+</script>
+{% endif %}
+
+{# accept / discard a staged partial-coverage re-auth. Posts to the
+   existing Tier-2 route (same gate as Reauthorize); reloads so the
+   page re-renders from the connection's real state. Rendered only when the
+   viewer may resolve, so read-only viewers get no dead controls. #}
+{% if pending_reauth and pending_reauth.can_resolve %}
+<script nonce="{{ csp_nonce }}">
+(function () {
+    const panel = document.getElementById("cn-pending-reauth");
+    const acceptBtn = document.getElementById("cn-pending-accept");
+    const discardBtn = document.getElementById("cn-pending-discard");
+    const errorEl = document.getElementById("cn-pending-error");
+    if (!panel || !acceptBtn || !discardBtn) return;
+    const resolveUrl = panel.getAttribute("data-resolve-url");
+    const csrfMeta = document.querySelector("meta[name='csrf-token']");
+    const csrfToken = csrfMeta ? csrfMeta.getAttribute("content") : "";
+
+    async function resolve(action) {
+        errorEl.textContent = "";
+        acceptBtn.disabled = true;
+        discardBtn.disabled = true;
+        try {
+            const resp = await fetch(resolveUrl, {
+                method: "POST",
+                credentials: "same-origin",
+                headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+                body: JSON.stringify({ action: action }),
+            });
+            let data = {};
+            try { data = await resp.json(); } catch (_e) { /* keep empty */ }
+            if (!resp.ok || !data.success) {
+                errorEl.textContent = data.error || ("Could not save that choice (HTTP " + resp.status + ")");
+                acceptBtn.disabled = false;
+                discardBtn.disabled = false;
+                return;
+            }
+            window.location.href = window.location.pathname + "?reauth=" + (action === "accept" ? "ok" : "discarded");
+        } catch (err) {
+            errorEl.textContent = "Network error: " + err.message;
+            acceptBtn.disabled = false;
+            discardBtn.disabled = false;
+        }
+    }
+    acceptBtn.addEventListener("click", function () { resolve("accept"); });
+    discardBtn.addEventListener("click", function () { resolve("discard"); });
+})();
+</script>
+{% endif %}
+{% endblock %}

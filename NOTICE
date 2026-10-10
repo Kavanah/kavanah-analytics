@@ -1,0 +1,59 @@
+Kavanah Analytics
+Copyright (c) 2025–2026 Kavanah Media
+
+This program is free software: you can redistribute it and/or modify it
+under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or (at your
+option) any later version.
+
+See the LICENSE file in this repository for the full license text.
+
+===============================================================================
+THIRD-PARTY COMPONENTS
+===============================================================================
+
+This project loads the following browser-side JavaScript/CSS libraries from
+public CDNs at runtime. They are not vendored into this repository; each
+remains under its own license, listed below.
+
+  Chart.js 4.4.0
+    License: MIT
+
+  Apache ECharts 5.6.0
+    License: Apache-2.0
+
+  html2canvas 1.4.1
+    License: MIT
+
+  SortableJS 1.15.0
+    License: MIT
+
+  Font Awesome Free 6.5.0
+    License: Font Awesome Free License
+      - Icons:  CC BY 4.0
+      - Fonts:  SIL OFL 1.1
+      - Code:   MIT
+
+  Leaflet 1.9.4
+    License: BSD-2-Clause
+
+-------------------------------------------------------------------------------
+Data files
+-------------------------------------------------------------------------------
+
+  bin/python/asset_management/web/static/dashboard_builder/admin1.geojson
+    First-level administrative boundary polygons (states / provinces) for a
+    set of countries, used by the Dashboard Builder's region map. Derived
+    from Natural Earth "Admin 1 – States, Provinces" (naturalearthdata.com),
+    reduced to the `admin`, `name` and `name_en` properties and to the
+    countries the map needs. Natural Earth data is in the public domain; no
+    attribution is required, and we give it here with thanks.
+
+-------------------------------------------------------------------------------
+Python dependencies
+-------------------------------------------------------------------------------
+
+This project's Python dependencies are listed in bin/python/requirements.txt.
+Each is distributed under its own license as published by its respective
+project; see that project's source distribution or package index page for
+license details.

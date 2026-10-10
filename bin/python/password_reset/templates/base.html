@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Password Reset{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" integrity="sha384-/o6I2CkkWC//PSjvWC/eYN7l3xM3tJm8ZzVkCOfp//W05QcE3mlGskpoHB6XqI+B" crossorigin="anonymous">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/password-toggle.css') }}?v=20260504b">
+    <script src="{{ url_for('static', filename='js/password-toggle.js') }}?v=20260504a" defer></script>
+    <style>
+        :root {
+            /* ── Navigation ── */
+            --cs-nav-bg:              #232F3E;
+            --cs-nav-text:            #D1D5DB;
+
+            /* ── Surfaces ── */
+            --cs-bg-primary:          #FFFFFF;
+            --cs-bg-page:             #F1F3F3;
+
+            /* ── Borders ── */
+            --cs-border-default:      #D5DBDB;
+            --cs-border-divider:      #E9EBED;
+            --cs-border-input:        #7D8998;
+            --cs-border-input-focus:  #0972D3;
+
+            /* ── Text ── */
+            --cs-text-primary:        #000716;
+            --cs-text-secondary:      #5F6B7A;
+            --cs-text-disabled:       #9BA7B6;
+            --cs-text-link:           #0972D3;
+            --cs-text-link-hover:     #033160;
+            --cs-text-heading:        #000716;
+            --cs-text-label:          #000716;
+
+            /* ── Interactive ── */
+            --cs-btn-primary-bg:      #0972D3;
+            --cs-btn-primary-bg-hover:#033160;
+
+            /* ── Status ── */
+            --cs-success:             #037F0C;
+            --cs-success-bg:          #F2F8F0;
+            --cs-warning:             #8D6605;
+            --cs-warning-bg:          #FEF8E7;
+            --cs-error:               #D91515;
+            --cs-error-bg:            #FDF3F1;
+            --cs-info:                #0972D3;
+            --cs-info-bg:             #F0F5FC;
+
+            /* ── Typography ── */
+            --cs-font:                'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            --cs-font-size-s:         13px;
+            --cs-font-size-m:         14px;
+            --cs-font-size-l:         16px;
+
+            /* ── Border radius ── */
+            --cs-radius-s:            4px;
+            --cs-radius-m:            8px;
+            --cs-radius-l:            12px;
+
+            /* ── Shadows ── */
+            --cs-shadow-m:            0 2px 4px -1px rgba(0, 7, 22, 0.1), 0 4px 8px 0 rgba(0, 7, 22, 0.08);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: var(--cs-font);
+            background: var(--cs-bg-page);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        /* ── Top bar ── */
+        .topbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 56px;
+            background: var(--cs-nav-bg);
+            display: flex;
+            align-items: center;
+            padding: 0 24px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+            z-index: 10;
+        }
+
+        .topbar-logo {
+            height: 24px;
+            width: auto;
+            margin-right: 12px;
+        }
+
+        .topbar-title {
+            font-size: 17px;
+            font-weight: 700;
+            color: #FFFFFF;
+            letter-spacing: -0.01em;
+        }
+
+        /* ── Card ── */
+        .container {
+            background: var(--cs-bg-primary);
+            border: 1px solid var(--cs-border-default);
+            border-radius: var(--cs-radius-l);
+            box-shadow: var(--cs-shadow-m);
+            padding: 40px 36px 32px;
+            width: 100%;
+            max-width: 400px;
+            margin-top: 28px;
+        }
+
+        /* ── Header ── */
+        .page-header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .page-header h1 {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--cs-text-heading);
+            margin-bottom: 6px;
+        }
+
+        .page-header p {
+            font-size: var(--cs-font-size-m);
+            color: var(--cs-text-secondary);
+        }
+
+        h2 {
+            color: var(--cs-text-heading);
+            margin-bottom: 20px;
+            font-size: 20px;
+            font-weight: 700;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 700;
+            color: var(--cs-text-label);
+            font-size: var(--cs-font-size-m);
+        }
+
+        input[type="text"],
+        input[type="password"],
+        input[type="email"],
+        input[type="number"] {
+            width: 100%;
+            height: 40px;
+            padding: 0 12px;
+            border: 1px solid var(--cs-border-input);
+            border-radius: var(--cs-radius-s);
+            font-size: var(--cs-font-size-m);
+            font-family: var(--cs-font);
+            color: var(--cs-text-primary);
+            background: var(--cs-bg-primary);
+            transition: border-color 90ms ease-out, box-shadow 90ms ease-out;
+        }
+
+        input::placeholder {
+            color: var(--cs-text-disabled);
+        }
+
+        input:hover {
+            border-color: var(--cs-text-secondary);
+        }
+
+        input:focus {
+            outline: none;
+            border-color: var(--cs-border-input-focus);
+            box-shadow: 0 0 0 2px rgba(9, 114, 211, 0.25);
+        }
+
+        button, .btn {
+            display: block;
+            width: 100%;
+            height: 40px;
+            background: var(--cs-btn-primary-bg);
+            color: #FFFFFF;
+            border: none;
+            border-radius: var(--cs-radius-s);
+            font-size: var(--cs-font-size-l);
+            font-weight: 700;
+            font-family: var(--cs-font);
+            cursor: pointer;
+            transition: background 90ms ease-out;
+            text-decoration: none;
+            text-align: center;
+            line-height: 40px;
+            margin-top: 8px;
+        }
+
+        button:hover, .btn:hover {
+            background: var(--cs-btn-primary-bg-hover);
+        }
+
+        button:focus-visible, .btn:focus-visible {
+            outline: none;
+            box-shadow: 0 0 0 2px #FFFFFF, 0 0 0 4px var(--cs-btn-primary-bg);
+        }
+
+        button:active, .btn:active {
+            background: #022D5E;
+        }
+
+        .btn-secondary {
+            background: #FFFFFF;
+            color: var(--cs-text-primary);
+            border: 1px solid var(--cs-border-input);
+        }
+
+        .btn-secondary:hover {
+            background: #F4F4F4;
+        }
+
+        .btn-small {
+            width: auto;
+            padding: 0 12px;
+            height: 32px;
+            line-height: 32px;
+            font-size: var(--cs-font-size-m);
+        }
+
+        .flash-messages {
+            margin-bottom: 20px;
+        }
+
+        .flash {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 12px 14px;
+            margin-bottom: 8px;
+            border-radius: var(--cs-radius-m);
+            border: 1px solid;
+            font-size: var(--cs-font-size-m);
+            line-height: 1.5;
+        }
+
+        .flash.success {
+            background: var(--cs-success-bg);
+            border-color: var(--cs-success);
+            color: var(--cs-text-primary);
+        }
+
+        .flash.error {
+            background: var(--cs-error-bg);
+            border-color: var(--cs-error);
+            color: var(--cs-text-primary);
+        }
+
+        .flash.warning {
+            background: var(--cs-warning-bg);
+            border-color: var(--cs-warning);
+            color: var(--cs-text-primary);
+        }
+
+        .flash.info {
+            background: var(--cs-info-bg);
+            border-color: var(--cs-info);
+            color: var(--cs-text-primary);
+        }
+
+        .help-text {
+            font-size: var(--cs-font-size-s);
+            color: var(--cs-text-secondary);
+            margin-top: 4px;
+        }
+
+        .back-link {
+            margin-top: 24px;
+            padding-top: 20px;
+            border-top: 1px solid var(--cs-border-divider);
+            text-align: center;
+        }
+
+        .back-link a {
+            color: var(--cs-text-link);
+            text-decoration: none;
+            font-size: var(--cs-font-size-s);
+            font-weight: 500;
+        }
+
+        .back-link a:hover {
+            text-decoration: underline;
+            color: var(--cs-text-link-hover);
+        }
+
+        .divider {
+            border-top: 1px solid var(--cs-border-divider);
+            margin: 24px 0;
+        }
+
+        /* Admin-specific styles */
+        .admin-container {
+            max-width: 600px;
+        }
+
+        .section {
+            margin-bottom: 24px;
+            padding-bottom: 24px;
+            border-bottom: 1px solid var(--cs-border-divider);
+        }
+
+        .section:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .section h3 {
+            color: var(--cs-text-heading);
+            margin-bottom: 16px;
+            font-size: var(--cs-font-size-m);
+            font-weight: 700;
+        }
+
+        .row {
+            display: flex;
+            gap: 12px;
+        }
+
+        .row .form-group {
+            flex: 1;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--cs-btn-primary-bg);
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: var(--cs-radius-s);
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .status-badge.configured {
+            background: var(--cs-success-bg);
+            color: var(--cs-success);
+        }
+
+        .status-badge.not-configured {
+            background: var(--cs-error-bg);
+            color: var(--cs-error);
+        }
+
+        .header-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
+        .header-bar h2 {
+            margin-bottom: 0;
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 32px 24px 24px;
+            }
+
+            .page-header h1 {
+                font-size: 20px;
+            }
+
+            .row {
+                flex-direction: column;
+                gap: 0;
+            }
+        }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <div class="topbar">
+        <img src="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5" alt="" class="topbar-logo">
+        <span class="topbar-title">Kavanah Analytics</span>
+    </div>
+    {% block body %}{% endblock %}
+</body>
+</html>

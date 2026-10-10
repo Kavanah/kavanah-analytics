@@ -1,0 +1,346 @@
+{% extends "base_v2.html" %}
+
+{% block title %}Data Grants - Kavanah Analytics Management Console{% endblock %}
+
+{% block extra_css %}
+<style>
+.breadcrumb { display:flex; align-items:center; gap:6px; font-size:var(--cs-font-size-s); margin-bottom:var(--cs-space-m); color:var(--cs-text-tertiary); }
+.card { background:var(--cs-bg-primary); border:1px solid var(--cs-border-default); border-radius:var(--cs-radius-m); box-shadow:var(--cs-shadow-xs); padding:var(--cs-space-xl); margin-bottom:var(--cs-space-m); max-width:960px; }
+.card h2 { font-size:var(--cs-font-size-xl); font-weight:var(--cs-font-weight-bold); color:var(--cs-text-heading); margin:0 0 var(--cs-space-xs); }
+.help-text { font-size:var(--cs-font-size-s); color:var(--cs-text-secondary); margin-bottom:var(--cs-space-m); }
+.btn { display:inline-flex; align-items:center; height:32px; padding:0 14px; font-family:var(--cs-font); font-size:var(--cs-font-size-m); font-weight:var(--cs-font-weight-medium); border-radius:var(--cs-radius-s); border:1px solid var(--cs-btn-normal-border); background:var(--cs-btn-normal-bg); color:var(--cs-btn-normal-text); cursor:pointer; }
+.btn:hover { background:var(--cs-btn-normal-hover-bg); }
+.btn-sm { height:28px; padding:0 10px; font-size:var(--cs-font-size-xs); }
+.btn-primary { background:var(--cs-btn-primary-bg); color:var(--cs-btn-primary-text); border-color:var(--cs-btn-primary-bg); font-weight:var(--cs-font-weight-bold); }
+.btn-primary:hover { background:var(--cs-btn-primary-bg-hover); }
+.btn-danger { border-color:var(--cs-error); color:var(--cs-error); }
+.btn-danger:hover { background:var(--cs-error-bg); }
+.form-row { display:flex; gap:var(--cs-space-m); align-items:flex-end; flex-wrap:wrap; margin-bottom:var(--cs-space-m); }
+.form-row label { display:flex; flex-direction:column; gap:4px; font-size:var(--cs-font-size-s); color:var(--cs-text-secondary); }
+/* background-color (not the `background` shorthand) so the global
+   select chevron isn't reset; select gets extra right padding for the chevron. */
+.form-row select, .form-row input { height:32px; padding:0 8px; border:1px solid var(--cs-border-default); border-radius:var(--cs-radius-s); background-color:var(--cs-bg-primary); color:var(--cs-text-primary); min-width:180px; }
+.form-row select { padding-right:26px; }
+.grants-table { width:100%; border-collapse:collapse; margin-top:var(--cs-space-m); }
+.grants-table th, .grants-table td { padding:8px 12px; border-bottom:1px solid var(--cs-border-default); text-align:left; font-size:var(--cs-font-size-s); }
+.grants-table th { background:var(--cs-bg-secondary); font-weight:var(--cs-font-weight-bold); }
+.grants-table .empty { text-align:center; color:var(--cs-text-tertiary); padding:24px; }
+.scope-org { color:var(--cs-text-link); font-weight:var(--cs-font-weight-medium); }
+.scope-team { color:var(--cs-text-secondary); }
+.scope-workspace { color:var(--cs-text-heading); font-weight:var(--cs-font-weight-bold); }
+.toast { position:fixed; bottom:16px; right:16px; padding:12px 18px; border-radius:var(--cs-radius-s); background:var(--cs-bg-primary); border:1px solid var(--cs-border-default); box-shadow:var(--cs-shadow-m); font-size:var(--cs-font-size-s); display:none; max-width:400px; }
+.toast.show { display:block; }
+.toast.error { border-color:var(--cs-error); color:var(--cs-error); }
+.toast.success { border-color:var(--cs-success, #16a34a); color:var(--cs-success, #16a34a); }
+/* Inline feedback span sits next to the Add grant button so validation
+   errors land in the operator's foveal vision, not the lower-right
+   corner of the viewport. */
+.inline-feedback { font-size:var(--cs-font-size-s); color:var(--cs-text-secondary); margin-left:8px; min-height:1em; }
+.inline-feedback.error { color:var(--cs-error); }
+.inline-feedback.success { color:var(--cs-success, #16a34a); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+    <a href="/assets/">Management Console</a>
+    <span>›</span>
+    <span>Data Grants</span>
+</div>
+
+<div class="card">
+    <h2>Data Grants</h2>
+    <p class="help-text">
+        Manage per-user <code>de_authz_data_grant</code> records. A superuser without grants sees no tenant data on the dashboard; each grant scopes their visibility to one organization, team, or workspace. Workspace grants resolve at query time to every team in the workspace — one grant per workspace replaces a grant-per-team list. Grants written through this page are audit-logged with your username as <code>granted_by</code>.
+    </p>
+
+    <div class="form-row">
+        <label>User
+            <select id="user-picker" data-selected-username="{{ selected_username or '' }}">
+                <option value="">— pick a user —</option>
+                {% for u in usernames %}
+                <option value="{{ u }}"{% if u == selected_username %} selected{% endif %}>{{ u }}</option>
+                {% endfor %}
+            </select>
+        </label>
+    </div>
+
+    <div id="grants-section" style="display:none;">
+        <h3 style="margin-top:24px; font-size:var(--cs-font-size-l);">Current grants for <span id="grants-user-label"></span></h3>
+        <table class="grants-table">
+            <thead>
+                <tr>
+                    <th>Scope</th>
+                    <th>Title</th>
+                    <th>Granted by</th>
+                    <th>Granted at</th>
+                    <th>Expires</th>
+                    <th>Reason</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody id="grants-tbody">
+                <tr><td colspan="7" class="empty">Loading…</td></tr>
+            </tbody>
+        </table>
+
+        <h3 style="margin-top:24px; font-size:var(--cs-font-size-l);">Add a grant</h3>
+        <div class="form-row">
+            <label>Scope type
+                <select id="new-scope-type">
+                    <option value="workspace">workspace</option>
+                    <option value="org">org</option>
+                    <option value="team">team</option>
+                </select>
+            </label>
+            <label>Scope
+                <select id="new-scope-esid">
+                    <option value="">— pick —</option>
+                </select>
+            </label>
+            <label>Reason
+                <input type="text" id="new-reason" maxlength="500" placeholder="e.g. agency owner for these orgs" style="min-width:280px;">
+            </label>
+            <label>Expires (optional ISO)
+                <input type="text" id="new-expires" maxlength="40" placeholder="2026-12-31T23:59:59Z">
+            </label>
+            <button class="btn btn-primary" id="add-grant-btn">Add grant</button>
+            <span id="add-grant-feedback" class="inline-feedback" aria-live="polite"></span>
+        </div>
+    </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script nonce="{{ csp_nonce }}">
+(function() {
+    // Org / team / workspace lists embedded at render time so the scope
+    // picker populates without an extra round-trip.
+    const ORGS = {{ orgs | tojson }};
+    const TEAMS = {{ teams | tojson }};
+    const WORKSPACES = {{ workspaces | tojson }};
+
+    const userPicker = document.getElementById("user-picker");
+    const grantsSection = document.getElementById("grants-section");
+    const userLabel = document.getElementById("grants-user-label");
+    const tbody = document.getElementById("grants-tbody");
+    const scopeTypeSel = document.getElementById("new-scope-type");
+    const scopeEsidSel = document.getElementById("new-scope-esid");
+    const reasonInput = document.getElementById("new-reason");
+    const expiresInput = document.getElementById("new-expires");
+    const addBtn = document.getElementById("add-grant-btn");
+    const addFeedback = document.getElementById("add-grant-feedback");
+    const toast = document.getElementById("toast");
+
+    let csrfToken = "";
+    const csrfMeta = document.querySelector("meta[name=csrf-token]");
+    if (csrfMeta) { csrfToken = csrfMeta.getAttribute("content"); }
+
+    function showToast(msg, kind) {
+        toast.textContent = msg;
+        toast.className = "toast show " + (kind || "");
+        setTimeout(() => { toast.className = "toast"; }, 3500);
+    }
+
+    // Inline feedback for the Add-grant form. The operator is already
+    // looking at the button; surfacing the result an inch to the right
+    // beats a corner toast for validation errors and submit results.
+    let _addFeedbackTimer = null;
+    function showAddFeedback(msg, kind) {
+        addFeedback.textContent = msg;
+        addFeedback.className = "inline-feedback " + (kind || "");
+        if (_addFeedbackTimer) { clearTimeout(_addFeedbackTimer); }
+        _addFeedbackTimer = setTimeout(() => {
+            addFeedback.textContent = "";
+            addFeedback.className = "inline-feedback";
+            _addFeedbackTimer = null;
+        }, 5000);
+    }
+
+    // Build the scope dropdown using DOM APIs so org / team titles
+    // can never be interpreted as HTML — even though they come from
+    // the server's own ES, defense-in-depth against any future write
+    // path that doesn't sanitize organization_title.
+    function populateScopeOptions() {
+        let list;
+        if (scopeTypeSel.value === "team") { list = TEAMS; }
+        else if (scopeTypeSel.value === "workspace") { list = WORKSPACES; }
+        else { list = ORGS; }
+        scopeEsidSel.innerHTML = "";
+        const placeholder = document.createElement("option");
+        placeholder.value = "";
+        placeholder.textContent = "— pick —";
+        scopeEsidSel.appendChild(placeholder);
+        for (const s of list) {
+            const opt = document.createElement("option");
+            opt.value = s.esid;
+            opt.textContent = s.title;
+            scopeEsidSel.appendChild(opt);
+        }
+    }
+    scopeTypeSel.addEventListener("change", populateScopeOptions);
+    populateScopeOptions();
+
+    // Render each grant row via createElement + textContent. Every
+    // field flowing in (scope_title, granted_by, granted_at, reason,
+    // expires_at) comes ultimately from ES docs; safer to never treat
+    // any of them as HTML.
+    function renderGrants(grants) {
+        tbody.innerHTML = "";
+        if (!grants.length) {
+            const tr = document.createElement("tr");
+            const td = document.createElement("td");
+            td.colSpan = 7;
+            td.className = "empty";
+            td.textContent = "No grants. Add one below to give this user data access.";
+            tr.appendChild(td);
+            tbody.appendChild(tr);
+            return;
+        }
+        for (const g of grants) {
+            const tr = document.createElement("tr");
+
+            // Scope type — controlled value, but use textContent anyway.
+            // Whitelist the class so an unexpected scope_type can't
+            // smuggle in an arbitrary class name via dataset interpolation.
+            const scopeTd = document.createElement("td");
+            const scopeSpan = document.createElement("span");
+            const knownScope = (g.scope_type === "team" || g.scope_type === "workspace") ? g.scope_type : "org";
+            scopeSpan.className = "scope-" + knownScope;
+            scopeSpan.textContent = g.scope_type || "";
+            scopeTd.appendChild(scopeSpan);
+            tr.appendChild(scopeTd);
+
+            // Title (from ES, untrusted)
+            const titleTd = document.createElement("td");
+            titleTd.textContent = g.scope_title || "(missing)";
+            tr.appendChild(titleTd);
+
+            // Granted-by (username; untrusted)
+            const grantedByTd = document.createElement("td");
+            grantedByTd.textContent = g.granted_by || "";
+            tr.appendChild(grantedByTd);
+
+            // Granted-at (ISO timestamp from service; safe but textContent anyway)
+            const grantedAtTd = document.createElement("td");
+            grantedAtTd.textContent = g.granted_at || "";
+            tr.appendChild(grantedAtTd);
+
+            // Expires
+            const expiresTd = document.createElement("td");
+            expiresTd.textContent = g.expires_at || "—";
+            tr.appendChild(expiresTd);
+
+            // Reason (free-text, definitely untrusted)
+            const reasonTd = document.createElement("td");
+            reasonTd.textContent = g.reason || "";
+            tr.appendChild(reasonTd);
+
+            // Revoke button
+            const actionTd = document.createElement("td");
+            const btn = document.createElement("button");
+            btn.className = "btn btn-sm btn-danger";
+            btn.textContent = "Revoke";
+            btn.dataset.username = g.username;
+            btn.dataset.scopeType = g.scope_type;
+            btn.dataset.scopeEsid = g.scope_esid;
+            btn.addEventListener("click", () => revokeGrant(g.username, g.scope_type, g.scope_esid));
+            actionTd.appendChild(btn);
+            tr.appendChild(actionTd);
+
+            tbody.appendChild(tr);
+        }
+    }
+
+    async function loadGrants(username) {
+        userLabel.textContent = username;
+        grantsSection.style.display = "block";
+        tbody.innerHTML = "";
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = 7;
+        td.className = "empty";
+        td.textContent = "Loading…";
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+        try {
+            const resp = await fetch(`/assets/api/admin/grants?username=${encodeURIComponent(username)}`);
+            const data = await resp.json();
+            if (!resp.ok) {
+                td.textContent = `Error: ${data.error || resp.status}`;
+                return;
+            }
+            renderGrants(data.grants || []);
+        } catch (e) {
+            td.textContent = `Error: ${e.message}`;
+        }
+    }
+
+    userPicker.addEventListener("change", () => {
+        const u = userPicker.value;
+        if (u) { loadGrants(u); }
+        else { grantsSection.style.display = "none"; }
+    });
+
+    // Deep-link from /user-management edit modal: server pre-selects the
+    // <option>, we just trigger the initial load on page render.
+    const preSelected = userPicker.getAttribute("data-selected-username") || "";
+    if (preSelected && userPicker.value === preSelected) {
+        loadGrants(preSelected);
+    }
+
+    addBtn.addEventListener("click", async () => {
+        const username = userPicker.value;
+        if (!username) { showAddFeedback("Pick a user first", "error"); return; }
+        const body = {
+            username: username,
+            scope_type: scopeTypeSel.value,
+            scope_esid: scopeEsidSel.value,
+            reason: reasonInput.value.trim(),
+            expires_at: expiresInput.value.trim() || null,
+        };
+        if (!body.scope_esid) { showAddFeedback("Pick a scope", "error"); return; }
+        if (!body.reason) { showAddFeedback("Reason is required (audit trail)", "error"); return; }
+        try {
+            const resp = await fetch("/assets/api/admin/grants", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+                body: JSON.stringify(body),
+            });
+            const data = await resp.json();
+            if (!resp.ok) { showAddFeedback(data.error || `Error ${resp.status}`, "error"); return; }
+            if (data.created) {
+                showAddFeedback("Grant added", "success");
+                reasonInput.value = "";
+                expiresInput.value = "";
+                loadGrants(username);
+            } else {
+                showAddFeedback("Grant already existed (idempotent no-op)", "success");
+            }
+        } catch (e) {
+            showAddFeedback(e.message, "error");
+        }
+    });
+
+    async function revokeGrant(username, scopeType, scopeEsid) {
+        if (!confirm(`Revoke ${scopeType}:${scopeEsid} grant for ${username}?`)) { return; }
+        try {
+            const resp = await fetch(`/assets/api/admin/grants/${encodeURIComponent(username)}/${encodeURIComponent(scopeType)}/${encodeURIComponent(scopeEsid)}`, {
+                method: "DELETE",
+                headers: { "X-CSRF-Token": csrfToken },
+            });
+            const data = await resp.json();
+            if (!resp.ok) { showToast(data.error || `Error ${resp.status}`, "error"); return; }
+            if (data.deleted) {
+                showToast("Grant revoked", "success");
+            } else {
+                showToast("Grant did not exist (no-op)", "success");
+            }
+            loadGrants(username);
+        } catch (e) {
+            showToast(e.message, "error");
+        }
+    }
+})();
+</script>
+{% endblock %}

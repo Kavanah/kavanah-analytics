@@ -1,0 +1,173 @@
+{
+  "connector_id": "meta_ads",
+  "created_at": "2026-06-04T22:49:10.364127+00:00",
+  "description": "List of Meta platform ad sets, impressions, reach, and costs",
+  "echarts_config": {
+    "charts": [
+      {
+        "aggregation": "sum",
+        "breakdown": null,
+        "cell_gradient_enabled": true,
+        "chart_id": "c1777926878195",
+        "chart_type": "table",
+        "column_widths": {
+          "cost_per_result": 135,
+          "insight_actions_onsite_conversion_messaging_conversation_started_7d": 140
+        },
+        "data_view": "*_fb_insights",
+        "date_format": "",
+        "display_toggles": {},
+        "filters": [],
+        "height": "444.995px",
+        "max_columns": 2,
+        "max_rows": 10,
+        "num_values": 100,
+        "other_bucket": false,
+        "position": {
+          "col": 0,
+          "h": 4,
+          "row": 0,
+          "w": 6
+        },
+        "sort_col_field": "insight_reach",
+        "sort_direction": "desc",
+        "table_columns": [
+          {
+            "aggregation": "text",
+            "decimals": 0,
+            "field": "effective_status.keyword",
+            "label": "Effective Delivery"
+          },
+          {
+            "aggregation": "sum",
+            "decimals": 0,
+            "field": "insight_impressions",
+            "format": "000,",
+            "label": "Impressions"
+          },
+          {
+            "aggregation": "sum",
+            "decimals": 0,
+            "field": "insight_reach",
+            "format": "000,",
+            "label": "Reach"
+          },
+          {
+            "aggregation": "calculation",
+            "decimals": 2,
+            "field": "__calc_1778710874609",
+            "format": "0.00",
+            "formula": "insight_impressions/insight_reach",
+            "formula_fields": [
+              "insight_impressions",
+              "insight_reach"
+            ],
+            "label": "Frequency"
+          },
+          {
+            "aggregation": "sum",
+            "decimals": 0,
+            "field": "insight_actions_onsite_conversion_messaging_conversation_started_7d",
+            "format": "000,",
+            "label": "New Messaging Contact"
+          },
+          {
+            "aggregation": "sum",
+            "decimals": 2,
+            "field": "insight_spend",
+            "format": "$0.00",
+            "label": "Amount Spent"
+          },
+          {
+            "aggregation": "sum",
+            "decimals": 2,
+            "field": "cost_per_result",
+            "format": "$0.00",
+            "label": "Cost Per New Messaging Contact",
+            "shade": false
+          },
+          {
+            "aggregation": "avg",
+            "decimals": 2,
+            "field": "insight_ctr",
+            "format": "0.00\\%",
+            "label": "CTR (All)",
+            "shade": false
+          },
+          {
+            "aggregation": "avg",
+            "decimals": 2,
+            "field": "insight_inline_link_click_ctr",
+            "format": "0.00\\%",
+            "label": "CTR (Link Click-Through Rate)",
+            "shade": false
+          }
+        ],
+        "title": "Ad Sets (Delivery)",
+        "width": "1187.07px",
+        "x_field": "adset_name",
+        "x_field_type": null,
+        "x_label": "Ad Set Name",
+        "y_fields": [
+          "effective_status.keyword",
+          "insight_impressions",
+          "insight_reach",
+          "__calc_1778710874609",
+          "insight_actions_onsite_conversion_messaging_conversation_started_7d",
+          "insight_spend",
+          "cost_per_result",
+          "insight_ctr",
+          "insight_inline_link_click_ctr"
+        ],
+        "y_max": "",
+        "y_min": ""
+      }
+    ],
+    "filters": [
+      {
+        "data_view": "*_fb_insights",
+        "field": "publisher_platform",
+        "field_type": "keyword",
+        "id": "f1778681246315-82",
+        "selected_values": [
+          "instagram"
+        ],
+        "title": "Platform"
+      },
+      {
+        "data_view": "*_fb_insights",
+        "field": "ad_account_id",
+        "field_type": "keyword",
+        "id": "f1778256701153-622",
+        "selected_values": [
+          "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+        ],
+        "title": "Ad Account",
+        "value_source": {
+          "asset_type": "fb_ad_accounts",
+          "kind": "asset"
+        }
+      },
+      {
+        "data_view": "*_fb_insights",
+        "field": "ad_campaign_name",
+        "field_type": "keyword",
+        "id": "f1778256754928-500",
+        "selected_values": [],
+        "title": "Campaign"
+      }
+    ],
+    "global_date_range": null
+  },
+  "frozen_from_dashboard_id": "e933a03e-80a9-4d36-b532-9dc55de8c3f4",
+  "menu_position": 0,
+  "menu_title": "Meta",
+  "name": "Ad Sets (Delivery)",
+  "pack_id": "meta",
+  "placeholder_field": "ad_account_id",
+  "required_sources": [
+    "meta_ads"
+  ],
+  "template_id": "meta_ad_sets",
+  "updated_at": "2026-06-04T22:49:10.364127+00:00"
+}

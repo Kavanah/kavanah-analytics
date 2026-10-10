@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Account Recovery - Digital Engagement</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/cloudscape.css') }}">
+    <style>
+        .login-topbar { position: fixed; top: 0; left: 0; right: 0; height: 56px; background: var(--cs-nav-bg); display: flex; align-items: center; padding: 0 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.25); z-index: 10; }
+        .login-topbar-logo { height: 24px; width: auto; margin-right: 12px; }
+        .login-topbar-title { font-size: 17px; font-weight: 700; color: #FFFFFF; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: var(--cs-bg-page);
+            min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px;
+        }
+        .login-container { width: 100%; max-width: 420px; }
+        .login-card { background: white; border-radius: var(--cs-radius-l); box-shadow: var(--cs-shadow-m); padding: 40px; text-align: center; }
+        .login-header h1 { color: var(--cs-text-heading, #000716); font-size: 24px; margin-bottom: 20px; font-weight: 600; }
+        .alert { padding: 15px; margin-bottom: 20px; border-radius: 6px; font-size: 14px; text-align: left; }
+        .alert-error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .icon { font-size: 44px; margin-bottom: 12px; }
+        .login-footer a { color: var(--cs-text-link); text-decoration: none; font-size: 14px; }
+        .login-footer a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="login-topbar"><img src="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5" alt="" class="login-topbar-logo"><span class="login-topbar-title">Kavanah Analytics</span></div>
+    <div class="login-container">
+        <div class="login-card">
+            <div class="login-header"><h1>Account Recovery</h1></div>
+            <div class="alert {{ 'alert-success' if ok else 'alert-error' }}">{{ message }}</div>
+            <div class="login-footer">
+                <p><a href="{{ url_for('analytics.login_page') }}">Return to login</a></p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,420 @@
+{# Add Another Client modal.
+
+   Agency-only surface that consumes the `add_client` checklist
+   row. Renders unconditionally on the dashboard so the JS can pop it
+   open for any authenticated user; visibility is controlled by
+   `.add-client-modal.is-open` and the row only appears in the checklist
+   for users where `is_agency_for_user` is True. The server endpoint
+   (`POST /api/clients`) defends in depth with the same check.
+
+   Stripped-down step-3-style form: client name + currency only. Other
+   workspace fields (timezone, fiscal year start, slug check) belong to
+   the wizard's initial setup; adding a 2nd / 3rd / Nth client doesn't
+   need to re-collect them.
+
+   Inline state blocks (one visible at a time, JS toggles via
+   `data-state` on the modal root):
+
+   * form              — initial form (default)
+   * sending           — submit in flight (button disabled, spinner)
+   * created           — success after a fresh add
+   * exists            — server says the same-titled client is already
+                         under this workspace (idempotent re-POST)
+   * error             — generic / network / 500 failure
+#}
+<style>
+.add-client-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.55);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 9000;
+    padding: 20px;
+}
+.add-client-modal-overlay.is-open { display: flex; }
+
+.add-client-modal {
+    background: #ffffff;
+    width: 100%;
+    max-width: 480px;
+    border-radius: 10px;
+    box-shadow: 0 18px 48px rgba(15, 23, 42, 0.28);
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        Helvetica, Arial, sans-serif;
+    color: #000716;
+}
+.add-client-modal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 20px 12px;
+    border-bottom: 1px solid #e9ebed;
+}
+.add-client-modal-head h2 {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 700;
+}
+.add-client-modal-close {
+    background: none;
+    border: 0;
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+    color: #5F6B7A;
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+.add-client-modal-close:hover { background: rgba(0, 0, 0, 0.05); }
+
+.add-client-modal-body { padding: 18px 20px 20px; }
+.add-client-modal-row { margin-bottom: 14px; }
+.add-client-modal-row label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: #000716;
+}
+.add-client-modal-row input[type="text"],
+.add-client-modal-row select {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid #D5DBDB;
+    border-radius: 6px;
+    /* follow-up: room for the global chevron + background-color (not
+     * the `background` shorthand) so the chevron image isn't reset. */
+    padding: 9px 28px 9px 11px;
+    font-size: 14px;
+    font-family: inherit;
+    color: #000716;
+    background-color: #ffffff;
+}
+.add-client-modal-row input:focus,
+.add-client-modal-row select:focus {
+    outline: none;
+    border-color: #0972D3;
+    box-shadow: 0 0 0 2px rgba(9, 114, 211, 0.18);
+}
+.add-client-modal-help {
+    font-size: 12px;
+    color: #5F6B7A;
+    margin-top: 4px;
+}
+.add-client-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 6px;
+}
+/* state-screen action rows sit a little lower (replaces a per-row
+   inline margin-top). Two-class selector to beat the base rule. */
+.add-client-modal-actions.is-spaced { margin-top: 14px; }
+.add-client-modal-btn {
+    border: 0;
+    border-radius: 6px;
+    padding: 9px 18px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+}
+.add-client-modal-btn-primary {
+    background: #0972D3;
+    color: #ffffff;
+}
+.add-client-modal-btn-primary:hover:not(:disabled) { background: #0A66BA; }
+.add-client-modal-btn-primary:disabled {
+    background: #9BA7B0;
+    cursor: not-allowed;
+}
+.add-client-modal-btn-secondary {
+    background: #ffffff;
+    color: #000716;
+    border: 1px solid #D5DBDB;
+}
+.add-client-modal-btn-secondary:hover { background: #F4F5F6; }
+
+.add-client-modal-state { display: none; }
+.add-client-modal[data-state="form"] .add-client-modal-state-form,
+.add-client-modal[data-state="sending"] .add-client-modal-state-form,
+.add-client-modal[data-state="created"] .add-client-modal-state-created,
+.add-client-modal[data-state="exists"] .add-client-modal-state-exists,
+.add-client-modal[data-state="error"] .add-client-modal-state-error {
+    display: block;
+}
+
+.add-client-modal-success {
+    background: #F0F7E9;
+    border: 1px solid #C5E0A6;
+    border-radius: 6px;
+    padding: 14px 16px;
+    color: #1F5400;
+    font-size: 14px;
+}
+.add-client-modal-warning {
+    background: #FFF7E6;
+    border: 1px solid #FCD9A0;
+    border-radius: 6px;
+    padding: 14px 16px;
+    color: #5C3D00;
+    font-size: 14px;
+}
+.add-client-modal-error-msg {
+    background: #FDECEE;
+    border: 1px solid #F5C2C6;
+    border-radius: 6px;
+    padding: 12px 14px;
+    color: #6A1A23;
+    font-size: 14px;
+    margin-bottom: 12px;
+}
+.add-client-modal-field-error {
+    color: #6A1A23;
+    font-size: 12px;
+    margin-top: 4px;
+    display: none;
+}
+.add-client-modal-field-error.is-visible { display: block; }
+</style>
+
+<div class="add-client-modal-overlay"
+     id="add-client-modal-overlay"
+     data-testid="add-client-modal-overlay"
+     role="dialog"
+     aria-modal="true"
+     aria-labelledby="add-client-modal-title"
+     aria-hidden="true">
+    <div class="add-client-modal"
+         id="add-client-modal"
+         data-testid="add-client-modal"
+         data-state="form">
+        <div class="add-client-modal-head">
+            <h2 id="add-client-modal-title">Add another client</h2>
+            <button type="button"
+                    class="add-client-modal-close"
+                    data-testid="add-client-modal-close"
+                    aria-label="Close add client"
+                    onclick="closeAddClientModal()">&#10005;</button>
+        </div>
+        <div class="add-client-modal-body">
+
+            {# ── Form state ──────────────────────────────────── #}
+            <div class="add-client-modal-state add-client-modal-state-form">
+                <div class="add-client-modal-error-msg cs-hidden"
+                     id="add-client-modal-inline-error"
+                     data-testid="add-client-modal-inline-error"></div>
+                <form id="add-client-modal-form"
+                      data-testid="add-client-modal-form"
+                      onsubmit="submitAddClientModal(event)">
+                    <div class="add-client-modal-row">
+                        <label for="add-client-modal-title-input">Client name</label>
+                        <input type="text"
+                               id="add-client-modal-title-input"
+                               name="client_title"
+                               data-testid="add-client-modal-title-input"
+                               maxlength="120"
+                               required
+                               placeholder="e.g. Acme Brand">
+                        <div class="add-client-modal-help">Each client is an organization inside your agency workspace.</div>
+                        <div class="add-client-modal-field-error"
+                             id="add-client-modal-title-error"
+                             data-testid="add-client-modal-title-error">Client name is required.</div>
+                    </div>
+                    <div class="add-client-modal-row">
+                        <label for="add-client-modal-currency">Currency</label>
+                        <select id="add-client-modal-currency"
+                                name="currency"
+                                data-testid="add-client-modal-currency">
+                            <option value="USD" selected>USD — US Dollar</option>
+                            <option value="EUR">EUR — Euro</option>
+                            <option value="GBP">GBP — British Pound</option>
+                            <option value="CAD">CAD — Canadian Dollar</option>
+                            <option value="AUD">AUD — Australian Dollar</option>
+                            <option value="JPY">JPY — Japanese Yen</option>
+                        </select>
+                        <div class="add-client-modal-help">Default reporting currency for this client. You can change it later in settings.</div>
+                    </div>
+                    <div class="add-client-modal-actions">
+                        <button type="button"
+                                class="add-client-modal-btn add-client-modal-btn-secondary"
+                                onclick="closeAddClientModal()">Cancel</button>
+                        <button type="submit"
+                                class="add-client-modal-btn add-client-modal-btn-primary"
+                                id="add-client-modal-submit"
+                                data-testid="add-client-modal-submit"
+                                disabled>Add client</button>
+                    </div>
+                </form>
+            </div>
+
+            {# ── Created state ───────────────────────────────── #}
+            <div class="add-client-modal-state add-client-modal-state-created">
+                <div class="add-client-modal-success" data-testid="add-client-modal-created-success">
+                    <strong id="add-client-modal-created-title"></strong> is set up. You can start connecting data sources for this client now.
+                </div>
+                <div class="add-client-modal-actions is-spaced">
+                    <button type="button"
+                            class="add-client-modal-btn add-client-modal-btn-secondary"
+                            data-testid="add-client-modal-created-close"
+                            onclick="closeAddClientModal()">Done</button>
+                    <button type="button"
+                            class="add-client-modal-btn add-client-modal-btn-primary"
+                            data-testid="add-client-modal-add-another"
+                            onclick="resetAddClientModalForm()">Add another</button>
+                </div>
+            </div>
+
+            {# ── Exists state (idempotent re-POST) ───────────── #}
+            <div class="add-client-modal-state add-client-modal-state-exists">
+                <div class="add-client-modal-warning" data-testid="add-client-modal-exists-warning">
+                    <strong id="add-client-modal-exists-title"></strong> is already a client in this workspace.
+                </div>
+                <div class="add-client-modal-actions is-spaced">
+                    <button type="button"
+                            class="add-client-modal-btn add-client-modal-btn-primary"
+                            onclick="resetAddClientModalForm()">Try another name</button>
+                </div>
+            </div>
+
+            {# ── Error state ─────────────────────────────────── #}
+            <div class="add-client-modal-state add-client-modal-state-error">
+                <div class="add-client-modal-error-msg" data-testid="add-client-modal-error">
+                    Couldn't add the client. <span id="add-client-modal-error-detail"></span>
+                </div>
+                <div class="add-client-modal-actions is-spaced">
+                    <button type="button"
+                            class="add-client-modal-btn add-client-modal-btn-secondary"
+                            onclick="closeAddClientModal()">Close</button>
+                    <button type="button"
+                            class="add-client-modal-btn add-client-modal-btn-primary"
+                            data-testid="add-client-modal-error-retry"
+                            onclick="resetAddClientModalForm()">Try again</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script nonce="{{ csp_nonce }}">
+(function() {
+    var CSRF_TOKEN = "{{ csrf_token if csrf_token is defined else '' }}";
+
+    function $(id) { return document.getElementById(id); }
+    function setState(state) {
+        var modal = $('add-client-modal');
+        if (modal) modal.setAttribute('data-state', state);
+    }
+    function openModal() {
+        var overlay = $('add-client-modal-overlay');
+        if (!overlay) return;
+        overlay.classList.add('is-open');
+        overlay.setAttribute('aria-hidden', 'false');
+        var titleInput = $('add-client-modal-title-input');
+        if (titleInput) {
+            setTimeout(function() { titleInput.focus(); }, 30);
+        }
+    }
+    window.openAddClientModal = function() {
+        resetAddClientModalForm();
+        openModal();
+    };
+    window.closeAddClientModal = function() {
+        var overlay = $('add-client-modal-overlay');
+        if (overlay) {
+            overlay.classList.remove('is-open');
+            overlay.setAttribute('aria-hidden', 'true');
+        }
+    };
+    window.resetAddClientModalForm = function() {
+        setState('form');
+        var inlineErr = $('add-client-modal-inline-error');
+        if (inlineErr) { inlineErr.classList.add('cs-hidden'); inlineErr.textContent = ''; }
+        var fieldErr = $('add-client-modal-title-error');
+        if (fieldErr) fieldErr.classList.remove('is-visible');
+        var input = $('add-client-modal-title-input');
+        if (input) input.value = '';
+        var submit = $('add-client-modal-submit');
+        if (submit) { submit.disabled = true; submit.textContent = 'Add client'; }
+    };
+
+    function _bindTitleValidation() {
+        var input = $('add-client-modal-title-input');
+        var submit = $('add-client-modal-submit');
+        if (!input || !submit) return;
+        function update() {
+            var v = (input.value || '').trim();
+            submit.disabled = v.length === 0 || v.length > 120;
+        }
+        input.addEventListener('input', update);
+    }
+    document.addEventListener('DOMContentLoaded', function() {
+        _bindTitleValidation();
+
+        // checklist row click. The `add_client` row's
+        // action_url is `#add-client-modal`; intercept the navigation
+        // and open the modal locally so the user never leaves
+        // /dashboard. Same pattern as invite modal.
+        document.body.addEventListener('click', function(ev) {
+            var anchor = ev.target.closest('a[href="#add-client-modal"]');
+            if (!anchor) return;
+            ev.preventDefault();
+            window.openAddClientModal();
+        });
+    });
+
+    window.submitAddClientModal = function(ev) {
+        if (ev && ev.preventDefault) ev.preventDefault();
+        var titleInput = $('add-client-modal-title-input');
+        var currencySel = $('add-client-modal-currency');
+        var title = ((titleInput || {}).value || '').trim();
+        var currency = ((currencySel || {}).value || 'USD').trim().toUpperCase();
+        if (!title) {
+            var fieldErr = $('add-client-modal-title-error');
+            if (fieldErr) fieldErr.classList.add('is-visible');
+            return;
+        }
+
+        var submit = $('add-client-modal-submit');
+        if (submit) { submit.disabled = true; submit.textContent = 'Adding…'; }
+        setState('sending');
+        fetch('{{ client_api_base if client_api_base is defined else url_for("analytics.post_client") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': CSRF_TOKEN
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify({ client_title: title, currency: currency })
+        }).then(function(r) {
+            return r.json().then(function(body) { return { ok: r.ok, status: r.status, body: body }; });
+        }).then(function(res) {
+            var body = res.body || {};
+            var status = body.status;
+            if (status === 'created') {
+                var s = $('add-client-modal-created-title');
+                if (s) s.textContent = body.client_title || title;
+                setState('created');
+                return;
+            }
+            if (status === 'exists') {
+                var e = $('add-client-modal-exists-title');
+                if (e) e.textContent = body.client_title || title;
+                setState('exists');
+                return;
+            }
+            var errMsg = body.reason || body.error || 'Something went wrong.';
+            var detail = $('add-client-modal-error-detail');
+            if (detail) detail.textContent = errMsg;
+            setState('error');
+        }).catch(function() {
+            var detail = $('add-client-modal-error-detail');
+            if (detail) detail.textContent = 'Network error.';
+            setState('error');
+        });
+    };
+})();
+</script>

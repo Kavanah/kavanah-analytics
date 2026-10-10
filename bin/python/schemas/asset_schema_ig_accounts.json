@@ -1,0 +1,60 @@
+{
+  "dynamic_templates": [
+    {
+      "strings_as_keyword": {
+        "match_mapping_type": "string",
+        "mapping": {
+          "type": "keyword",
+          "ignore_above": 8191
+        }
+      }
+    }
+  ],
+  "properties": {
+    "workspace_title": {
+      "type": "keyword"
+    },
+    "workspace_esid": {
+      "type": "keyword"
+    },
+    "ig_account_title": {
+      "type": "keyword"
+    },
+    "ig_account_id": {
+      "type": "keyword"
+    },
+    "ig_account_username": {
+      "type": "keyword"
+    },
+    "ig_account_name": {
+      "type": "text"
+    },
+    "ig_account_type": {
+      "type": "keyword"
+    },
+    "fb_page_id": {
+      "type": "keyword"
+    },
+    "fb_page_esid": {
+      "type": "keyword"
+    },
+    "fb_account_title": {
+      "type": "keyword"
+    },
+    "fb_account_esid": {
+      "type": "keyword"
+    },
+    "ig_account_status": {
+      "type": "keyword"
+    },
+    "ig_account_last_sync": {
+      "type": "date"
+    },
+    "ig_account_notes": {
+      "type": "text"
+    },
+    "@timestamp": {
+      "type": "date"
+    }
+  }
+}

@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Billing · Kavanah Analytics</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/cloudscape.css') }}">
+    <style>
+        body {
+            background: var(--cs-bg-page);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 84px 20px 40px;
+        }
+        .topbar {
+            position: fixed; top: 0; left: 0; right: 0;
+            height: 56px;
+            background: var(--cs-nav-bg);
+            display: flex; align-items: center;
+            padding: 0 24px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+            z-index: 10;
+        }
+        .topbar-logo { height: 24px; width: auto; margin-right: 12px; }
+        .topbar-title { font-size: 17px; font-weight: 700; color: #FFFFFF; }
+        .shell { width: 100%; max-width: 640px; }
+        .card {
+            background: var(--cs-bg-primary);
+            border: 1px solid var(--cs-border-default);
+            border-radius: var(--cs-radius-l);
+            box-shadow: var(--cs-shadow-m);
+            padding: 36px 36px 28px;
+        }
+        .eyebrow {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 11px; font-weight: 600;
+            letter-spacing: 0.08em; text-transform: uppercase;
+            color: var(--cs-text-secondary);
+            margin-bottom: 8px;
+        }
+        h1 { font-size: 24px; font-weight: 700; color: var(--cs-text-heading); margin: 0 0 6px; }
+        p { font-size: var(--cs-font-size-m); color: var(--cs-text-secondary); line-height: 1.5; margin: 0 0 14px; }
+        .actions { margin-top: 22px; display: flex; gap: 12px; flex-wrap: wrap; }
+        .btn {
+            height: 40px; padding: 0 18px;
+            border-radius: var(--cs-radius-s);
+            font-size: var(--cs-font-size-m);
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid transparent;
+            text-decoration: none;
+            display: inline-flex; align-items: center;
+        }
+        .btn-primary { background: var(--cs-btn-primary-bg); color: #FFFFFF; }
+        .btn-primary:hover { background: var(--cs-btn-primary-bg-hover); }
+        .btn-ghost { background: transparent; color: var(--cs-text-link); }
+        .btn-ghost:hover { background: var(--cs-bg-page); }
+    </style>
+</head>
+<body>
+    <div class="topbar">
+        <img src="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5" alt="" class="topbar-logo">
+        <span class="topbar-title">Kavanah Analytics</span>
+    </div>
+
+    <div class="shell">
+        <div class="card" data-testid="billing-page-card">
+            <div class="eyebrow">Billing</div>
+            <h1>Upgrade to add more sources</h1>
+            <p>
+                Self-serve billing is coming soon. In the meantime, see the public plan
+                comparison or reach out and we'll set you up directly.
+            </p>
+            <p>
+                The free plan includes one live source for 14 days; upgrading lifts the
+                cap and unlocks the full set of connectors on the previous screen.
+            </p>
+            <div class="actions">
+                <a class="btn btn-primary"
+                   href="https://kavanahmedia.com/pricing"
+                   data-testid="billing-pricing-link"
+                   target="_blank"
+                   rel="noopener">See plans →</a>
+                <a class="btn btn-ghost"
+                   href="mailto:sales@kavanahmedia.com?subject=Upgrade%20enquiry"
+                   data-testid="billing-sales-link">Talk to sales</a>
+                <a class="btn btn-ghost"
+                   href="{{ url_for('analytics.onboarding_step6_page') }}"
+                   data-testid="billing-back-link">← Back to sources</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

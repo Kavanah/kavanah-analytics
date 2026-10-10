@@ -1,0 +1,104 @@
+{% extends "base_v2.html" %}
+
+{% block title %}Meta connection health - Kavanah Analytics{% endblock %}
+
+{% block extra_css %}
+<style>
+.ch-page { padding: var(--cs-space-l); max-width: 1200px; margin: 0 auto; }
+.ch-title { font-size: 1.4rem; font-weight: 600; margin: 0 0 .25rem; }
+.ch-lede { color: var(--cs-text-secondary); margin: 0 0 1rem; font-size: .9rem; }
+.ch-summary { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.ch-pill { padding: .35rem .75rem; border-radius: 999px; font-size: .85rem; background: rgba(0,0,0,.05); }
+.ch-pill.is-warn { background: rgba(217, 119, 6, 0.12); color: #9A5008; }
+.ch-pill.is-muted { color: var(--cs-text-secondary); }
+.ch-table-wrap { overflow-x: auto; }
+.ch-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.ch-table th, .ch-table td { text-align: left; padding: .5rem .6rem; border-bottom: 1px solid rgba(0,0,0,.08); vertical-align: top; }
+.ch-table th { font-weight: 600; white-space: nowrap; }
+.ch-badge { display: inline-block; padding: .1rem .5rem; border-radius: 999px; font-size: .78rem; background: rgba(0,0,0,.06); }
+.ch-badge.is-warn { background: rgba(217, 119, 6, 0.12); color: #9A5008; }
+.ch-badge.is-expired { background: rgba(207, 34, 46, 0.12); color: #CF222E; }
+.ch-badge.is-ok { background: rgba(22, 163, 74, 0.12); color: #166534; }
+.ch-reason { display: block; color: var(--cs-text-secondary); font-size: .8rem; }
+.ch-empty { color: var(--cs-text-secondary); padding: 1rem 0; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ch-page">
+  <h1 class="ch-title">Meta connection health</h1>
+  <p class="ch-lede">
+    Every wizard Meta connection with the two clocks that govern it. <strong>Meta data access</strong>
+    is the one that matters: a long-lived token stays valid while its 90-day data-access window
+    closes, and only a person re-authorising from the connection page resets it — the nightly
+    token refresh does not. Rows turn amber at {{ warn_days }} days, the same window the
+    credential-health probe uses for its banner.
+  </p>
+
+  <div class="ch-summary">
+    <span class="ch-pill">{{ rows|length }} connection{{ '' if rows|length == 1 else 's' }}</span>
+    <span class="ch-pill {{ 'is-warn' if expiring_count else '' }}">{{ expiring_count }} expiring within {{ warn_days }} days</span>
+    <span class="ch-pill is-muted">{{ unrecorded_count }} with no data-access date recorded</span>
+  </div>
+
+  {% if rows %}
+  <div class="ch-table-wrap">
+    <table class="ch-table">
+      <thead>
+        <tr>
+          <th>Connection</th>
+          <th>Owner</th>
+          <th>Kind</th>
+          <th>Meta data access expires</th>
+          <th>Token expires</th>
+          <th>Probe verdict</th>
+          <th>Last probed</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td>
+            <a href="{{ url_for('connections.connection_detail', connection_esid=r.esid) }}">{{ r.label }}</a>
+            {% if r.status != 'active' %}<span class="ch-badge">{{ r.status }}</span>{% endif %}
+          </td>
+          <td>{{ r.principal or '(unknown)' }}</td>
+          <td>{{ r.token_kind }}</td>
+          <td>
+            {% if r.data_access_expires_at %}
+              {{ r.data_access_expires_at }}
+              {% if r.data_access_label %}
+                {% set _cls = 'is-ok' %}
+                {% if r.data_access_days is not none and r.data_access_days <= 0 %}{% set _cls = 'is-expired' %}
+                {% elif r.data_access_days is not none and r.data_access_days <= warn_days %}{% set _cls = 'is-warn' %}{% endif %}
+                <span class="ch-badge {{ _cls }}">{{ r.data_access_label }}</span>
+              {% endif %}
+            {% elif r.token_kind == 'system_user' %}
+              <span class="ch-reason">system-user token — no data-access window</span>
+            {% else %}
+              <span class="ch-reason">not recorded — run the  backfill or re-authorise</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if r.token_expires_at %}{{ r.token_expires_at }}{% if r.token_label %} <span class="ch-badge">{{ r.token_label }}</span>{% endif %}
+            {% else %}<span class="ch-reason">no expiry recorded</span>{% endif %}
+          </td>
+          <td>
+            {% if r.health_status %}
+              <span class="ch-badge {{ 'is-ok' if r.health_status == 'healthy' else ('is-expired' if r.health_status == 'token_dead' else 'is-warn') }}">{{ r.health_status }}</span>
+              {% if r.health_reason %}<span class="ch-reason">{{ r.health_reason }}</span>{% endif %}
+            {% else %}
+              <span class="ch-reason">not probed yet</span>
+            {% endif %}
+          </td>
+          <td>{{ r.last_probed_at or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="ch-empty">No Meta connections found.</p>
+  {% endif %}
+</div>
+{% endblock %}

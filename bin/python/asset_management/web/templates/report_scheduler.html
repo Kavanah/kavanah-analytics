@@ -1,0 +1,2895 @@
+{% extends "base_v2.html" %}
+
+{% block title %}Report Scheduler - Kavanah Analytics Management Console{% endblock %}
+
+{% block extra_css %}
+<style>
+    .rs-page { padding: var(--cs-space-l) var(--cs-space-xl); max-width: var(--cs-content-max-width); }
+    .rs-page-header {
+        display: flex; align-items: flex-start; justify-content: space-between;
+        gap: var(--cs-space-m); margin-bottom: var(--cs-space-l);
+    }
+    .rs-page-title { font-size: 24px; font-weight: var(--cs-font-weight-bold); color: var(--cs-text-primary); margin: 0; }
+    /* two create buttons (New email schedule + New schedule). */
+    .rs-header-actions { display: flex; gap: var(--cs-space-xs); flex-shrink: 0; }
+    .rs-page-desc { font-size: var(--cs-font-size-m); color: var(--cs-text-secondary); margin: var(--cs-space-xxs) 0 0; }
+    .rs-list { display: grid; gap: var(--cs-space-m); max-height: 60vh; overflow-y: auto; padding-right: var(--cs-space-xs); }
+    /* Collapsible list section (Scheduled imports / Scheduled emails). The
+       heading is a click target; the chevron rotates and the list hides. */
+    .rs-section-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; background: none; border: none; padding: 0; font: inherit; text-align: left; width: 100%; }
+    .rs-section-chevron { transition: transform var(--cs-transition-fast); font-size: var(--cs-font-size-s); color: var(--cs-text-tertiary); }
+    .rs-section.rs-collapsed .rs-section-chevron { transform: rotate(-90deg); }
+    .rs-section.rs-collapsed .rs-list { display: none; }
+    .rs-card { padding: var(--cs-space-l); }
+    .rs-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--cs-space-m); }
+    .rs-card-name { font-size: var(--cs-font-size-l); font-weight: var(--cs-font-weight-bold); color: var(--cs-text-heading); margin: 0; }
+    .rs-card-desc { font-size: var(--cs-font-size-s); color: var(--cs-text-secondary); margin: 2px 0 0; }
+    .rs-card-meta { display: flex; flex-wrap: wrap; gap: var(--cs-space-l); margin-top: var(--cs-space-m); }
+    .rs-run-status { font-size: var(--cs-font-size-s); color: var(--cs-text-secondary); margin-top: var(--cs-space-s); }
+    .rs-run-status.rs-run-error { color: var(--cs-error); }
+    /* #5 — persisted run progress bar (rehydrates across navigation). */
+    .rs-progress { margin-top: var(--cs-space-s); }
+    .rs-progress-label { font-size: var(--cs-font-size-xs); color: var(--cs-text-secondary); margin-bottom: 3px; }
+    .rs-progress-label.rs-run-error { color: var(--cs-error); }
+    .rs-progress-track { height: 6px; border-radius: 3px; background: var(--cs-border-divider); overflow: hidden; }
+    .rs-progress-fill { height: 100%; background: var(--cs-btn-primary-bg); transition: width 0.4s ease; }
+    .rs-progress-fill.rs-progress-indeterminate { width: 40% !important; animation: rs-indet 1.1s ease-in-out infinite; }
+    .rs-progress-fill.rs-run-error { background: var(--cs-error); }
+    @keyframes rs-indet { 0% { margin-left: -40%; } 100% { margin-left: 100%; } }
+    /* Cancel control on the in-flight run bar + the post-cancel note. */
+    .rs-progress-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--cs-space-s); }
+    .rs-cancel-btn { flex: 0 0 auto; font-size: var(--cs-font-size-xs); color: var(--cs-error); background: none; border: none; padding: 0; cursor: pointer; text-decoration: underline; }
+    .rs-cancel-btn:disabled { color: var(--cs-text-secondary); cursor: default; text-decoration: none; }
+    .rs-cancel-note { font-size: var(--cs-font-size-s); color: var(--cs-text-secondary); margin-top: var(--cs-space-s); }
+    .rs-cancel-note.rs-run-error { color: var(--cs-error); }
+    .rs-meta-item { font-size: var(--cs-font-size-s); color: var(--cs-text-secondary); }
+    .rs-meta-label { color: var(--cs-text-tertiary); display: block; font-size: var(--cs-font-size-xs); text-transform: uppercase; letter-spacing: 0.04em; }
+    .rs-meta-value { color: var(--cs-text-primary); }
+    .rs-card-actions { display: flex; gap: var(--cs-space-xs); flex-shrink: 0; }
+    .rs-empty, .rs-loading { padding: var(--cs-space-xxl); text-align: center; color: var(--cs-text-secondary); }
+    .rs-badge-active { background: var(--cs-success); }
+    .rs-badge-paused { background: var(--cs-text-tertiary); }
+    /* #1 — schedules the viewer can see but not own (workspace-owned). */
+    .rs-badge-workspace { background: var(--cs-text-tertiary); }
+    .rs-pill {
+        display: inline-block; padding: 2px 10px; border-radius: var(--cs-radius-s);
+        font-size: var(--cs-font-size-xs); font-weight: var(--cs-font-weight-bold);
+        color: #fff; text-transform: uppercase; letter-spacing: 0.03em;
+    }
+    /* ── Form modal ── */
+    /* Centered overlay; the modal itself is height-capped so the footer
+       (Cancel/Save) is always visible — only the body scrolls. */
+    .rsm-overlay { position: fixed; inset: 0; background: rgba(0,7,22,0.5); z-index: 9000; display: flex; align-items: center; justify-content: center; padding: var(--cs-space-l); }
+    .rsm-overlay.hidden { display: none !important; }
+    .rsm-modal { display: flex; flex-direction: column; background: var(--cs-bg-primary); border-radius: var(--cs-radius-l); width: 640px; max-width: 95vw; max-height: 90vh; box-shadow: var(--cs-shadow-modal); }
+    .rsm-header { flex: 0 0 auto; display: flex; justify-content: space-between; align-items: center; padding: var(--cs-space-m) var(--cs-space-l); border-bottom: 1px solid var(--cs-border-divider); }
+    .rsm-header h3 { margin: 0; font-size: var(--cs-font-size-l); color: var(--cs-text-heading); }
+    .rsm-close { background: none; border: none; font-size: 1.3rem; cursor: pointer; color: var(--cs-text-tertiary); padding: 2px 6px; border-radius: var(--cs-radius-s); }
+    .rsm-close:hover { background: var(--cs-bg-hover); color: var(--cs-text-primary); }
+    .rsm-body { flex: 1 1 auto; overflow-y: auto; padding: var(--cs-space-l); }
+    .rsm-group { margin-bottom: var(--cs-space-m); }
+    .rsm-group label { display: block; font-size: var(--cs-font-size-m); font-weight: var(--cs-font-weight-medium); color: var(--cs-text-label); margin-bottom: 5px; }
+    .rsm-group label.req::after { content: " *"; color: var(--cs-error); }
+    .rsm-group input[type=text], .rsm-group input[type=time], .rsm-group input[type=number], .rsm-group input[type=date], .rsm-group textarea, .rsm-group select {
+        width: 100%; padding: 8px 10px; border: 1px solid var(--cs-border-input); border-radius: var(--cs-radius-s);
+        font-size: var(--cs-font-size-m); font-family: var(--cs-font); box-sizing: border-box; color: var(--cs-text-primary);
+    }
+    .rsm-group textarea { resize: vertical; min-height: 60px; }
+    .rsm-row { display: flex; gap: var(--cs-space-m); }
+    .rsm-row > .rsm-group { flex: 1; }
+    .rsm-check { display: flex; align-items: center; gap: 8px; }
+    .rsm-check input[type=checkbox] {
+        width: 16px; height: 16px; flex-shrink: 0; margin: 0;
+        -webkit-appearance: auto; appearance: auto; accent-color: var(--cs-btn-primary-bg);
+    }
+    .rsm-check label { margin: 0; }
+    /* "Number to keep" field next to the save-snapshot checkbox. */
+    .rsm-keep { display: flex; align-items: center; gap: 8px; margin-top: var(--cs-space-xs); margin-left: 24px; }
+    .rsm-keep label { margin: 0; font-size: var(--cs-font-size-s); color: var(--cs-text-secondary); }
+    .rsm-keep input[type=number] { width: 72px; }
+    /* backfill from/to date pickers (the overwrite checkbox reuses the
+       shared .rsm-check pattern so it renders as a real box, not a collapsed line). */
+    #rbm-from, #rbm-to { width: 170px; }
+    #rbm-overwrite-row .rsm-help, #rbm-overwrite-row p { margin-top: 4px; }
+    /* Inline info tooltip (the save-snapshot explainer). */
+    .rsm-help { display: inline-flex; width: 15px; height: 15px; align-items: center; justify-content: center; margin-left: 6px; border-radius: 50%; background: var(--cs-text-tertiary); color: #fff; font-size: 10px; font-weight: var(--cs-font-weight-bold); cursor: help; }
+    .rsm-section { border-top: 1px solid var(--cs-border-divider); margin-top: var(--cs-space-m); padding-top: var(--cs-space-m); }
+    .rsm-section-title { font-size: var(--cs-font-size-s); font-weight: var(--cs-font-weight-bold); color: var(--cs-text-secondary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: var(--cs-space-s); }
+    .rsm-footer { flex: 0 0 auto; display: flex; justify-content: flex-end; gap: var(--cs-space-xs); padding: var(--cs-space-m) var(--cs-space-l); border-top: 1px solid var(--cs-border-divider); }
+    .rsm-error { color: var(--cs-error); font-size: var(--cs-font-size-s); margin-top: var(--cs-space-xs); }
+    .rsm-hidden { display: none !important; }
+    .rsm-scope-note { font-size: var(--cs-font-size-s); color: var(--cs-text-primary); background: var(--cs-bg-hover); border-radius: var(--cs-radius-s); padding: 6px 10px; }
+    .rsm-warn { font-size: var(--cs-font-size-s); color: var(--cs-text-primary); background: #FFF4E5; border: 1px solid #F0C36D; border-radius: var(--cs-radius-s); padding: 8px 10px; margin-top: var(--cs-space-xs); }
+    .rsh-row { display: flex; align-items: center; justify-content: space-between; gap: var(--cs-space-m); padding: var(--cs-space-s) 0; border-bottom: 1px solid var(--cs-border-divider); }
+    .rsh-when { font-size: var(--cs-font-size-m); color: var(--cs-text-primary); font-weight: var(--cs-font-weight-medium); }
+    .rsh-meta { font-size: var(--cs-font-size-xs); color: var(--cs-text-tertiary); }
+    .rsh-row-actions { display: flex; gap: var(--cs-space-xs); flex-shrink: 0; }
+    /* #7 — per-run error badge + expandable list in the History modal. */
+    .rsh-err-badge { display: inline-block; margin-left: var(--cs-space-xs); padding: 1px 7px; border-radius: var(--cs-radius-s);
+        background: var(--cs-error); color: #fff; font-size: var(--cs-font-size-xs); font-weight: var(--cs-font-weight-bold); }
+    /* amber "paused at rate limit" badge for a bailed-out backfill (an
+       advisory, not a failure — it succeeded with partial coverage). */
+    .rsh-warn-badge { display: inline-block; margin-left: var(--cs-space-xs); padding: 1px 7px; border-radius: var(--cs-radius-s);
+        background: var(--cs-warning, #b7791f); color: #fff; font-size: var(--cs-font-size-xs); font-weight: var(--cs-font-weight-bold); }
+    .rsh-errors { margin-top: var(--cs-space-xs); }
+    .rsh-errors > summary { cursor: pointer; color: var(--cs-error); font-size: var(--cs-font-size-xs); }
+    .rsh-errors ul { margin: var(--cs-space-xxs) 0 0; padding-left: var(--cs-space-m); }
+    .rsh-errors li { font-size: var(--cs-font-size-xs); color: var(--cs-text-secondary); }
+    .rsh-errors li .rsh-err-title { color: var(--cs-text-primary); font-weight: var(--cs-font-weight-medium); }
+    /* benign note (e.g. import-only schedule): grey info, not a red error. */
+    .rsh-info { margin-top: var(--cs-space-xxs); font-size: var(--cs-font-size-xs); color: var(--cs-text-tertiary); }
+    .rsh-import-only { font-size: var(--cs-font-size-xs); color: var(--cs-text-tertiary); font-style: italic; align-self: center; }
+    /* informational import notes (chatwoot "reported on existing data", "no new data"). */
+    .rsh-info ul { margin: 0; padding-left: var(--cs-space-m); }
+    .rsh-info li { font-size: var(--cs-font-size-xs); color: var(--cs-text-tertiary); }
+    .rsh-info li .rsh-err-title { color: var(--cs-text-secondary); font-weight: var(--cs-font-weight-medium); }
+    /* ── v2 builder: org/team tree + connector tiles ── */
+    .rs-builder { padding: var(--cs-space-l); margin-bottom: var(--cs-space-l); }
+    .rs-builder-head { display: flex; align-items: center; justify-content: space-between; }
+    .rs-builder-title { font-size: var(--cs-font-size-m); font-weight: var(--cs-font-weight-bold); color: var(--cs-text-heading); }
+    /* the org/team builder collapses by default so the Scheduled
+       imports list is visible without scrolling. The heading is a click target
+       (chevron toggle); Select all / Clear all stay usable while collapsed. */
+    .rs-builder-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; background: none; border: none; padding: 0; font: inherit; color: var(--cs-text-heading); }
+    .rs-builder-chevron { transition: transform var(--cs-transition-fast); font-size: var(--cs-font-size-s); color: var(--cs-text-tertiary); }
+    .rs-builder.rs-collapsed .rs-builder-chevron { transform: rotate(-90deg); }
+    .rs-builder.rs-collapsed .rs-builder-body { display: none; }
+    .rs-builder-title-2 { margin-top: var(--cs-space-l); margin-bottom: var(--cs-space-s); }
+    .rs-builder-actions { display: flex; gap: var(--cs-space-xs); }
+    .rs-tree { margin-top: var(--cs-space-s); max-height: 280px; overflow-y: auto; border: 1px solid var(--cs-border-divider); border-radius: var(--cs-radius-s); padding: var(--cs-space-s); }
+    .rs-org { margin-bottom: var(--cs-space-s); }
+    .rs-org-label { display: flex; align-items: center; gap: 8px; font-weight: var(--cs-font-weight-bold); color: var(--cs-text-primary); padding: 4px 0; cursor: pointer; }
+    .rs-org-teams { margin-left: 24px; }
+    .rs-team-label { display: flex; align-items: center; gap: 8px; padding: 3px 0; color: var(--cs-text-primary); font-size: var(--cs-font-size-m); cursor: pointer; }
+    /* Force native checkbox rendering — a global reset on this page was
+       collapsing them to invisible. Explicit size + appearance + flex-shrink
+       (mirrors dashboard-builder .db-checkbox-row input). */
+    .rs-team-label input[type=checkbox], .rs-org-label input[type=checkbox] {
+        width: 16px; height: 16px; flex-shrink: 0; margin: 0;
+        -webkit-appearance: auto; appearance: auto; accent-color: var(--cs-btn-primary-bg);
+    }
+    .rs-tiles { display: flex; flex-wrap: wrap; gap: var(--cs-space-m); }
+    .rs-tiles-empty { color: var(--cs-text-secondary); font-size: var(--cs-font-size-s); padding: var(--cs-space-s) 0; }
+    .rs-tile { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; width: 132px; height: 108px; border: 1px solid var(--cs-border-default); border-radius: var(--cs-radius-m); background: var(--cs-bg-primary); cursor: pointer; transition: all var(--cs-transition-fast); padding: var(--cs-space-s); }
+    .rs-tile:hover { border-color: var(--cs-text-link); box-shadow: var(--cs-shadow-modal); }
+    .rs-tile-icon { width: 32px; height: 32px; object-fit: contain; }
+    .rs-tile-glyph { width: 32px; height: 32px; border-radius: var(--cs-radius-s); display: flex; align-items: center; justify-content: center; font-weight: var(--cs-font-weight-bold); color: #fff; background: var(--cs-btn-primary-bg); }
+    .rs-tile-name { font-size: var(--cs-font-size-s); font-weight: var(--cs-font-weight-medium); color: var(--cs-text-primary); text-align: center; }
+    .rs-tile-count { font-size: var(--cs-font-size-xs); color: var(--cs-text-tertiary); }
+</style>
+{% endblock %}
+
+{% block page_content %}
+<div class="cs-content rs-page">
+    <div class="rs-page-header">
+        <div>
+            <h1 class="rs-page-title">Report Scheduler</h1>
+            <p class="rs-page-desc">Recurring schedules that import connector data and snapshot it for dashboard reporting.</p>
+        </div>
+        <div class="rs-header-actions">
+            <button class="cs-btn cs-btn-normal" id="rs-new-email-btn">
+                <i class="fas fa-envelope"></i> New email schedule
+            </button>
+            <button class="cs-btn cs-btn-primary" id="rs-new-btn">
+                <i class="fas fa-plus"></i> New schedule
+            </button>
+        </div>
+    </div>
+
+    <!-- v2: org/team multi-select + connector tiles (Phase B).
+         collapsed by default; the heading toggles the body. -->
+    <div class="rs-builder cs-card rs-collapsed" id="rs-builder">
+        <div class="rs-builder-head">
+            <button type="button" class="rs-builder-toggle" id="rs-builder-toggle"
+                    aria-expanded="false" aria-controls="rs-builder-body">
+                <span class="rs-builder-chevron" aria-hidden="true">&#9660;</span>
+                <span class="rs-builder-title">1. Choose organizations &amp; teams</span>
+            </button>
+            <div class="rs-builder-actions">
+                <button class="cs-btn cs-btn-normal cs-btn-sm" id="rs-select-all">Select all</button>
+                <button class="cs-btn cs-btn-normal cs-btn-sm" id="rs-clear-all">Clear all</button>
+            </div>
+        </div>
+        <div class="rs-builder-body" id="rs-builder-body">
+            <div class="rs-tree" id="rs-tree"><div class="rs-loading">Loading teams…</div></div>
+
+            <div class="rs-builder-title rs-builder-title-2">2. Pick a connector to schedule</div>
+            <div class="rs-tiles" id="rs-tiles">
+                <div class="rs-tiles-empty">Select one or more teams above to see their connectors.</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Collapsible sections: the heading toggles the list below it. -->
+    <div class="rs-section" id="rs-imports-section">
+        <button type="button" class="rs-section-toggle rs-builder-title rs-builder-title-2"
+                id="rs-imports-toggle" aria-expanded="true" aria-controls="rs-list">
+            <span class="rs-section-chevron" aria-hidden="true">&#9660;</span>
+            <span>Scheduled imports</span>
+        </button>
+        <div class="rs-list" id="rs-list">
+            <div class="rs-loading"><i class="fas fa-spinner fa-spin"></i> Loading schedules…</div>
+        </div>
+    </div>
+
+    <!-- email schedules render in their own section, distinct from
+         the import list above. -->
+    <div class="rs-section" id="rs-emails-section">
+        <button type="button" class="rs-section-toggle rs-builder-title rs-builder-title-2"
+                id="rs-emails-toggle" aria-expanded="true" aria-controls="rs-email-list">
+            <span class="rs-section-chevron" aria-hidden="true">&#9660;</span>
+            <span>Scheduled emails</span>
+        </button>
+        <div class="rs-list" id="rs-email-list">
+            <div class="rs-loading"><i class="fas fa-spinner fa-spin"></i> Loading schedules…</div>
+        </div>
+    </div>
+</div>
+
+<!-- Create / edit schedule modal -->
+<div class="rsm-overlay hidden" id="rsm-overlay">
+  <div class="rsm-modal" role="dialog" aria-modal="true">
+    <div class="rsm-header">
+      <h3 id="rsm-title">New schedule</h3>
+      <button class="rsm-close" id="rsm-close" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="rsm-body">
+      <input type="hidden" id="rsm-id">
+
+      <div class="rsm-group">
+        <label class="req" for="rsm-name">Report name</label>
+        <input type="text" id="rsm-name" maxlength="200" placeholder="Weekly Facebook performance">
+      </div>
+      <div class="rsm-group">
+        <label for="rsm-description">Description</label>
+        <textarea id="rsm-description" maxlength="1000" rows="2"></textarea>
+      </div>
+
+      <!-- v1 manual scope pickers (hidden when the wizard opens from a tile). -->
+      <div id="rsm-v1-scope">
+        <div class="rsm-row">
+          <div class="rsm-group">
+            <label class="req" for="rsm-org">Organization</label>
+            <select id="rsm-org"><option value="">Select…</option></select>
+          </div>
+          <div class="rsm-group">
+            <label for="rsm-team">Team</label>
+            <select id="rsm-team"><option value="__all__">All teams</option></select>
+          </div>
+        </div>
+      </div>
+
+      <!-- v2 connector-mode scope summary (set by the tile wizard). -->
+      <div class="rsm-group rsm-hidden" id="rsm-v2-scope">
+        <label>Scope</label>
+        <div class="rsm-scope-note" id="rsm-v2-scope-note"></div>
+        <!-- on EDIT, let the user expand the scope to teams not already
+             in the schedule. Off by default (only the currently-selected teams
+             show, earlier behavior); on, the tree also lists other teams that
+             have a valid connector of this type, rendered unchecked. Hidden on the
+             create wizard (its scope is fixed to the page-tree selection). -->
+        <label class="rs-team-label rsm-hidden" id="rsm-show-unselected-wrap">
+          <input type="checkbox" id="rsm-show-unselected"> Show unselected teams
+        </label>
+        <!-- #6 — editable team selector, shown only when EDITING a v2
+             schedule. Create-via-wizard keeps its fixed scope (note only); on
+             edit the tree is populated + pre-checked so team_esids can change. -->
+        <div class="rs-tree rsm-hidden" id="rsm-edit-team-tree" style="max-height: 200px;">
+          <div class="rs-loading">Loading teams…</div>
+        </div>
+      </div>
+
+      <div class="rsm-group">
+        <label for="rsm-dashboard">Dashboard to report on</label>
+        <select id="rsm-dashboard"><option value="">Select a dashboard…</option></select>
+        <div class="rsm-warn rsm-hidden" id="rsm-dashboard-warn">
+          No dashboard is associated with this connector — the schedule will still
+          import data on its cadence, but there is no report to snapshot for viewing.
+        </div>
+      </div>
+
+      <div class="rsm-section">
+        <div class="rsm-section-title">Schedule</div>
+        <div class="rsm-row">
+          <div class="rsm-group">
+            <label class="req" for="rsm-frequency">Frequency</label>
+            <select id="rsm-frequency">
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="biweekly">Every 2 weeks</option>
+              <option value="monthly">Monthly</option>
+            </select>
+          </div>
+          <div class="rsm-group" id="rsm-days-group">
+            <label for="rsm-days">Days to pull</label>
+            <!-- daily only: pull the previous N complete days
+                 (ending yesterday) instead of just yesterday. Also clamped
+                 server-side to 1..7; missing defaults to 1. -->
+            <input type="number" id="rsm-days" min="1" max="7" step="1" maxlength="1" inputmode="numeric" value="1">
+          </div>
+          <div class="rsm-group rsm-hidden" id="rsm-dow-group">
+            <label for="rsm-dow">Day of week</label>
+            <select id="rsm-dow">
+              <option value="0">Monday</option><option value="1">Tuesday</option>
+              <option value="2">Wednesday</option><option value="3">Thursday</option>
+              <option value="4">Friday</option><option value="5">Saturday</option>
+              <option value="6">Sunday</option>
+            </select>
+          </div>
+          <div class="rsm-group rsm-hidden" id="rsm-dom-group">
+            <label for="rsm-dom">Day of month</label>
+            <input type="number" id="rsm-dom" min="1" max="28" step="1" maxlength="2" inputmode="numeric" value="1">
+          </div>
+        </div>
+        <div class="rsm-row">
+          <div class="rsm-group">
+            <label class="req" for="rsm-time">Time</label>
+            <input type="time" id="rsm-time" value="06:00">
+          </div>
+          <div class="rsm-group">
+            <label for="rsm-timezone">Timezone</label>
+            <select id="rsm-timezone">
+              {% for tz in timezone_options %}<option value="{{ tz }}"{% if tz == 'UTC' %} selected{% endif %}>{{ tz }}</option>{% endfor %}
+            </select>
+          </div>
+        </div>
+        <!-- the standalone Date Range selector is gone from the import
+             dialog: the pull window is now derived from the chosen Frequency
+             (daily→1 day, weekly→prev week, biweekly→2 weeks, monthly→prev
+             month). The Date Range lives in the Email schedule dialog instead. -->
+      </div>
+
+      <div class="rsm-section">
+        <div class="rsm-section-title">Delivery</div>
+        <div class="rsm-group rsm-check">
+          <input type="checkbox" id="rsm-save-snapshot" checked>
+          <label for="rsm-save-snapshot">Save a snapshot for dashboard viewing</label>
+          <span class="rsm-help" tabindex="0" title="Stores a point-in-time copy of the report's charts and tables each run, so you (and recipients) can open it from Report History and view it in the dashboard — without re-querying. Leave on to keep a viewable record of every run; turn off to only email the report and not retain it.">i</span>
+        </div>
+        <div class="rsm-keep" id="rsm-keep-group">
+          <label for="rsm-snapshot-keep">Number to keep</label>
+          <!-- cap at 3 digits + digits-only; the JS live-clamps to
+               1..100 on input/blur so the box can never show an out-of-range value. -->
+          <input type="number" id="rsm-snapshot-keep" min="1" max="100" step="1" maxlength="3" inputmode="numeric" value="7">
+          <span class="rsm-help" tabindex="0" title="How many of the most recent snapshots to retain for this schedule. Each run deletes the oldest snapshots beyond this number, so the kept set stays in sync with this value. Lowering it removes the now-excess older snapshots on the next run.">i</span>
+        </div>
+        <!-- the "Email this report" block was removed from the import
+             dialog: importing data and emailing reports are now separate features.
+             Emailing lives in the new Email schedule. The email backend
+             (report_email_service, delivery.email) is intentionally kept — the
+             Email schedule reuses it — this dialog just no longer emits it. -->
+      </div>
+
+      <div class="rsm-error rsm-hidden" id="rsm-error"></div>
+    </div>
+    <div class="rsm-footer">
+      <button class="cs-btn cs-btn-normal" id="rsm-cancel">Cancel</button>
+      <button class="cs-btn cs-btn-primary" id="rsm-save">Save schedule</button>
+    </div>
+  </div>
+</div>
+
+<!-- Create / edit EMAIL schedule modal. Purpose-built for emailing an
+     existing dashboard report on a cadence: no connector tiles / import scope, no
+     snapshot fields, recipients required, an independent Date Range. -->
+<div class="rsm-overlay hidden" id="esm-overlay">
+  <div class="rsm-modal" role="dialog" aria-modal="true">
+    <div class="rsm-header">
+      <h3 id="esm-title">New email schedule</h3>
+      <button class="rsm-close" id="esm-close" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="rsm-body">
+      <input type="hidden" id="esm-id">
+
+      <div class="rsm-group">
+        <label class="req" for="esm-name">Report name</label>
+        <input type="text" id="esm-name" maxlength="200" placeholder="Weekly performance email">
+      </div>
+      <div class="rsm-group">
+        <label for="esm-description">Description</label>
+        <textarea id="esm-description" maxlength="1000" rows="2"></textarea>
+      </div>
+
+      <!-- follow-up — MULTI-dashboard. One email carries a link per
+           checked dashboard; at least one is required. Mirrors the team tree
+           below (same rs-tree markup / group-toggle behavior). -->
+      <div class="rsm-group">
+        <label class="req" for="esm-dashboard-tree">Dashboards to email</label>
+        <div class="rsm-scope-note" id="esm-dashboard-note">
+          Check one or more. The email includes a link to each.
+        </div>
+        <div class="rs-tree" id="esm-dashboard-tree" style="max-height: 200px;">
+          <div class="rs-loading">Loading dashboards…</div>
+        </div>
+        <div class="rsm-warn rsm-hidden" id="esm-no-dashboard-warn">
+          You have no dashboards available to email. Create a dashboard first —
+          there is nothing to email without one.
+        </div>
+      </div>
+
+      <!-- optional team narrowing. Empty selection = all the
+           creator's teams (the clamp); checking teams narrows the
+           report to exactly those. The server rejects out-of-scope picks. -->
+      <div class="rsm-group">
+        <label for="esm-team-tree">Teams</label>
+        <div class="rsm-scope-note" id="esm-team-note">
+          All your teams are included by default. Check specific teams to
+          narrow the report to just those.
+        </div>
+        <div class="rs-tree" id="esm-team-tree" style="max-height: 200px;">
+          <div class="rs-loading">Loading teams…</div>
+        </div>
+      </div>
+
+      <div class="rsm-section">
+        <div class="rsm-section-title">Schedule</div>
+        <div class="rsm-row">
+          <div class="rsm-group">
+            <label class="req" for="esm-frequency">Frequency</label>
+            <select id="esm-frequency">
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="biweekly">Every 2 weeks</option>
+              <option value="monthly">Monthly</option>
+            </select>
+          </div>
+          <div class="rsm-group rsm-hidden" id="esm-dow-group">
+            <label for="esm-dow">Day of week</label>
+            <select id="esm-dow">
+              <option value="0">Monday</option><option value="1">Tuesday</option>
+              <option value="2">Wednesday</option><option value="3">Thursday</option>
+              <option value="4">Friday</option><option value="5">Saturday</option>
+              <option value="6">Sunday</option>
+            </select>
+          </div>
+          <div class="rsm-group rsm-hidden" id="esm-dom-group">
+            <label for="esm-dom">Day of month</label>
+            <input type="number" id="esm-dom" min="1" max="28" value="1">
+          </div>
+        </div>
+        <div class="rsm-row">
+          <div class="rsm-group">
+            <label class="req" for="esm-time">Time</label>
+            <input type="time" id="esm-time" value="06:00">
+          </div>
+          <div class="rsm-group">
+            <label for="esm-timezone">Timezone</label>
+            <select id="esm-timezone">
+              {% for tz in timezone_options %}<option value="{{ tz }}"{% if tz == 'UTC' %} selected{% endif %}>{{ tz }}</option>{% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="rsm-group">
+          <label for="esm-range">Date range</label>
+          <select id="esm-range">
+            <option value="rolling_7d">Previous 7 days</option>
+            <option value="rolling_14d">Previous 14 days</option>
+            <option value="rolling_30d">Previous 30 days</option>
+            <option value="prev_calendar_week">Previous calendar week</option>
+            <option value="prev_calendar_month">Previous calendar month</option>
+            <option value="month_to_date">Month to date</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="rsm-section">
+        <div class="rsm-section-title">Email delivery</div>
+        <div class="rsm-group">
+          <label class="req" for="esm-recipients">Recipients (comma-separated)</label>
+          <!-- follow-up — the server also caps each address at 254
+               chars; this maxlength just bounds the whole comma-separated list. -->
+          <input type="text" id="esm-recipients" maxlength="2000" placeholder="alice@org.com, bob@org.com">
+        </div>
+        <div class="rsm-row">
+          <div class="rsm-group">
+            <label for="esm-format">Format</label>
+            <select id="esm-format">
+              <option value="summary_link">Summary + link</option>
+              <option value="inline_html">Inline HTML</option>
+              <option value="excel">Excel attachment</option>
+              <option value="pdf">PDF attachment</option>
+            </select>
+          </div>
+          <div class="rsm-group">
+            <label for="esm-subject">Subject template</label>
+            <!-- follow-up — the default template is the field's VALUE,
+                 not a gray placeholder, so it can be edited in place instead of
+                 retyped from scratch. ESM_DEFAULT_SUBJECT (JS) is the single
+                 source; it must equal report_email_service._DEFAULT_SUBJECT. -->
+            <input type="text" id="esm-subject" maxlength="200">
+            <div class="rsm-scope-note">
+              Tokens: <code>{{ '{{report_name}}' }}</code>, <code>{{ '{{date_range}}' }}</code>. Clear the field to use the default.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="rsm-error rsm-hidden" id="esm-error"></div>
+    </div>
+    <div class="rsm-footer">
+      <button class="cs-btn cs-btn-normal" id="esm-cancel">Cancel</button>
+      <button class="cs-btn cs-btn-primary" id="esm-save">Save schedule</button>
+    </div>
+  </div>
+</div>
+
+<!-- Report history overlay -->
+<div class="rsm-overlay hidden" id="rsh-overlay">
+  <div class="rsm-modal" role="dialog" aria-modal="true">
+    <div class="rsm-header">
+      <h3>Report history</h3>
+      <button class="rsm-close" id="rsh-close" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="rsm-body">
+      <div class="rsm-row">
+        <div class="rsm-group"><label for="rsh-from">From</label><input type="date" id="rsh-from"></div>
+        <div class="rsm-group"><label for="rsh-to">To</label><input type="date" id="rsh-to"></div>
+        <div class="rsm-group" style="display:flex;align-items:flex-end">
+          <button class="cs-btn cs-btn-normal" id="rsh-filter">Filter</button>
+        </div>
+      </div>
+      <div id="rsh-list"><div class="rs-loading">Loading…</div></div>
+    </div>
+    <div class="rsm-footer">
+      <button class="cs-btn cs-btn-normal" id="rsh-cancel">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Backfill dialog: one-time historical pull for a schedule. -->
+<div class="rsm-overlay hidden" id="rbm-overlay">
+  <div class="rsm-modal" role="dialog" aria-modal="true" aria-labelledby="rbm-title">
+    <div class="rsm-header">
+      <h3 id="rbm-title">Backfill historical data</h3>
+      <button class="rsm-close" id="rbm-close" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="rsm-body">
+      <!-- from/to date range (all connectors). The 365-day span cap is
+           enforced client-side (submit) and server-side (route + service). -->
+      <div class="rsm-group">
+        <label for="rbm-from">From date</label>
+        <input type="date" id="rbm-from">
+      </div>
+      <div class="rsm-group">
+        <label for="rbm-to">To date</label>
+        <input type="date" id="rbm-to">
+      </div>
+      <!-- overwrite is Meta-only (the sole connector with a force-refetch
+           path). JS shows this row only for meta_ads; unchecked by default = skip
+           days that already have data. -->
+      <div class="rsm-group rsm-hidden" id="rbm-overwrite-row">
+        <div class="rsm-check">
+          <input type="checkbox" id="rbm-overwrite">
+          <label for="rbm-overwrite">Overwrite existing data</label>
+        </div>
+        <p class="rs-page-desc" id="rbm-overwrite-help">
+          When off, days that already have data are skipped. Turn on to re-import and
+          replace them.
+        </p>
+      </div>
+      <p class="rs-page-desc" id="rbm-help">
+        Runs once now. Connectors not in your plan are skipped. A Meta backfill stops
+        gracefully if it hits a rate limit, keeping what it imported — run it again to
+        continue.
+      </p>
+      <div class="rs-run-error rsm-hidden" id="rbm-error"></div>
+    </div>
+    <div class="rsm-footer">
+      <button class="cs-btn cs-btn-normal" id="rbm-cancel">Cancel</button>
+      <button class="cs-btn cs-btn-primary" id="rbm-ok">Start backfill</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script nonce="{{ csp_nonce }}">
+(function () {
+    "use strict";
+    const csrf = document.querySelector('meta[name="csrf-token"]').content;
+    const listEl = document.getElementById("rs-list");
+    const emailListEl = document.getElementById("rs-email-list");
+    const LIST_URL = "{{ url_for('report_scheduler.api_list') }}";
+    const API_BASE = "{{ url_for('report_scheduler.index') }}".replace(/\/$/, "") + "/api/";
+
+    const DOW = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+    function esc(s) {
+        return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+            return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+        });
+    }
+
+    // Human-readable cadence from the structured schedule fields.
+    function cadenceText(s) {
+        const cfg = s.schedule || {};
+        const t = cfg.time || "00:00";
+        const tz = cfg.timezone || "UTC";
+        switch (cfg.frequency) {
+            case "daily": return "Daily at " + t + " " + tz;
+            case "weekly": return "Weekly on " + (DOW[cfg.day_of_week] || "?") + " at " + t + " " + tz;
+            case "biweekly": return "Every 2 weeks on " + (DOW[cfg.day_of_week] || "?") + " at " + t + " " + tz;
+            case "monthly": return "Monthly on day " + (cfg.day_of_month || "?") + " at " + t + " " + tz;
+            default: return cfg.frequency || "—";
+        }
+    }
+
+    function deliveryText(s) {
+        const d = s.delivery || {};
+        const bits = [];
+        if (d.save_snapshot !== false) {
+            const keep = d.snapshot_keep != null ? d.snapshot_keep : 7;
+            bits.push("Save snapshot (keep " + keep + ")");
+        }
+        if (d.email && d.email.enabled) {
+            const n = (d.email.recipients || []).length;
+            bits.push("Email (" + n + " recipient" + (n === 1 ? "" : "s") + ", " + (d.email.format || "summary") + ")");
+        }
+        return bits.length ? bits.join(" · ") : "—";
+    }
+
+    function fmtTs(iso) {
+        if (!iso) return "Never";
+        try { return new Date(iso).toLocaleString(); } catch (e) { return iso; }
+    }
+
+    // #5 — persisted run progress bar. Driven by s.last_run_state (set by
+    // _execute_one across importing → generating → done|failed), so it rehydrates
+    // on every load() and survives navigation/reload. Returns "" when there is
+    // nothing in flight to show (the bar auto-clears once a run is done AND its
+    // background import has settled — see maybePollRunState for the import tail).
+    const RUN_PHASE_PCT = { importing: 33, generating: 70, done: 100, failed: 100 };
+    // how long after a run finishes we still show the "finishing
+    // background import…" tail. The tail is gated on the per-CONNECTOR import
+    // lock (ImportLockService), which is a shared signal, NOT a per-run one: a
+    // daily-cron or concurrent import of the same connector keeps it held, so a
+    // done run's tail could read "still importing" forever AND re-appear on every
+    // reload (importDone is in-memory, wiped on reload/login). Bounding the tail
+    // by elapsed time since finished_at makes a completed run terminal regardless
+    // of lock state — the run itself is done; the lock is not its signal.
+    const IMPORT_TAIL_GRACE_MS = 15 * 60 * 1000;  // 15 min — wider than any real import tail
+    function importTailExpired(st) {
+        if (!st || !st.finished_at) return false;
+        const finished = Date.parse(st.finished_at);
+        if (isNaN(finished)) return false;
+        return (Date.now() - finished) > IMPORT_TAIL_GRACE_MS;
+    }
+    // follow-up — the clean "Run canceled." acknowledgment lingers on its
+    // OWN short window, not the 15-min import-tail one: a cancel is a "you just did
+    // this" confirmation, so it should clear quickly once you've seen it, well before
+    // the import-tail timescale. (It clears on the next load/refresh past this
+    // window — there's no live timer on an idle page.)
+    const CANCEL_NOTE_GRACE_MS = 90 * 1000;  // 90s — a brief acknowledgment, then gone
+    function cancelNoteExpired(st) {
+        if (!st || !st.finished_at) return false;
+        const finished = Date.parse(st.finished_at);
+        if (isNaN(finished)) return false;
+        return (Date.now() - finished) > CANCEL_NOTE_GRACE_MS;
+    }
+    function runStateActive(s) {
+        const st = s.last_run_state;
+        if (!st) return false;
+        if (st.phase === "importing" || st.phase === "generating") return true;
+        // done with a dispatched import: keep showing the tail until the import
+        // lock releases (the client flips it via maybePollRunState → importDone
+        // set), OR until the grace window since finished_at elapses — whichever
+        // comes first. The time bound stops a shared/leaked lock from hanging the
+        // bar indefinitely or re-showing it on reload.
+        //
+        // follow-up — but DON'T paint the tail optimistically. importDone
+        // is in-memory and wiped on every navigation/reload, so a run that
+        // finished minutes ago (e.g. you just opened its snapshot and came back)
+        // re-satisfied this branch on first render and flashed a bar that the very
+        // first import-status poll immediately retracted (worst for untrackable
+        // connectors like YouTube, which settle on poll #1). Require an in-session
+        // poll to have CONFIRMED the import is still in flight (tailConfirmed)
+        // before showing the done-tail. A genuinely in-flight import gets its bar
+        // the moment the first poll confirms it; the importing/generating phases
+        // above are unaffected, so a live Run-now still shows progress instantly.
+        if (st.phase === "done" && st.import_dispatched && tailConfirmed[s.schedule_id]
+            && !importDone[s.schedule_id] && !importTailExpired(st)) return true;
+        return false;
+    }
+    // follow-up — schedule_id -> true once an import-status poll this
+    // session has observed the done-run's background import STILL running. Gates
+    // the done-tail bar so it never paints speculatively on a fresh load (the
+    // flash). Wiped on reload like importDone — a fresh page has confirmed nothing.
+    const tailConfirmed = {};
+    // schedule_id -> true once we've observed its background import finish.
+    const importDone = {};
+    // schedule_id -> the latest live import progress from the
+    // import-status poll ({status, phase, percent, days_fetched, days_total}).
+    // Lets the "finishing background import…" tail show a real percentage + the
+    // importer's current stage instead of an indeterminate bar. Only progress-
+    // capable connectors (FB today) populate this; others fall back to the
+    // indeterminate tail.
+    const liveProgress = {};
+    // Importer phase string -> human stage label. The FB importer sets `phase`
+    // via ImportProgressService.set_phase as it moves through stages; the per-day
+    // ad-insights loop has no explicit phase (it drives the day counter), so an
+    // empty/unknown phase reads as "Importing fresh data…".
+    const IMPORT_PHASE_LABEL = {
+        ad_insights: "Fetching ad insights",
+        page_insights: "Fetching page insights",
+        instagram: "Fetching Instagram insights",
+        youtube_fetch: "Fetching YouTube analytics",
+        youtube_index: "Indexing YouTube data",
+        youtube_archive: "Finishing up YouTube import",
+    };
+    function liveProgressLabel(p, isBackfill, omitDays) {
+        // a backfill with no specific importer phase reads as
+        // "Backfilling historical data" rather than the scheduled-run wording.
+        const base = IMPORT_PHASE_LABEL[p.phase] || (isBackfill ? "Backfilling historical data" : "Importing fresh data");
+        // the day counter advances per ad ACCOUNT mapped onto the day
+        // scale (the importer pulls the whole range in one pass), so "day N/M" is a
+        // faithful climb only for multi-account scopes. The importing-phase bar
+        // (omitDays) shows the percentage alone rather than a day number that would
+        // jump 0→M on a single-account backfill; the percentage is rendered by the
+        // bar fill + head. Post-loop stages carry their own label either way.
+        if (!omitDays && (!p.phase || p.phase === "ad_insights") && p.days_total > 0) {
+            return base + " — day " + p.days_fetched + "/" + p.days_total;
+        }
+        return base + "…";
+    }
+    function runStateBar(s) {
+        if (!runStateActive(s)) return "";
+        const st = s.last_run_state;
+        const isError = st.phase === "failed";
+        // a one-time backfill reuses this run-state bar; label it as a
+        // backfill (it's a historical pull, not the schedule's normal latest-day
+        // import). is_backfill is stamped by backfill_now on last_run_state.
+        const isBackfill = !!st.is_backfill;
+        let label, indeterminate = false, pct = RUN_PHASE_PCT[st.phase] || 0;
+        if (st.phase === "importing") {
+            // a still-importing run (a backfill, or a Run-now whose
+            // import precedes the build) has the same live de_import_progress
+            // signal the done-tail below uses. Prefer it so the bar shows a real
+            // percentage + "day N/M" instead of a static indeterminate sweep; fall
+            // back to the indeterminate bar for connectors without progress wiring
+            // or before the first import-status poll lands.
+            const p = liveProgress[s.schedule_id];
+            if (p && p.status && p.status !== "succeeded" && p.days_total > 0) {
+                pct = p.percent || 0;
+                // percentage-only label (omitDays): the day counter
+                // maps ad-account progress onto the day scale, so a day number
+                // would jump on a single-account backfill. The % is honest.
+                label = liveProgressLabel(p, isBackfill, true) + " — " + pct + "%";
+                indeterminate = false;
+            } else {
+                label = isBackfill ? "Backfilling historical data…" : "Importing fresh data…";
+                indeterminate = true;
+            }
+        }
+        else if (st.phase === "generating") { label = "Generating report…"; indeterminate = true; }
+        else if (st.phase === "failed") { label = "Run failed: " + (st.error || "unknown error"); }
+        else {
+            // done + dispatched import: this is the background-import tail. Use the
+            // live de_import_progress signal when we have it — a real
+            // percentage + the importer's current stage — otherwise fall back to
+            // the indeterminate "finishing…" bar (connectors without progress
+            // wiring, or before the first poll lands).
+            const p = liveProgress[s.schedule_id];
+            if (p && p.status && p.status !== "succeeded") {
+                label = liveProgressLabel(p, isBackfill);
+                pct = p.percent || 0;
+                indeterminate = false;
+            } else {
+                label = "Report ready — finishing background data import…";
+                indeterminate = true;
+            }
+        }
+        const fillCls = "rs-progress-fill" + (indeterminate ? " rs-progress-indeterminate" : "") + (isError ? " rs-run-error" : "");
+        const widthStyle = indeterminate ? "" : ' style="width:' + pct + '%"';
+        // Cancel control (owner only): visible while the run is genuinely
+        // cancellable (importing/generating, or a done run whose import tail is still
+        // in flight). A failed phase isn't cancellable (nothing running). The button
+        // carries data-act so the existing card click delegation handles it.
+        const canEdit = s.can_edit !== false;
+        const cancellable = canEdit && (st.phase === "importing" || st.phase === "generating"
+            || (st.phase === "done" && st.import_dispatched));
+        const cancelBtn = cancellable
+            ? '<button class="rs-cancel-btn" data-act="cancel" title="Stop this run and its data import.">Cancel</button>'
+            : "";
+        return '<div class="rs-progress">'
+            + '<div class="rs-progress-head">'
+            +   '<div class="rs-progress-label' + (isError ? " rs-run-error" : "") + '">' + esc(label) + "</div>"
+            +   cancelBtn
+            + "</div>"
+            + '<div class="rs-progress-track"><div class="' + fillCls + '"' + widthStyle + "></div></div>"
+            + "</div>";
+    }
+
+    // once a run is CANCELED the bar collapses (runStateActive false);
+    // show a terminal note so the card reflects a clear Canceled state. The service
+    // stamps last_run_state.error ONLY when the import couldn't be signalled to stop
+    // at all (killpg unreachable / unsupported) — a genuinely degraded cancel. A
+    // normal cancel (process signalled + lock/progress cleaned up) carries no error
+    // and reads as a clean "Run canceled."
+    //
+    // The clean note AUTO-EXPIRES: last_run_state.phase stays
+    // "cancelled" until the next run overwrites it, so without a time bound the note
+    // sat on the card indefinitely — reading like a lingering problem on an idle,
+    // healthy schedule. We bound it on finished_at via cancelNoteExpired (a short
+    // 90s acknowledgment window, NOT the 15-min import-tail one): a clean cancel is
+    // a "you just did this" confirmation, not an error, so it self-clears quickly.
+    // The DEGRADED error note is NOT time-bounded — an import that couldn't be
+    // confirmed stopped is a real problem worth surfacing until the next run.
+    function runStateCancelledNote(s) {
+        const st = s.last_run_state;
+        if (!st || st.phase !== "cancelled") return "";
+        const failed = !!st.error;  // set only when the kill couldn't be signalled
+        if (!failed && cancelNoteExpired(st)) return "";  // clean cancel: self-clear after the short window
+        const text = failed
+            ? "Cancel requested, but the import couldn't be confirmed stopped — it will stop at its next checkpoint."
+            : "Run canceled.";
+        return '<div class="rs-cancel-note' + (failed ? " rs-run-error" : "") + '">' + esc(text) + "</div>";
+    }
+
+    // the most recent run's classified import errors, rendered as an
+    // expandable list under the card. Reuses the History modal's .rsh-errors
+    // styling. Rendered ONLY when import_error_count > 0 (the gate); a clean or
+    // still-importing run carries 0 and this returns "". The matching "Errors"
+    // button (also gated) sits in the card actions and toggles this <details>.
+    // import_info (rate-limit retries that aren't the user's fault, "no new
+    // data") is surfaced as a grey note, never as a red error.
+    function importErrorsBlock(s) {
+        const count = s.import_error_count || 0;
+        const info = s.import_info || [];
+        // Nothing to show: a clean, fully-imported run (no errors AND no
+        // informational notes) renders nothing.
+        if (!count && !info.length) return "";
+        let out = "";
+        if (count) {
+            const items = (s.import_errors || []).map(function (e) {
+                return '<li><span class="rsh-err-title">' + esc(e.title) + ":</span> " + esc(e.message) + "</li>";
+            });
+            out += '<details class="rsh-errors" data-rs-import-errors>'
+                + "<summary>Import error" + (count === 1 ? "" : "s") + "</summary>"
+                + "<ul>" + items.join("") + "</ul></details>";
+        }
+        // informational notes (chatwoot "reported on existing data",
+        // "no new data this period") are NOT errors: a grey note, no red badge,
+        // no "Errors" button. Shown inline so the user understands why the report
+        // may look unchanged rather than assuming a silent failure.
+        if (info.length) {
+            const notes = info.map(function (e) {
+                return '<li><span class="rsh-err-title">' + esc(e.title) + ":</span> " + esc(e.message) + "</li>";
+            });
+            out += '<div class="rsh-info" data-rs-import-info><ul>' + notes.join("") + "</ul></div>";
+        }
+        return out;
+    }
+
+    // Run-now feedback: per-schedule status line, kept in a
+    // map so load()'s full re-render doesn't wipe an in-flight status.
+    const runStatus = {};
+
+    // The schedule list as of the last full render() — the baseline patchCards()
+    // diffs against to decide patch-in-place vs full re-render.
+    let lastRenderedList = [];
+
+    function setRunStatus(id, text, isError) {
+        if (text) runStatus[id] = { text: text, error: !!isError }; else delete runStatus[id];
+        const cardEl = listEl.querySelector('.rs-card[data-id="' + cssEsc(id) + '"]');
+        if (!cardEl) return;
+        let el = cardEl.querySelector(".rs-run-status");
+        if (!text) { if (el) el.remove(); return; }
+        if (!el) {
+            el = document.createElement("div");
+            cardEl.appendChild(el);
+        }
+        el.className = "rs-run-status" + (isError ? " rs-run-error" : "");
+        el.textContent = text;
+    }
+
+    function card(s) {
+        const isActive = s.status === "active";
+        // #1 — can_edit is the per-schedule ownership flag from /api/list.
+        // Older responses without the field default to editable (no regression
+        // for a privileged caller whose schedules all carry can_edit=true anyway).
+        const canEdit = s.can_edit !== false;
+        let pill = '<span class="rs-pill ' + (isActive ? "rs-badge-active" : "rs-badge-paused") + '">'
+            + esc(s.status || "") + "</span>";
+        if (!canEdit) {
+            pill += ' <span class="rs-pill rs-badge-workspace" title="Created by your workspace owner — you can view its history but not change it.">Workspace owned</span>';
+        }
+        const toggleLabel = isActive ? "Pause" : "Resume";
+        // v2: show the team COUNT (multi-team schedules) + connector; fall back
+        // to the v1 single-team/all-teams wording.
+        const teamEsids = (s.team_esids && s.team_esids.length) ? s.team_esids
+            : (s.team_id && s.team_id !== "__all__" ? [s.team_id] : []);
+        // when /api/list resolved how many of the selected teams
+        // actually have an active connector of this report's type, the label
+        // distinguishes connector-active vs selected ("2 of 33 teams") instead
+        // of the raw selected count. active_team_count is present only for
+        // schedules with a connector_id AND specific teams; all-teams / dashboard-
+        // only schedules fall through to the plain wording below.
+        const m = teamEsids.length;
+        let scope;
+        if (m >= 1 && typeof s.active_team_count === "number") {
+            const a = s.active_team_count;
+            scope = a + " of " + m + (m === 1 ? " team" : " teams");
+        }
+        else if (m > 1) scope = m + " teams";
+        else if (m === 1) scope = "1 team";
+        else scope = "All teams";
+        const connectorRow = s.connector_id
+            ? '<div class="rs-meta-item"><span class="rs-meta-label">Connector</span><span class="rs-meta-value">' + esc(s.connector_id) + "</span></div>"
+            : "";
+        return ''
+            + '<div class="cs-card rs-card" data-id="' + esc(s.schedule_id) + '">'
+            +   '<div class="rs-card-top">'
+            +     '<div>'
+            +       '<h3 class="rs-card-name">' + esc(s.name || "(untitled)") + " " + pill + "</h3>"
+            +       (s.description ? '<p class="rs-card-desc">' + esc(s.description) + "</p>" : "")
+            +     "</div>"
+            +     '<div class="rs-card-actions">'
+            // disable Run now while this schedule already has a run /
+            // background import in flight, so a second click can't start a
+            // concurrent run that races the import lock (the loser would abort).
+            // The button re-enables once the bar resolves (runStateActive false).
+            +       (canEdit ? '<button class="cs-btn cs-btn-normal cs-btn-sm" data-act="run"'
+                        + (runStateActive(s) ? ' disabled title="A run is already in progress for this schedule."' : "")
+                        + ">Run now</button>" : "")
+            +       '<button class="cs-btn cs-btn-normal cs-btn-sm" data-act="history">History</button>'
+            // "Errors" button ONLY when the most recent run had import
+            // errors. Read-only (not gated on canEdit, like History). Toggles the
+            // expandable importErrorsBlock list below the card.
+            +       ((s.import_error_count || 0)
+                        ? '<button class="cs-btn cs-btn-normal cs-btn-sm" data-act="import-errors">Errors</button>'
+                        : "")
+            +       (canEdit ? '<button class="cs-btn cs-btn-normal cs-btn-sm" data-act="edit">Edit</button>' : "")
+            +       (canEdit ? '<button class="cs-btn cs-btn-normal cs-btn-sm" data-act="toggle">' + toggleLabel + "</button>" : "")
+            // Backfill: one-time historical pull for this schedule's
+            // teams + connector. Only for schedules with a connector (nothing to
+            // import otherwise). Meta is now enabled: the backfill runs
+            // in rate-limit bail-out mode (stops gracefully + keeps partial data), so
+            // day-by-day backfills accumulate history without an approved FB app.
+            // Disabled while a run/backfill is already in flight (same guard as Run
+            // now) so a second pull can't race the lock.
+            +       (canEdit && s.connector_id
+                        ? '<button class="cs-btn cs-btn-normal cs-btn-sm" data-act="backfill"'
+                            + (runStateActive(s) ? ' disabled title="A run is already in progress for this schedule."' : "")
+                            + ">Backfill</button>"
+                        : "")
+            +       (canEdit ? '<button class="cs-btn cs-btn-normal cs-btn-sm" data-act="delete">Delete</button>' : "")
+            +     "</div>"
+            +   "</div>"
+            +   '<div class="rs-card-meta">'
+            +     '<div class="rs-meta-item"><span class="rs-meta-label">Cadence</span><span class="rs-meta-value">' + esc(cadenceText(s)) + "</span></div>"
+            +     '<div class="rs-meta-item"><span class="rs-meta-label">Last run</span><span class="rs-meta-value">' + esc(fmtTs(s.last_run)) + "</span></div>"
+            +     '<div class="rs-meta-item"><span class="rs-meta-label">Next run</span><span class="rs-meta-value">' + esc(fmtTs(s.next_run)) + "</span></div>"
+            +     '<div class="rs-meta-item"><span class="rs-meta-label">Delivery</span><span class="rs-meta-value">' + esc(deliveryText(s)) + "</span></div>"
+            +     '<div class="rs-meta-item"><span class="rs-meta-label">Scope</span><span class="rs-meta-value">' + scope + "</span></div>"
+            +     connectorRow
+            +   "</div>"
+            // #5 — persisted progress bar (rehydrates from last_run_state).
+            +   runStateBar(s)
+            // post-cancel note (the bar is gone once phase=cancelled).
+            +   runStateCancelledNote(s)
+            // expandable import-error list (gated; "" when no errors).
+            +   importErrorsBlock(s)
+            // Transient Run-now line: only when no persisted bar is showing, so a
+            // freshly-clicked run still gets instant feedback before the first
+            // load() refresh, without doubling up with the bar.
+            +   (!runStateActive(s) && runStatus[s.schedule_id]
+                    ? '<div class="rs-run-status' + (runStatus[s.schedule_id].error ? " rs-run-error" : "") + '">'
+                        + esc(runStatus[s.schedule_id].text) + "</div>"
+                    : "")
+            + "</div>";
+    }
+
+    // date-range label for an email schedule card (these keep an
+    // independent Date Range, unlike import schedules whose window is frequency-
+    // derived). Mirrors the dialog's option labels.
+    const RANGE_LABEL = {
+        rolling_7d: "Previous 7 days", rolling_14d: "Previous 14 days",
+        rolling_30d: "Previous 30 days", prev_calendar_week: "Previous calendar week",
+        prev_calendar_month: "Previous calendar month", month_to_date: "Month to date",
+    };
+
+    // an email-schedule card. Purpose-built: Edit / Pause / Delete only
+    // (no Run now / History / Errors — those are import-run concepts), and shows
+    // the dashboard + date range it emails rather than connector/scope.
+    function emailCard(s) {
+        const isActive = s.status === "active";
+        const canEdit = s.can_edit !== false;
+        let pill = '<span class="rs-pill ' + (isActive ? "rs-badge-active" : "rs-badge-paused") + '">'
+            + esc(s.status || "") + "</span>";
+        if (!canEdit) {
+            pill += ' <span class="rs-pill rs-badge-workspace" title="Created by your workspace owner — you can view but not change it.">Workspace owned</span>';
+        }
+        const toggleLabel = isActive ? "Pause" : "Resume";
+        const cfg = s.schedule || {};
+        const rangeLabel = RANGE_LABEL[cfg.date_range_mode] || (cfg.date_range_mode || "—");
+        const recips = ((s.delivery || {}).email || {}).recipients || [];
+        const recipText = recips.length + " recipient" + (recips.length === 1 ? "" : "s");
+        // scope display: explicit team selection (titles when the
+        // page's org-team tree has loaded, count otherwise), else the
+        // creator clamp ("all the creator's teams").
+        const teamEsids = (s.team_esids || []).filter(Boolean);
+        let teamsText;
+        if (!teamEsids.length) {
+            teamsText = "All of " + (s.created_by ? s.created_by + "'s" : "the creator's") + " teams";
+        } else {
+            const titleMap = window.rsTeamTitleByEsid || {};
+            const titles = teamEsids.map(function (e) { return titleMap[e]; }).filter(Boolean);
+            teamsText = (titles.length === teamEsids.length)
+                ? titles.join(", ")
+                : teamEsids.length + " team" + (teamEsids.length === 1 ? "" : "s");
+        }
+        return ''
+            + '<div class="cs-card rs-card" data-id="' + esc(s.schedule_id) + '" data-kind="email">'
+            +   '<div class="rs-card-top">'
+            +     '<div>'
+            +       '<h3 class="rs-card-name">' + esc(s.name || "(untitled)") + " " + pill + "</h3>"
+            +       (s.description ? '<p class="rs-card-desc">' + esc(s.description) + "</p>" : "")
+            +     "</div>"
+            +     '<div class="rs-card-actions">'
+            +       (canEdit ? '<button class="cs-btn cs-btn-normal cs-btn-sm" data-act="edit">Edit</button>' : "")
+            +       (canEdit ? '<button class="cs-btn cs-btn-normal cs-btn-sm" data-act="toggle">' + toggleLabel + "</button>" : "")
+            +       (canEdit ? '<button class="cs-btn cs-btn-normal cs-btn-sm" data-act="delete">Delete</button>' : "")
+            +     "</div>"
+            +   "</div>"
+            +   '<div class="rs-card-meta">'
+            +     '<div class="rs-meta-item"><span class="rs-meta-label">Cadence</span><span class="rs-meta-value">' + esc(cadenceText(s)) + "</span></div>"
+            +     '<div class="rs-meta-item"><span class="rs-meta-label">Date range</span><span class="rs-meta-value">' + esc(rangeLabel) + "</span></div>"
+            +     '<div class="rs-meta-item"><span class="rs-meta-label">Teams</span><span class="rs-meta-value">' + esc(teamsText) + "</span></div>"
+            +     '<div class="rs-meta-item"><span class="rs-meta-label">Recipients</span><span class="rs-meta-value">' + esc(recipText) + "</span></div>"
+            +     '<div class="rs-meta-item"><span class="rs-meta-label">Last run</span><span class="rs-meta-value">' + esc(fmtTs(s.last_run)) + "</span></div>"
+            +     '<div class="rs-meta-item"><span class="rs-meta-label">Next run</span><span class="rs-meta-value">' + esc(fmtTs(s.next_run)) + "</span></div>"
+            +   "</div>"
+            + "</div>";
+    }
+
+    // split schedules into import vs email and render each into its
+    // own section. schedule_type is "import" for every earlier row (the API
+    // defaults it), so legacy schedules stay in the imports list.
+    function render(schedules) {
+        lastRenderedList = schedules || [];  // baseline for patchCards
+        const imports = [], emails = [];
+        (schedules || []).forEach(function (s) {
+            // remember each schedule's connector so the backfill dialog
+            // can show the overwrite checkbox for Meta only.
+            connectorById[s.schedule_id] = s.connector_id || "";
+            if (s.schedule_type === "email") emails.push(s); else imports.push(s);
+        });
+        listEl.innerHTML = imports.length
+            ? imports.map(card).join("")
+            : '<div class="rs-empty">No import schedules yet. Click “New schedule” to create one.</div>';
+        emailListEl.innerHTML = emails.length
+            ? emails.map(emailCard).join("")
+            : '<div class="rs-empty">No email schedules yet. Click “New email schedule” to create one.</div>';
+    }
+
+    // structural signature of the rendered list: everything `card`
+    // draws EXCEPT the live run-state bar (which the background poll patches in
+    // place). A change here means a card was added/removed/reordered or its
+    // static metadata changed (name, status, scope, cadence, delivery, next/last
+    // run, ownership) — those need a full render(); a change in only the progress
+    // phase does not. Drives the patch-vs-rerender decision in patchCards().
+    function listSignature(schedules) {
+        return (schedules || []).map(function (s) {
+            return [
+                s.schedule_id, s.name, s.status, s.can_edit, s.connector_id,
+                // include the import-error count AND the info-note count
+                // so the "Errors" button (0→N) or an informational note (e.g.
+                // chatwoot "reported on existing data") appearing when an import
+                // settles mid-poll forces a full render(); patchCards only redraws
+                // the run-state bar, not the actions/notes.
+                s.import_error_count || 0,
+                (s.import_info || []).length,
+                cadenceText(s), deliveryText(s), fmtTs(s.last_run), fmtTs(s.next_run),
+                (s.team_esids || []).join(","), s.team_id,
+                // the Scope label reads from active_team_count, so a
+                // change in it is static metadata that needs a full re-render.
+                s.active_team_count,
+            ].join("");
+        }).join("");
+    }
+
+    // non-destructive background refresh. While a run is in flight the
+    // poll fires every 3s; rebuilding #rs-list's innerHTML each tick tore the
+    // whole list down and back up (the "flash", and it dropped scroll/focus).
+    // Instead, when the list's structure is unchanged (same cards, only the run
+    // phase advancing), patch each card's progress bar / Run-now button / run-
+    // status line in place. Fall back to a full render() only when the structure
+    // actually changed (card added/removed/reordered or static metadata changed).
+    function patchCards(schedules) {
+        if (listSignature(schedules) !== listSignature(lastRenderedList)) {
+            render(schedules);
+            return;
+        }
+        (schedules || []).forEach(function (s) { patchCard(s); });
+    }
+
+    // Patch a single on-screen card to match its latest schedule state, without
+    // rebuilding it: the run-state bar (add / replace / remove), the Run-now
+    // button's disabled state, and the transient Run-now status line.
+    function patchCard(s) {
+        const cardEl = listEl.querySelector('.rs-card[data-id="' + cssEsc(s.schedule_id) + '"]');
+        if (!cardEl) return;
+        // Run-state progress bar.
+        const barHtml = runStateBar(s);
+        const barEl = cardEl.querySelector(".rs-progress");
+        if (barHtml) {
+            if (barEl) { barEl.outerHTML = barHtml; }
+            else {
+                // No bar yet (run just started): insert it after the meta block,
+                // matching card()'s order (bar precedes any transient status line).
+                const metaEl = cardEl.querySelector(".rs-card-meta");
+                if (metaEl) metaEl.insertAdjacentHTML("afterend", barHtml);
+            }
+        } else if (barEl) {
+            barEl.remove();  // run resolved — collapse the bar
+        }
+        // post-cancel note (add / replace / remove in place). It sits
+        // where the bar was; insert after the meta block when the bar is gone.
+        const noteHtml = runStateCancelledNote(s);
+        const noteEl = cardEl.querySelector(".rs-cancel-note");
+        if (noteHtml) {
+            if (noteEl) { noteEl.outerHTML = noteHtml; }
+            else {
+                const anchor = cardEl.querySelector(".rs-progress") || cardEl.querySelector(".rs-card-meta");
+                if (anchor) anchor.insertAdjacentHTML("afterend", noteHtml);
+            }
+        } else if (noteEl) {
+            noteEl.remove();
+        }
+        // Run-now button: disabled while a run is in flight.
+        const runBtn = cardEl.querySelector('button[data-act="run"]');
+        if (runBtn) {
+            const active = runStateActive(s);
+            runBtn.disabled = active;
+            if (active) runBtn.title = "A run is already in progress for this schedule.";
+            else runBtn.removeAttribute("title");
+        }
+        // Transient Run-now status line shows only when no persisted bar is up.
+        const showStatus = !runStateActive(s) && runStatus[s.schedule_id];
+        const statusEl = cardEl.querySelector(".rs-run-status");
+        if (showStatus) {
+            const rs = runStatus[s.schedule_id];
+            if (statusEl) {
+                statusEl.className = "rs-run-status" + (rs.error ? " rs-run-error" : "");
+                statusEl.textContent = rs.text;
+            } else {
+                const el = document.createElement("div");
+                el.className = "rs-run-status" + (rs.error ? " rs-run-error" : "");
+                el.textContent = rs.text;
+                cardEl.appendChild(el);
+            }
+        } else if (statusEl) {
+            statusEl.remove();
+        }
+    }
+
+    // CSS.escape shim for the data-id attribute selector (schedule_ids are ES
+    // doc ids — alphanumeric — but escape defensively for any odd character).
+    function cssEsc(v) {
+        if (window.CSS && CSS.escape) return CSS.escape(String(v));
+        return String(v).replace(/["\\\]]/g, "\\$&");
+    }
+
+    // #5 — keep the progress bars live without a permanent poll. After a
+    // render, if ANY schedule is mid-run, refresh the list shortly (the server
+    // flips importing → generating → done in last_run_state). For a done run
+    // whose background import is still in flight, poll the per-connector import
+    // lock; once it releases, mark importDone so the bar collapses on next load.
+    let runStateTimer = null;
+    // follow-up — a done-with-dispatched run is a POLL candidate (we
+    // check whether its background import is still in flight) even though it is
+    // NOT yet a bar candidate (runStateActive false until the poll confirms). The
+    // grace-window + importDone bounds match runStateActive's done branch so we
+    // don't poll a long-settled run forever.
+    function pollCandidate(s) {
+        const st = s.last_run_state;
+        if (!st) return false;
+        if (st.phase === "importing" || st.phase === "generating") return true;
+        return st.phase === "done" && st.import_dispatched
+            && !importDone[s.schedule_id] && !importTailExpired(st);
+    }
+    function maybePollRunState(schedules) {
+        if (runStateTimer) { clearTimeout(runStateTimer); runStateTimer = null; }
+        const candidates = (schedules || []).filter(pollCandidate);
+        // stash each candidate run's last_run_state so a poll tick can
+        // re-render its bar in place (refreshCardBar needs the run phase).
+        // also stash can_edit so the in-place bar keeps its Cancel button
+        // (the synthetic object refreshCardBar builds would otherwise drop it).
+        candidates.forEach(function (s) {
+            lastRunStateById[s.schedule_id] = s.last_run_state;
+            canEditById[s.schedule_id] = s.can_edit !== false;
+            connectorById[s.schedule_id] = s.connector_id || "";
+        });
+        if (!candidates.length) return;
+        // Drive the import tail for done-with-dispatched runs.
+        candidates.forEach(function (s) {
+            const st = s.last_run_state;
+            if (st.phase === "done" && st.import_dispatched && !importDone[s.schedule_id]) {
+                pollImportSettle(s.schedule_id, st.finished_at);
+            }
+            // a BACKFILL never goes through the inline/deferred snapshot
+            // build that flips a scheduled run to phase=done; it stays in phase=
+            // "importing" until something polls /import-status, which fires the
+            // server-side finalize (finalize_deferred_build_if_ready →
+            // _finalize_backfill) that settles it to done and re-enables the Backfill
+            // button. A list reload alone does NOT hit /import-status, so poll it here
+            // for a still-importing backfill. pollImportSettle settles on the progress
+            // doc's own terminal status (importTailExpired is false while finished_at
+            // is null), so it won't settle a genuinely in-flight run early.
+            else if (st.is_backfill && st.phase === "importing" && st.import_dispatched
+                     && !importDone[s.schedule_id]) {
+                pollImportSettle(s.schedule_id, st.finished_at);
+            }
+        });
+        // Re-pull the list so server-side phase changes surface; the bar is
+        // patched in place from the fresh last_run_state (no full
+        // re-render, so the list doesn't flash while a run is in progress).
+        runStateTimer = setTimeout(function () { load(true, true); }, 3000);
+    }
+
+    // re-render just one card's progress bar in place from the latest
+    // liveProgress, so the percentage/stage updates every poll tick (5s) without
+    // waiting for the 3s full-list reload. Finds the card's existing .rs-progress
+    // and swaps its inner markup; no-op if the card isn't on screen.
+    function refreshCardBar(id) {
+        const cardEl = listEl.querySelector('.rs-card[data-id="' + cssEsc(id) + '"]');
+        if (!cardEl) return;
+        const barEl = cardEl.querySelector(".rs-progress");
+        if (!barEl) return;
+        // Reuse runStateBar by locating this schedule's last_run_state from the
+        // poll-capture stash (set in maybePollRunState). Without it we can't know
+        // the run phase, so leave the bar as-is.
+        const st = lastRunStateById[id];
+        if (!st) return;
+        const html = runStateBar({ schedule_id: id, last_run_state: st, can_edit: canEditById[id] !== false });
+        if (html) {
+            barEl.outerHTML = html;  // replace the whole .rs-progress block
+        }
+    }
+
+    // schedule_id -> its last_run_state from the most recent list load, so the
+    // poll tick can re-render the bar in place (runStateBar needs the run phase).
+    const lastRunStateById = {};
+    // schedule_id -> can_edit, so a poll-driven bar refresh keeps the
+    // owner-only Cancel button (the synthetic object refreshCardBar builds is
+    // otherwise missing can_edit and would hide it).
+    const canEditById = {};
+    // schedule_id -> connector_id, so the backfill dialog can decide
+    // whether to show the Meta-only "Overwrite existing data" checkbox.
+    const connectorById = {};
+
+    // Poll the per-connector import lock OR the per-run progress doc for one
+    // schedule; capture live progress and, when it has run and then
+    // released / reached a terminal status (or after a bounded number of tries),
+    // mark its import done so the "finishing background import…" bar collapses.
+    const importPollState = {};
+    function pollImportSettle(id, finishedAt) {
+        if (importPollState[id] && importPollState[id].active) return;  // already polling
+        importPollState[id] = { active: true, seen: false, tries: 0 };
+        const settle = function (ps) { importDone[id] = true; delete liveProgress[id]; ps.active = false; load(true, true); };
+        const tick = function () {
+            const ps = importPollState[id];
+            ps.tries += 1;
+            // the per-connector lock is shared (cron / concurrent
+            // imports of the same connector), so it can read "running" long after
+            // THIS run's import settled. Stop waiting on it once the grace window
+            // since finished_at elapses; the run is terminal regardless.
+            if (importTailExpired({ finished_at: finishedAt })) { settle(ps); return; }
+            fetch(API_BASE + encodeURIComponent(id) + "/import-status", { headers: { "Accept": "application/json" } })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (!d.ok) { ps.active = false; return; }
+                    // per-run progress doc present: capture it and
+                    // re-render the bar in place (real % + stage). Settle on the
+                    // run's OWN terminal status, not the shared lock.
+                    if (d.progress) {
+                        liveProgress[id] = d.progress;
+                        // the import is genuinely in flight; allow the
+                        // done-tail bar. If it's already on screen, patch the % in
+                        // place; otherwise flip the gate and reload so patchCard
+                        // inserts it (no speculative paint = no flash).
+                        if (!tailConfirmed[id]) { tailConfirmed[id] = true; load(true, true); }
+                        else { refreshCardBar(id); }
+                        if (d.progress.status === "succeeded"
+                            || d.progress.status === "failed"
+                            || d.progress.status === "cancelled") {
+                            settle(ps); return;
+                        }
+                        ps.seen = true;
+                        if (ps.tries < 240) { setTimeout(tick, 5000); } else { ps.active = false; }
+                        return;
+                    }
+                    // Untrackable importer (e.g. youtube takes no lock): treat as
+                    // settled immediately so the bar doesn't hang.
+                    if (!d.trackable) { settle(ps); return; }
+                    if (d.running) {
+                        ps.seen = true;
+                        // confirmed still importing → show the tail.
+                        if (!tailConfirmed[id]) { tailConfirmed[id] = true; load(true, true); }
+                    }
+                    else if (ps.seen || ps.tries >= 6) { settle(ps); return; }
+                    if (ps.tries < 240) { setTimeout(tick, 5000); } else { ps.active = false; }
+                })
+                .catch(function () { if (ps.tries < 240) setTimeout(tick, 5000); else ps.active = false; });
+        };
+        tick();
+    }
+
+    // `silent` skips the "Loading schedules…" spinner-blank. The
+    // run-state poll re-loads every 3s while a bar is up; blanking the
+    // whole list to a spinner each time made it flash/"reload over and over" for the
+    // life of the bar. Silent refreshes render in place (no blank); only the initial
+    // load and explicit user actions show the spinner.
+    //
+    // `patchInPlace` (set by the background run-state poll) goes one
+    // step further: even a silent render() replaced #rs-list's whole innerHTML
+    // every 3s, which still flashed and dropped scroll/focus. With this flag the
+    // poll patches only the changed cards' bars in place (patchCards), falling
+    // back to a full render() only when the list's structure actually changed.
+    function load(silent, patchInPlace) {
+        if (!silent) {
+            listEl.innerHTML = '<div class="rs-loading"><i class="fas fa-spinner fa-spin"></i> Loading schedules…</div>';
+        }
+        fetch(LIST_URL, { headers: { "Accept": "application/json" } })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data.ok) throw new Error(data.error || "load failed");
+                const schedules = data.schedules || [];
+                if (patchInPlace) { patchCards(schedules); }
+                else { render(schedules); }
+                maybePollRunState(schedules);
+            })
+            .catch(function (e) {
+                // A silent background refresh that fails leaves the current list in
+                // place (transient blip); only a foreground load surfaces the error.
+                if (!silent) {
+                    listEl.innerHTML = '<div class="rs-empty">Could not load schedules: ' + esc(e.message) + "</div>";
+                }
+            });
+    }
+
+    function post(id, action, body) {
+        return fetch(API_BASE + encodeURIComponent(id) + action, {
+            method: body === "DELETE" ? "DELETE" : "POST",
+            headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
+            body: body && body !== "DELETE" ? JSON.stringify(body) : undefined,
+        }).then(function (r) { return r.json(); });
+    }
+
+    listEl.addEventListener("click", function (e) {
+        const btn = e.target.closest("button[data-act]");
+        if (!btn) return;
+        const cardEl = btn.closest(".rs-card");
+        const id = cardEl.getAttribute("data-id");
+        const act = btn.getAttribute("data-act");
+
+        if (act === "run") {
+            btn.disabled = true;
+            const label = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running…';
+            // a NEW run resets the per-schedule import-tail memory so
+            // its done-tail isn't suppressed by the prior run's settled flags.
+            delete importDone[id]; delete tailConfirmed[id];
+            // Transient line only for the brief window WHILE the (synchronous)
+            // run POST is in flight; once it resolves, last_run_state is already
+            // persisted and load renders the rehydrating progress bar (
+            // #5), which then drives the background-import tail itself.
+            setRunStatus(id, "Generating report…");
+            post(id, "/run-now", {}).then(function (d) {
+                btn.disabled = false; btn.innerHTML = label;
+                if (!d.ok) { setRunStatus(id, "Run failed: " + (d.error || "unknown error"), true); return; }
+                setRunStatus(id, null);  // hand off to the persisted bar
+                load();
+            }).catch(function () {
+                btn.disabled = false; btn.innerHTML = label;
+                setRunStatus(id, "Run failed: network error — please try again.", true);
+            });
+        } else if (act === "cancel") {
+            // stop an in-flight run + kill its import subtree. Confirm
+            // first: cancel is destructive (it kills a running data import).
+            if (!confirm("Cancel this run? The in-progress data import will be stopped.")) return;
+            btn.disabled = true;
+            const cancelLabel = btn.innerHTML;
+            btn.innerHTML = "Canceling…";
+            post(id, "/cancel", {}).then(function (d) {
+                if (!d.ok) {
+                    btn.disabled = false; btn.innerHTML = cancelLabel;
+                    setRunStatus(id, "Cancel failed: " + (d.error || "unknown error"), true);
+                    return;
+                }
+                // The cancelled state itself (incl. the degraded "will stop at its
+                // next checkpoint" wording, set only when the kill couldn't be
+                // signalled at all) renders from the persisted last_run_state via
+                // runStateCancelledNote on reload. A reached-but-not-yet-reaped kill
+                // is NOT degraded — the importer is going down and its lock/progress
+                // doc were cleaned up. Only the echo-shared-pull fact isn't otherwise
+                // on the card, so surface it as a transient note.
+                if (d.kill_reached !== false && d.shared_echo_pull) {
+                    setRunStatus(id, "Canceled. (This stopped the shared Echo tenant-wide pull.)");
+                }
+                // Reload so the cancelled state (bar collapsed + the cancelled note)
+                // renders from the freshly-persisted last_run_state.
+                load();
+            }).catch(function () {
+                btn.disabled = false; btn.innerHTML = cancelLabel;
+                setRunStatus(id, "Cancel failed: network error — please try again.", true);
+            });
+        } else if (act === "backfill") {
+            // open the backfill dialog for this schedule (the dialog's
+            // OK posts to /backfill and the card's progress bar takes over).
+            if (btn.disabled) return;
+            window.rsBackfill.open(id, connectorById[id] || "");
+        } else if (act === "edit") {
+            window.rsForm.openEdit(id);
+        } else if (act === "history") {
+            // pass ownership so the History modal shows a per-row
+            // Delete only to a caller who may mutate the schedule (the DELETE
+            // endpoint re-checks it server-side regardless).
+            window.rsHistory.open(id, canEditById[id] !== false);
+        } else if (act === "import-errors") {
+            // toggle this card's expandable import-error list open.
+            const details = cardEl.querySelector("details[data-rs-import-errors]");
+            if (details) { details.open = !details.open; }
+        } else if (act === "toggle") {
+            const isActive = cardEl.querySelector(".rs-badge-active") !== null;
+            post(id, "/status", { status: isActive ? "paused" : "active" }).then(function (d) {
+                if (!d.ok) { alert("Update failed: " + (d.error || "")); return; }
+                load();
+            });
+        } else if (act === "delete") {
+            if (!confirm("Delete this schedule? Past snapshots are kept.")) return;
+            post(id, "", "DELETE").then(function (d) {
+                if (!d.ok) { alert("Delete failed: " + (d.error || "")); return; }
+                load();
+            });
+        }
+    });
+
+    // email-schedule cards: Edit / Pause / Delete only. Edit opens the
+    // dedicated email form; toggle/delete reuse the shared status/DELETE routes.
+    emailListEl.addEventListener("click", function (e) {
+        const btn = e.target.closest("button[data-act]");
+        if (!btn) return;
+        const cardEl = btn.closest(".rs-card");
+        const id = cardEl.getAttribute("data-id");
+        const act = btn.getAttribute("data-act");
+        if (act === "edit") {
+            if (window.esForm) window.esForm.openEdit(id);
+        } else if (act === "toggle") {
+            const isActive = cardEl.querySelector(".rs-badge-active") !== null;
+            post(id, "/status", { status: isActive ? "paused" : "active" }).then(function (d) {
+                if (!d.ok) { alert("Update failed: " + (d.error || "")); return; }
+                load();
+            });
+        } else if (act === "delete") {
+            if (!confirm("Delete this email schedule?")) return;
+            post(id, "", "DELETE").then(function (d) {
+                if (!d.ok) { alert("Delete failed: " + (d.error || "")); return; }
+                load();
+            });
+        }
+    });
+
+    document.getElementById("rs-new-btn").addEventListener("click", function () {
+        window.rsForm.openCreate();
+    });
+    document.getElementById("rs-new-email-btn").addEventListener("click", function () {
+        if (window.esForm) window.esForm.openCreate();
+    });
+
+    // Collapsible list sections: the heading chevron toggles its list. Both
+    // start expanded. Wired generically so each section is independent.
+    function wireSectionToggle(toggleId, sectionId) {
+        const toggle = document.getElementById(toggleId);
+        const section = document.getElementById(sectionId);
+        if (!toggle || !section) return;
+        toggle.addEventListener("click", function () {
+            const collapsed = section.classList.toggle("rs-collapsed");
+            toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+        });
+    }
+    wireSectionToggle("rs-imports-toggle", "rs-imports-section");
+    wireSectionToggle("rs-emails-toggle", "rs-emails-section");
+
+    // Expose a reload hook so the form modals can refresh the list after save.
+    window.rsReloadList = load;
+
+    load();
+})();
+
+// ── Create / edit form modal ──────────────────────────────────────────────
+(function () {
+    "use strict";
+    const csrf = document.querySelector('meta[name="csrf-token"]').content;
+    const CREATE_URL = "{{ url_for('report_scheduler.api_create') }}";
+    const API_BASE = "{{ url_for('report_scheduler.index') }}".replace(/\/$/, "") + "/api/";
+    // Reuse the dashboard-builder scope endpoints (already authz'd + scope-filtered).
+    const DASHBOARDS_URL = "{{ url_for('dashboard_builder.list_dashboards') }}";
+    const ORG_TEAM_URL = "{{ url_for('dashboard_builder.get_org_team_options') }}";
+    // the connector-filtered team list the Scope listbox uses in BOTH
+    // create and edit: only teams that have the chosen connector configured (the
+    // same set the tile count is computed from). Supersedes the edit modal's old
+    // use of the full org-team-tree (the page builder still fetches that for the
+    // top-level team picker).
+    const CONNECTOR_TEAMS_URL = "{{ url_for('report_scheduler.api_connector_teams') }}";
+
+    const $ = function (id) { return document.getElementById(id); };
+    const overlay = $("rsm-overlay");
+    let optionsLoaded = false;
+    const PAGE_API = "{{ url_for('report_scheduler.index') }}".replace(/\/$/, "") + "/api/";
+    // v2 connector-mode state. connectorId/"" toggles v1 (manual pickers) vs
+    // v2 (tile-launched: connector-filtered dashboards + multi-team scope).
+    const v2 = { connectorId: "", connectorName: "", teamEsids: [] };
+
+    function setV2Mode(on) {
+        $("rsm-v1-scope").classList.toggle("rsm-hidden", on);
+        $("rsm-v2-scope").classList.toggle("rsm-hidden", !on);
+    }
+
+    function setErr(msg) {
+        const el = $("rsm-error");
+        if (!msg) { el.classList.add("rsm-hidden"); el.textContent = ""; return; }
+        el.textContent = msg; el.classList.remove("rsm-hidden");
+    }
+
+    function fillSelect(sel, items, valueKey, labelKey, keepFirst) {
+        const first = keepFirst ? sel.options[0] : null;
+        sel.innerHTML = "";
+        if (first) sel.appendChild(first);
+        items.forEach(function (it) {
+            const o = document.createElement("option");
+            o.value = it[valueKey]; o.textContent = it[labelKey];
+            sel.appendChild(o);
+        });
+    }
+
+    function loadOptions() {
+        if (optionsLoaded) return Promise.resolve();
+        return Promise.all([
+            fetch(ORG_TEAM_URL).then(function (r) { return r.json(); }),
+            fetch(DASHBOARDS_URL).then(function (r) { return r.json(); }),
+        ]).then(function (res) {
+            const ot = res[0] || {}, db = res[1] || {};
+            fillSelect($("rsm-org"), ot.organizations || [], "esid", "title", true);
+            fillSelect($("rsm-team"), ot.teams || [], "esid", "title", true);
+            fillSelect($("rsm-dashboard"), db.dashboards || [], "id", "title", true);
+            optionsLoaded = true;
+        });
+    }
+
+    function syncFreqFields() {
+        const f = $("rsm-frequency").value;
+        // "Days to pull" applies to the daily window only.
+        $("rsm-days-group").classList.toggle("rsm-hidden", f !== "daily");
+        $("rsm-dow-group").classList.toggle("rsm-hidden", !(f === "weekly" || f === "biweekly"));
+        $("rsm-dom-group").classList.toggle("rsm-hidden", f !== "monthly");
+    }
+    // the "Number to keep" field is only relevant when snapshots are
+    // being saved; hide it when the save-snapshot box is unchecked.
+    function syncSnapshotKeep() {
+        $("rsm-keep-group").classList.toggle("rsm-hidden", !$("rsm-save-snapshot").checked);
+    }
+
+    // coerce the daily "Days to pull" input to a whole number in
+    // [1, 7], default 1. The server clamps again (never trust the client).
+    function dailyDaysValue() {
+        let n = parseInt($("rsm-days").value, 10);
+        if (isNaN(n)) n = 1;
+        if (n < 1) n = 1;
+        if (n > 7) n = 7;
+        return n;
+    }
+
+    // coerce the keep input to a whole number in [1, 100], default 7.
+    function snapshotKeepValue() {
+        let n = parseInt($("rsm-snapshot-keep").value, 10);
+        if (isNaN(n)) n = 7;
+        if (n < 1) n = 1;
+        if (n > 100) n = 100;
+        return n;
+    }
+
+    // same live restriction for the "Days to pull" and "Day of month"
+    // boxes: digits-only + a length cap while typing; on blur, snap into
+    // [min, max] so the box never shows an out-of-range value (a blank box is
+    // left for the user to refill — the save-time coercion defaults it).
+    function clampIntInput(id, maxLen, min, max, commit) {
+        const el = $(id);
+        let v = (el.value || "").replace(/\D/g, "").slice(0, maxLen);  // digits only
+        if (commit && v !== "") {
+            let n = parseInt(v, 10);
+            if (n < min) n = min;
+            if (n > max) n = max;
+            v = String(n);
+        }
+        if (v !== el.value) el.value = v;
+    }
+
+    // restrict the "Number to keep" box as the user types. `maxlength`
+    // is ignored on <input type=number>, so enforce digits-only + a 3-char cap in
+    // JS; on blur, snap into [1, 100] so the box never shows an out-of-range value
+    // (a blank box is left for the user to refill — snapshotKeepValue() defaults it
+    // to 7 at save time).
+    function clampSnapshotKeepInput(commit) {
+        const el = $("rsm-snapshot-keep");
+        let v = (el.value || "").replace(/\D/g, "").slice(0, 3);  // digits only, max 3
+        if (commit && v !== "") {
+            let n = parseInt(v, 10);
+            if (n < 1) n = 1;
+            if (n > 100) n = 100;
+            v = String(n);
+        }
+        if (v !== el.value) el.value = v;
+    }
+
+    function open(title) {
+        setErr("");
+        $("rsm-title").textContent = title;
+        // Return the options promise so openEdit can sequence prefill AFTER
+        // loadOptions' fillSelect — fillSelect rebuilds #rsm-dashboard's DOM,
+        // which silently discards any value prefill set first (
+        // follow-up: edit showed an empty "Dashboard to report on").
+        return loadOptions().finally(function () { overlay.classList.remove("hidden"); });
+    }
+    function close() { overlay.classList.add("hidden"); }
+
+    function resetForm() {
+        $("rsm-id").value = "";
+        v2.connectorId = ""; v2.connectorName = ""; v2.teamEsids = [];
+        setV2Mode(false);
+        // #6 — hide + clear the edit team tree (create-via-wizard keeps
+        // its fixed scope note; a re-opened edit re-renders it from prefill).
+        const editTree = $("rsm-edit-team-tree");
+        editTree.classList.add("rsm-hidden");
+        editTree.innerHTML = '<div class="rs-loading">Loading teams…</div>';
+        // the "Show unselected teams" toggle is edit-only; hide + reset
+        // it on every open so the create wizard never shows it and a re-opened edit
+        // starts collapsed (off = only the schedule's current scope).
+        $("rsm-show-unselected-wrap").classList.add("rsm-hidden");
+        $("rsm-show-unselected").checked = false;
+        $("rsm-dashboard-warn").classList.add("rsm-hidden");
+        ["rsm-name", "rsm-description"].forEach(function (id) { $(id).value = ""; });
+        $("rsm-org").value = ""; $("rsm-team").value = "__all__"; $("rsm-dashboard").value = "";
+        $("rsm-frequency").value = "daily"; $("rsm-dow").value = "0"; $("rsm-dom").value = "1";
+        $("rsm-days").value = "1";  // daily days-to-pull default
+        $("rsm-time").value = "06:00"; $("rsm-timezone").value = "UTC";
+        // no Date Range / email fields in the import dialog anymore.
+        $("rsm-save-snapshot").checked = true;
+        $("rsm-snapshot-keep").value = "7";
+        syncFreqFields(); syncSnapshotKeep();
+    }
+
+    // Load the connector-filtered dashboard list into #rsm-dashboard; show the
+    // import-only warning when empty.
+    function loadConnectorDashboards(connectorId) {
+        const sel = $("rsm-dashboard");
+        sel.innerHTML = '<option value="">No report (import only)</option>';
+        // the picker is workspace-scoped server-side via the selected
+        // teams. Pass the wizard's team scope so it lists only dashboards in those
+        // teams' workspace(s) (no cross-workspace duplicates / foreign picks).
+        let qs = "connector-dashboards?connector_id=" + encodeURIComponent(connectorId);
+        (v2.teamEsids || []).forEach(function (esid) {
+            qs += "&team_esids=" + encodeURIComponent(esid);
+        });
+        return fetch(PAGE_API + qs,
+            { headers: { "Accept": "application/json" } })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                const dashboards = (d && d.dashboards) || [];
+                dashboards.forEach(function (db) {
+                    const o = document.createElement("option");
+                    o.value = db.id; o.textContent = db.title; sel.appendChild(o);
+                });
+                $("rsm-dashboard-warn").classList.toggle("rsm-hidden", dashboards.length > 0);
+            });
+    }
+
+    // ── #6 — editable team tree inside the edit modal ──────────────
+    function escHtml(s) {
+        return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+            return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+        });
+    }
+
+    // Teams currently checked in the Scope listbox. null when the listbox isn't
+    // rendered (v1 manual mode). both the create wizard and the edit
+    // modal now render it (filtered to connector-valid teams), so this is the
+    // source of truth for the saved scope in both v2 flows.
+    function editTreeSelectedTeams() {
+        const tree = $("rsm-edit-team-tree");
+        if (tree.classList.contains("rsm-hidden")) return null;  // tree not in use
+        return Array.prototype.slice
+            .call(tree.querySelectorAll("input.rs-team-cb:checked"))
+            .map(function (cb) { return cb.value; });
+    }
+
+    function updateEditScopeNote() {
+        const teams = editTreeSelectedTeams();
+        const n = teams ? teams.length : (v2.teamEsids || []).length;
+        $("rsm-v2-scope-note").textContent =
+            (v2.connectorName || v2.connectorId) + " · " + n + " team" + (n === 1 ? "" : "s") + " selected";
+    }
+
+    // group a flat connector-filtered team list by org_title (the
+    // /api/connector-teams payload is a flat {esid,title,org_title} list; the tree
+    // markup mirrors the page builder's renderTree so the shared CSS applies).
+    function groupTeamsByOrg(teams) {
+        const order = [];
+        const byOrg = {};
+        (teams || []).forEach(function (t) {
+            const org = (t.org_title || "").trim() || "(Unassigned)";
+            if (!byOrg[org]) { byOrg[org] = []; order.push(org); }
+            byOrg[org].push(t);
+        });
+        return order.map(function (org) { return { org_title: org, teams: byOrg[org] }; });
+    }
+
+    // build the Scope listbox for BOTH create and edit. candidateEsids
+    // is the set we filter to connector-valid (create: the page-tree selection;
+    // edit: the schedule's saved team_esids). The server returns ONLY teams that
+    // have the connector configured — the same set the tile count was computed
+    // from — so the dialog can never list a team the count excluded. Every
+    // returned team starts checked (they ARE the relevant scope); the user can
+    // uncheck to narrow. preChecked, when given, limits the initial checks to that
+    // subset — used so newly-surfaced (unselected) teams render
+    // unchecked while the schedule's real scope stays checked.
+    //
+    // includeAll asks the server to widen the candidate set to every
+    // connector-valid team the caller could pick (not just candidateEsids), so the
+    // "Show unselected teams" toggle can surface teams not yet in the schedule.
+    function renderScopeTree(candidateEsids, preChecked, includeAll) {
+        const tree = $("rsm-edit-team-tree");
+        tree.classList.remove("rsm-hidden");
+        tree.innerHTML = '<div class="rs-loading">Loading teams…</div>';
+        const candidates = (candidateEsids || []).filter(Boolean);
+        // With includeAll the server expands the universe from the workspace, so an
+        // empty candidate list is still a valid request; otherwise there is nothing
+        // to show.
+        if (!candidates.length && !includeAll) {
+            tree.innerHTML = '<div class="rs-tiles-empty">No teams in scope.</div>';
+            updateEditScopeNote();
+            return Promise.resolve();
+        }
+        const limit = preChecked ? {} : null;
+        (preChecked || []).forEach(function (esid) { limit[esid] = true; });
+        return fetch(CONNECTOR_TEAMS_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
+            body: JSON.stringify({ connector_id: v2.connectorId, team_esids: candidates, include_all: !!includeAll }),
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                const orgs = groupTeamsByOrg((d && d.teams) || []);
+                if (!orgs.length) {
+                    tree.innerHTML = '<div class="rs-tiles-empty">No teams with this connector configured.</div>';
+                    updateEditScopeNote();
+                    return;
+                }
+                tree.innerHTML = orgs.map(function (o, i) {
+                    const teamRows = o.teams.map(function (t) {
+                        const ck = (limit === null || limit[t.esid]) ? " checked" : "";
+                        return '<label class="rs-team-label"><input type="checkbox" class="rs-team-cb" value="'
+                            + escHtml(t.esid) + '"' + ck + "> " + escHtml(t.title) + "</label>";
+                    }).join("");
+                    const allChecked = o.teams.every(function (t) { return limit === null || limit[t.esid]; });
+                    return '<div class="rs-org">'
+                        + '<label class="rs-org-label"><input type="checkbox" class="rs-org-cb" data-org="' + i + '"'
+                        + (allChecked ? " checked" : "") + "> "
+                        + escHtml(o.org_title) + "</label>"
+                        + '<div class="rs-org-teams" data-org="' + i + '">' + teamRows + "</div>"
+                        + "</div>";
+                }).join("");
+                updateEditScopeNote();
+            })
+            .catch(function () {
+                tree.innerHTML = '<div class="rs-tiles-empty">Could not load teams.</div>';
+            });
+    }
+
+    // Org checkbox toggles its teams; any change re-syncs the org box + note.
+    $("rsm-edit-team-tree").addEventListener("change", function (e) {
+        const t = e.target;
+        if (t.classList.contains("rs-org-cb")) {
+            const org = t.getAttribute("data-org");
+            $("rsm-edit-team-tree").querySelectorAll('.rs-org-teams[data-org="' + org + '"] input.rs-team-cb')
+                .forEach(function (cb) { cb.checked = t.checked; });
+        } else if (t.classList.contains("rs-team-cb")) {
+            const teamsDiv = t.closest(".rs-org-teams");
+            const org = teamsDiv.getAttribute("data-org");
+            const all = teamsDiv.querySelectorAll("input.rs-team-cb");
+            const ck = teamsDiv.querySelectorAll("input.rs-team-cb:checked");
+            const orgCb = $("rsm-edit-team-tree").querySelector('.rs-org-cb[data-org="' + org + '"]');
+            if (orgCb) orgCb.checked = all.length === ck.length;
+        }
+        updateEditScopeNote();
+    });
+
+    // re-render the Scope tree when "Show unselected teams" toggles.
+    // Preserve the user's LIVE selection as preChecked (starts as the schedule's
+    // saved team_esids, plus/minus anything toggled since) so re-rendering never
+    // silently drops or re-adds a choice. Toggling on widens the candidate set to
+    // the whole workspace (include_all); toggling off collapses back to the
+    // currently-checked teams. The checkbox is only shown on edit.
+    $("rsm-show-unselected").addEventListener("change", function () {
+        const showAll = $("rsm-show-unselected").checked;
+        // The teams checked right now — the scope we must keep selected across the
+        // re-render. Fall back to the prefilled scope before the first render.
+        const checked = editTreeSelectedTeams() || (v2.teamEsids || []).slice();
+        // When collapsing (off), candidates ARE the checked teams; when expanding
+        // (on), the server supplies the universe and we just seed the candidate set
+        // with the checked teams so they're guaranteed to survive.
+        renderScopeTree(checked, checked, showAll);
+    });
+
+    // Default the timezone <select> from the user's profile zone; when the
+    // profile zone is unset, fall back to the browser-detected zone.
+    function applyProfileTimezone() {
+        return fetch(PAGE_API + "profile-timezone", { headers: { "Accept": "application/json" } })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                let tz = (d && d.time_zone) || "UTC";
+                if (d && d.is_default) {
+                    try {
+                        const browser = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                        if (browser) tz = browser;
+                    } catch (e) { /* keep stored/UTC */ }
+                }
+                const sel = $("rsm-timezone");
+                if (Array.prototype.some.call(sel.options, function (o) { return o.value === tz; })) {
+                    sel.value = tz;
+                }
+            }).catch(function () { /* leave UTC */ });
+    }
+
+    function prefill(s) {
+        const cfg = s.schedule || {}, d = s.delivery || {};
+        $("rsm-id").value = s.schedule_id || "";
+        $("rsm-name").value = s.name || "";
+        $("rsm-description").value = s.description || "";
+        $("rsm-org").value = s.org_id || "";
+        $("rsm-team").value = s.team_id || "__all__";
+        $("rsm-dashboard").value = s.dashboard_id || "";
+        $("rsm-frequency").value = cfg.frequency || "daily";
+        if (cfg.day_of_week != null) $("rsm-dow").value = String(cfg.day_of_week);
+        if (cfg.day_of_month != null) $("rsm-dom").value = String(cfg.day_of_month);
+        // round-trip the stored daily day count (earlier rows
+        // have none → 1, the previous-day behavior).
+        $("rsm-days").value = String(cfg.days_to_pull != null ? cfg.days_to_pull : 1);
+        $("rsm-time").value = cfg.time || "06:00";
+        $("rsm-timezone").value = cfg.timezone || "UTC";
+        // no Date Range field; the import window is frequency-derived.
+        $("rsm-save-snapshot").checked = d.save_snapshot !== false;
+        // prefill the retained-count (default 7 for earlier rows).
+        $("rsm-snapshot-keep").value = String(d.snapshot_keep != null ? d.snapshot_keep : 7);
+        // v2: a connector schedule edits in v2 mode — its
+        // connector + multi-team scope are re-sent on save (the PUT would
+        // otherwise carry blank v2 fields and the scope summary would be wrong).
+        if (s.connector_id) {
+            v2.connectorId = s.connector_id;
+            v2.connectorName = s.connector_id;
+            v2.teamEsids = (s.team_esids || []).slice();
+            setV2Mode(true);
+            // #6 — editing: render the team listbox so the selection can
+            // be changed on save (was a read-only "N teams selected" note).
+            // the listbox is filtered to ONLY teams that have this
+            // connector configured (candidates = the schedule's saved team_esids),
+            // matching the connector tile count instead of the full team tree.
+            // updateEditScopeNote keeps the summary live as boxes toggle.
+            // expose the edit-only "Show unselected teams" toggle so the
+            // scope can be WIDENED (not just narrowed) to any connector-valid team.
+            $("rsm-show-unselected-wrap").classList.remove("rsm-hidden");
+            renderScopeTree(v2.teamEsids);
+            loadConnectorDashboards(s.connector_id).then(function () {
+                $("rsm-dashboard").value = s.dashboard_id || "";
+            });
+        }
+        syncFreqFields(); syncSnapshotKeep();
+    }
+
+    function gather() {
+        // #6 / in both v2 flows the Scope listbox is the source
+        // of truth; its checked boxes override the prefilled v2.teamEsids so a
+        // changed (or connector-filtered) selection is sent. editTreeSelectedTeams()
+        // is null only in v1 manual mode (listbox not rendered), where the v1
+        // org/team pickers drive scope instead.
+        const editTeams = editTreeSelectedTeams();
+        const teamEsids = editTeams !== null ? editTeams : (v2.teamEsids || []);
+        return {
+            name: $("rsm-name").value,
+            description: $("rsm-description").value,
+            org_id: $("rsm-org").value,
+            team_id: $("rsm-team").value,
+            // v2: connector + multi-team selection (empty in v1 manual mode).
+            connector_id: v2.connectorId || "",
+            team_esids: teamEsids,
+            dashboard_id: $("rsm-dashboard").value,
+            frequency: $("rsm-frequency").value,
+            day_of_week: $("rsm-dow").value,
+            day_of_month: $("rsm-dom").value,
+            // daily-only day count; the server ignores it for other
+            // frequencies and re-clamps to 1..7.
+            days_to_pull: dailyDaysValue(),
+            time: $("rsm-time").value,
+            timezone: $("rsm-timezone").value,
+            // import dialog: window derives from frequency server-side,
+            // and this dialog never emails (the email backend stays).
+            schedule_type: "import",
+            save_snapshot: $("rsm-save-snapshot").checked,
+            snapshot_keep: snapshotKeepValue(),
+        };
+    }
+
+    function save() {
+        setErr("");
+        const id = $("rsm-id").value;
+        const btn = $("rsm-save");
+        btn.disabled = true; btn.textContent = "Saving…";
+        const url = id ? (API_BASE + encodeURIComponent(id)) : CREATE_URL;
+        fetch(url, {
+            method: id ? "PUT" : "POST",
+            headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
+            body: JSON.stringify(gather()),
+        }).then(function (r) { return r.json(); }).then(function (d) {
+            btn.disabled = false; btn.textContent = "Save schedule";
+            if (!d.ok) { setErr(d.error || "Could not save the schedule."); return; }
+            close();
+            if (window.rsReloadList) window.rsReloadList();
+            // recipients outside the workspace must confirm their address
+            // before delivery includes them; tell the author who is pending.
+            if (d.warning) { alert(d.warning); }
+        }).catch(function () {
+            btn.disabled = false; btn.textContent = "Save schedule";
+            setErr("Network error — please try again.");
+        });
+    }
+
+    $("rsm-frequency").addEventListener("change", syncFreqFields);
+    $("rsm-save-snapshot").addEventListener("change", syncSnapshotKeep);
+    // digits-only + 3-char cap while typing; clamp to [1,100] on blur.
+    $("rsm-snapshot-keep").addEventListener("input", function () { clampSnapshotKeepInput(false); });
+    $("rsm-snapshot-keep").addEventListener("blur", function () { clampSnapshotKeepInput(true); });
+    // same restriction: Days to pull [1,7], Day of month [1,28].
+    $("rsm-days").addEventListener("input", function () { clampIntInput("rsm-days", 1, 1, 7, false); });
+    $("rsm-days").addEventListener("blur", function () { clampIntInput("rsm-days", 1, 1, 7, true); });
+    $("rsm-dom").addEventListener("input", function () { clampIntInput("rsm-dom", 2, 1, 28, false); });
+    $("rsm-dom").addEventListener("blur", function () { clampIntInput("rsm-dom", 2, 1, 28, true); });
+    $("rsm-close").addEventListener("click", close);
+    $("rsm-cancel").addEventListener("click", close);
+    // No backdrop-click dismiss — this is a data-entry form; an accidental
+    // outside-click shouldn't discard everything typed. Escape / X / Cancel close.
+    document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape" && !overlay.classList.contains("hidden")) close();
+    });
+    $("rsm-save").addEventListener("click", save);
+
+    window.rsForm = {
+        openCreate: function () { open("New schedule"); resetForm(); },
+        openEdit: function (id) {
+            // open() resolves when loadOptions has (re)built the v1 selects.
+            // Swallow its failure — a broken options load must not block the
+            // prefill (the v2 path rebuilds #rsm-dashboard itself anyway).
+            const opened = open("Edit schedule").catch(function () {});
+            // Reset first (mirrors openCreate) — without this, v2 state left
+            // over from an opened-then-cancelled wizard leaks into the edit's
+            // gather payload.
+            resetForm();
+            const loaded = fetch(API_BASE + encodeURIComponent(id), { headers: { "Accept": "application/json" } })
+                .then(function (r) { return r.json(); });
+            // Prefill only after BOTH the schedule doc and loadOptions are in:
+            // loadOptions' fillSelect rebuilds #rsm-dashboard's options, so a
+            // prefill that won the race had its dashboard selection (and the
+            // connector-filtered option list) wiped — the edit form then showed
+            // an empty "Dashboard to report on" until a manual reload.
+            Promise.all([opened, loaded]).then(function (res) {
+                const d = res[1];
+                if (!d.ok) { setErr(d.error || "Could not load the schedule."); return; }
+                prefill(d.schedule);
+            });
+        },
+    };
+
+    // Connector-tile entry point (Phase B tiles call this). Opens the form in
+    // v2 mode: connector + selected teams fixed; dashboard list filtered to the
+    // connector; tz defaulted from the profile.
+    // #2: seed a sensible default Report name from the cadence word + the
+    // connector ("Weekly Facebook report", "Daily Echo report"). the
+    // cadence word now comes from FREQUENCY (the Date Range selector is gone from
+    // the import dialog). The user can overwrite it; we only seed when empty.
+    const FREQ_WORD = {
+        daily: "Daily", weekly: "Weekly", biweekly: "Biweekly", monthly: "Monthly",
+    };
+    let _lastSeededName = "";
+    function seedReportName(connectorName) {
+        const cur = $("rsm-name").value.trim();
+        // Seed only if empty or still the last auto-seeded value (never clobber
+        // a user edit).
+        if (cur && cur !== _lastSeededName) return;
+        const word = FREQ_WORD[$("rsm-frequency").value] || "Scheduled";
+        _lastSeededName = word + " " + (connectorName || "report") + " report";
+        $("rsm-name").value = _lastSeededName;
+    }
+    // Re-seed the name when the frequency changes (v2 connector mode only).
+    $("rsm-frequency").addEventListener("change", function () {
+        if (v2.connectorId) seedReportName(v2.connectorName);
+    });
+
+    window.rsWizard = {
+        open: function (connectorId, connectorName, teamEsids) {
+            setErr("");
+            $("rsm-title").textContent = "New " + (connectorName || "connector") + " report";
+            resetForm();
+            v2.connectorId = connectorId;
+            v2.connectorName = connectorName || connectorId;
+            v2.teamEsids = (teamEsids || []).slice();
+            setV2Mode(true);
+            seedReportName(v2.connectorName);
+            // render the Scope listbox filtered to ONLY teams that have
+            // this connector configured (candidates = the page-tree selection), so
+            // the dialog matches the connector tile count rather than echoing every
+            // selected team. renderScopeTree sets the live scope note itself.
+            $("rsm-v2-scope-note").textContent = (v2.connectorName || v2.connectorId) + " · loading teams…";
+            // No options needed (v1 org/team/dashboard come from dashboard-builder;
+            // v2 uses connector-dashboards + the fixed team scope).
+            Promise.all([renderScopeTree(v2.teamEsids), loadConnectorDashboards(connectorId), applyProfileTimezone()])
+                .finally(function () { overlay.classList.remove("hidden"); });
+        },
+    };
+})();
+
+// ── Create / edit EMAIL schedule modal ──────────────────────────
+// A purpose-built dialog: emails an existing dashboard report on a cadence,
+// triggers NO import and saves NO snapshot. Sends schedule_type:"email" so the
+// service's run_due email branch handles it.
+(function () {
+    "use strict";
+    const csrf = document.querySelector('meta[name="csrf-token"]').content;
+    const CREATE_URL = "{{ url_for('report_scheduler.api_create') }}";
+    const API_BASE = "{{ url_for('report_scheduler.index') }}".replace(/\/$/, "") + "/api/";
+    const PAGE_API = API_BASE;
+    const DASHBOARDS_URL = "{{ url_for('dashboard_builder.list_dashboards') }}";
+
+    const $ = function (id) { return document.getElementById(id); };
+    const overlay = $("esm-overlay");
+    let dashboardsLoaded = false;
+    let hasDashboards = false;
+    let teamTreeLoaded = false;
+
+    function setErr(msg) {
+        const el = $("esm-error");
+        if (!msg) { el.classList.add("rsm-hidden"); el.textContent = ""; return; }
+        el.textContent = msg; el.classList.remove("rsm-hidden");
+    }
+
+    function escT(s) {
+        return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+            return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+        });
+    }
+
+    // optional team narrowing. Renders the creator's org/team tree
+    // (same /api/org-team-tree universe as the import builder) as checkboxes.
+    // Empty selection = all the creator's teams (the clamp).
+    function loadTeamTree() {
+        if (teamTreeLoaded) return Promise.resolve();
+        const treeEl = $("esm-team-tree");
+        return fetch(API_BASE + "org-team-tree", { headers: { "Accept": "application/json" } })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                const orgs = (d && d.orgs) || [];
+                if (!orgs.length) {
+                    treeEl.innerHTML = '<div class="rs-tiles-empty">No teams are visible to you.</div>';
+                } else {
+                    treeEl.innerHTML = orgs.map(function (o, i) {
+                        const teamRows = (o.teams || []).map(function (t) {
+                            return '<label class="rs-team-label"><input type="checkbox" class="es-team-cb" value="'
+                                + escT(t.esid) + '"> ' + escT(t.title) + "</label>";
+                        }).join("");
+                        return '<div class="rs-org">'
+                            + '<label class="rs-org-label"><input type="checkbox" class="es-org-cb" data-org="' + i + '"> '
+                            + escT(o.org_title) + "</label>"
+                            + '<div class="rs-org-teams" data-org="' + i + '">' + teamRows + "</div>"
+                            + "</div>";
+                    }).join("");
+                }
+                teamTreeLoaded = true;
+            })
+            .catch(function () {
+                treeEl.innerHTML = '<div class="rs-tiles-empty">Could not load teams.</div>';
+            });
+    }
+
+    // Org checkbox toggles all of its teams (mirrors the import builder tree).
+    $("esm-team-tree").addEventListener("change", function (e) {
+        const t = e.target;
+        if (t.classList.contains("es-org-cb")) {
+            const org = t.getAttribute("data-org");
+            $("esm-team-tree").querySelectorAll('.rs-org-teams[data-org="' + org + '"] input.es-team-cb')
+                .forEach(function (cb) { cb.checked = t.checked; });
+        }
+    });
+
+    function getCheckedTeams() {
+        return Array.prototype.map.call(
+            $("esm-team-tree").querySelectorAll("input.es-team-cb:checked"),
+            function (cb) { return cb.value; }
+        );
+    }
+
+    function setCheckedTeams(esids) {
+        const want = new Set(esids || []);
+        $("esm-team-tree").querySelectorAll("input.es-team-cb").forEach(function (cb) {
+            cb.checked = want.has(cb.value);
+        });
+        $("esm-team-tree").querySelectorAll("input.es-org-cb").forEach(function (cb) { cb.checked = false; });
+    }
+
+    // built-in SYSTEM report types offered alongside the user's
+    // dashboards, listed at the top of the "Reports" group. The ids are the
+    // synthetic report:* dashboard_ids report_types_service.REPORT_TYPES
+    // recognises — keep the two lists in sync.
+    const SYSTEM_REPORTS = [
+        { id: "report:backfill", title: "Backfill report" },
+        { id: "report:import_errors", title: "Import errors" },
+        { id: "report:bitly_clicks", title: "Bitly Clicks per Link" }
+    ];
+
+    // follow-up — the default subject template. Kept identical to
+    // report_email_service._DEFAULT_SUBJECT: the field is pre-filled with this
+    // so it can be edited in place, and an empty field still resolves to the
+    // same string server-side.
+    const ESM_DEFAULT_SUBJECT = "{{ '{{report_name}}' }} — {{ '{{date_range}}' }}";
+
+    // Load the user's dashboards into the #esm-dashboard-tree checkbox tree,
+    // grouped by menu. The built-in report types are always present, so the
+    // tree is never empty and creation is never blocked on having a dashboard.
+    function loadDashboards() {
+        if (dashboardsLoaded) return Promise.resolve();
+
+        function render(dashboards) {
+            const treeEl = $("esm-dashboard-tree");
+
+            // Group dashboards under their `menu` (Dashboard Builder's grouping:
+            // empty/missing menu → "Reports"), so the tree mirrors how the
+            // builder displays dashboards under menus.
+            const groups = {};
+            dashboards.forEach(function (db) {
+                const menu = (db.menu || "").trim() || "Reports";
+                (groups[menu] = groups[menu] || []).push(db);
+            });
+            // the built-in report types always live in the Reports
+            // group, so it exists even with zero user dashboards.
+            groups["Reports"] = groups["Reports"] || [];
+            // Group order: alphabetical, with "Reports" first (the default bucket).
+            const groupNames = Object.keys(groups).sort(function (a, b) {
+                if (a === "Reports") return -1;
+                if (b === "Reports") return 1;
+                return a.localeCompare(b);
+            });
+            // Within a group: by menu_position (nulls last), then title — matches
+            // the builder's per-menu ordering.
+            treeEl.innerHTML = groupNames.map(function (name, i) {
+                groups[name].sort(function (a, b) {
+                    const pa = a.menu_position != null ? a.menu_position : Infinity;
+                    const pb = b.menu_position != null ? b.menu_position : Infinity;
+                    if (pa !== pb) return pa - pb;
+                    return (a.title || "").localeCompare(b.title || "");
+                });
+                if (name === "Reports") {
+                    // system report types head the Reports group,
+                    // above the user's dashboards (they aren't menu-positioned).
+                    groups[name] = SYSTEM_REPORTS.concat(groups[name]);
+                }
+                const rows = groups[name].map(function (db) {
+                    return '<label class="rs-team-label"><input type="checkbox" class="es-dash-cb" value="'
+                        + escT(db.id) + '"> ' + escT(db.title) + "</label>";
+                }).join("");
+                return '<div class="rs-org">'
+                    + '<label class="rs-org-label"><input type="checkbox" class="es-dashgroup-cb" data-group="' + i + '"> '
+                    + escT(name) + "</label>"
+                    + '<div class="rs-org-teams" data-group="' + i + '">' + rows + "</div>"
+                    + "</div>";
+            }).join("");
+
+            // the system report types are always available, so the
+            // tree is never empty (the old zero-dashboards block is gone).
+            hasDashboards = true;
+            dashboardsLoaded = true;
+        }
+
+        return fetch(DASHBOARDS_URL).then(function (r) { return r.json(); }).then(function (d) {
+            render((d && d.dashboards) || []);
+        }).catch(function () {
+            // Dashboards couldn't load — still offer the built-in report types.
+            render([]);
+        });
+    }
+
+    // Group checkbox toggles all of its dashboards (mirrors the team tree).
+    $("esm-dashboard-tree").addEventListener("change", function (e) {
+        const t = e.target;
+        if (t.classList.contains("es-dashgroup-cb")) {
+            const g = t.getAttribute("data-group");
+            $("esm-dashboard-tree").querySelectorAll('.rs-org-teams[data-group="' + g + '"] input.es-dash-cb')
+                .forEach(function (cb) { cb.checked = t.checked; });
+        }
+    });
+
+    function getCheckedDashboards() {
+        return Array.prototype.map.call(
+            $("esm-dashboard-tree").querySelectorAll("input.es-dash-cb:checked"),
+            function (cb) { return cb.value; }
+        );
+    }
+
+    function setCheckedDashboards(ids) {
+        const want = new Set(ids || []);
+        $("esm-dashboard-tree").querySelectorAll("input.es-dash-cb").forEach(function (cb) {
+            cb.checked = want.has(cb.value);
+        });
+        $("esm-dashboard-tree").querySelectorAll("input.es-dashgroup-cb").forEach(function (cb) { cb.checked = false; });
+    }
+
+    function applyNoDashboardState() {
+        $("esm-no-dashboard-warn").classList.toggle("rsm-hidden", hasDashboards);
+        $("esm-dashboard-tree").classList.toggle("rsm-hidden", !hasDashboards);
+        $("esm-save").disabled = !hasDashboards;
+    }
+
+    function syncFreqFields() {
+        const f = $("esm-frequency").value;
+        $("esm-dow-group").classList.toggle("rsm-hidden", !(f === "weekly" || f === "biweekly"));
+        $("esm-dom-group").classList.toggle("rsm-hidden", f !== "monthly");
+    }
+
+    function applyProfileTimezone() {
+        return fetch(PAGE_API + "profile-timezone", { headers: { "Accept": "application/json" } })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                let tz = (d && d.time_zone) || "UTC";
+                if (d && d.is_default) {
+                    try {
+                        const browser = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                        if (browser) tz = browser;
+                    } catch (e) { /* keep stored/UTC */ }
+                }
+                const sel = $("esm-timezone");
+                if (Array.prototype.some.call(sel.options, function (o) { return o.value === tz; })) {
+                    sel.value = tz;
+                }
+            }).catch(function () { /* leave UTC */ });
+    }
+
+    function resetForm() {
+        $("esm-id").value = "";
+        ["esm-name", "esm-description", "esm-recipients"].forEach(function (id) { $(id).value = ""; });
+        $("esm-frequency").value = "daily"; $("esm-dow").value = "0"; $("esm-dom").value = "1";
+        $("esm-time").value = "06:00"; $("esm-timezone").value = "UTC"; $("esm-range").value = "rolling_7d";
+        $("esm-format").value = "summary_link";
+        // follow-up — editable default, not a placeholder.
+        $("esm-subject").value = ESM_DEFAULT_SUBJECT;
+        setCheckedDashboards([]);  // nothing pre-checked; at least one required
+        setCheckedTeams([]);  // default: all my teams (no narrowing)
+        syncFreqFields();
+    }
+
+    function open(title) {
+        setErr("");
+        $("esm-title").textContent = title;
+        return Promise.all([loadDashboards(), loadTeamTree()]).finally(function () {
+            applyNoDashboardState();
+            overlay.classList.remove("hidden");
+        });
+    }
+    function close() { overlay.classList.add("hidden"); }
+
+    function prefill(s) {
+        const cfg = s.schedule || {}, em = (s.delivery || {}).email || {};
+        $("esm-id").value = s.schedule_id || "";
+        $("esm-name").value = s.name || "";
+        $("esm-description").value = s.description || "";
+        // follow-up — dashboard_ids is the v2 list; fall back to the
+        // v1 scalar so schedules saved before this change still hydrate.
+        setCheckedDashboards(
+            (s.dashboard_ids && s.dashboard_ids.length) ? s.dashboard_ids
+                : (s.dashboard_id ? [s.dashboard_id] : [])
+        );
+        $("esm-frequency").value = cfg.frequency || "daily";
+        if (cfg.day_of_week != null) $("esm-dow").value = String(cfg.day_of_week);
+        if (cfg.day_of_month != null) $("esm-dom").value = String(cfg.day_of_month);
+        $("esm-time").value = cfg.time || "06:00";
+        $("esm-timezone").value = cfg.timezone || "UTC";
+        $("esm-range").value = cfg.date_range_mode || "rolling_7d";
+        $("esm-recipients").value = (em.recipients || []).join(", ");
+        $("esm-format").value = em.format || "summary_link";
+        setCheckedTeams(s.team_esids || []);  // hydrate the narrowing
+        // Show the effective template: a schedule saved with a blank subject
+        // resolves to the default server-side, so surface that, editable.
+        $("esm-subject").value = em.subject_template || ESM_DEFAULT_SUBJECT;
+        syncFreqFields();
+    }
+
+    function gather() {
+        return {
+            name: $("esm-name").value,
+            description: $("esm-description").value,
+            schedule_type: "email",
+            // Email schedules carry no connector scope — just the dashboard.
+            // an optional team narrowing; [] = all my teams (the
+            // creator clamp). Server validates all-in-creator-scope.
+            team_esids: getCheckedTeams(),
+            // follow-up — MULTI-dashboard. dashboard_ids is canonical;
+            // dashboard_id carries the first for v1 readers (same dual-write
+            // shape as team_id/team_esids).
+            dashboard_ids: getCheckedDashboards(),
+            frequency: $("esm-frequency").value,
+            day_of_week: $("esm-dow").value,
+            day_of_month: $("esm-dom").value,
+            time: $("esm-time").value,
+            timezone: $("esm-timezone").value,
+            date_range_mode: $("esm-range").value,
+            // Emailing IS the purpose: always enabled, recipients required.
+            save_snapshot: false,
+            email: {
+                enabled: true,
+                recipients: $("esm-recipients").value,
+                format: $("esm-format").value,
+                subject_template: $("esm-subject").value,
+            },
+        };
+    }
+
+    function save() {
+        setErr("");
+        if (!hasDashboards) { setErr("You have no dashboards available to email."); return; }
+        if (!getCheckedDashboards().length) { setErr("Choose at least one dashboard to email."); return; }
+        if (!$("esm-recipients").value.trim()) { setErr("Enter at least one recipient."); return; }
+        const id = $("esm-id").value;
+        const btn = $("esm-save");
+        btn.disabled = true; btn.textContent = "Saving…";
+        const url = id ? (API_BASE + encodeURIComponent(id)) : CREATE_URL;
+        fetch(url, {
+            method: id ? "PUT" : "POST",
+            headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
+            body: JSON.stringify(gather()),
+        }).then(function (r) { return r.json(); }).then(function (d) {
+            btn.disabled = false; btn.textContent = "Save schedule";
+            if (!d.ok) { setErr(d.error || "Could not save the schedule."); return; }
+            close();
+            if (window.rsReloadList) window.rsReloadList();
+            // recipients outside the workspace must confirm their address
+            // before delivery includes them; tell the author who is pending.
+            if (d.warning) { alert(d.warning); }
+        }).catch(function () {
+            btn.disabled = false; btn.textContent = "Save schedule";
+            setErr("Network error — please try again.");
+        });
+    }
+
+    $("esm-frequency").addEventListener("change", syncFreqFields);
+    $("esm-close").addEventListener("click", close);
+    $("esm-cancel").addEventListener("click", close);
+    // No backdrop-click dismiss — this is a data-entry form; an accidental
+    // outside-click shouldn't discard everything typed. Escape / X / Cancel close.
+    document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape" && !overlay.classList.contains("hidden")) close();
+    });
+    $("esm-save").addEventListener("click", save);
+
+    window.esForm = {
+        openCreate: function () {
+            const opened = open("New email schedule");
+            resetForm();
+            opened.then(applyProfileTimezone);
+        },
+        openEdit: function (id) {
+            const opened = open("Edit email schedule");
+            resetForm();
+            const loaded = fetch(API_BASE + encodeURIComponent(id), { headers: { "Accept": "application/json" } })
+                .then(function (r) { return r.json(); });
+            Promise.all([opened, loaded]).then(function (res) {
+                const d = res[1];
+                if (!d.ok) { setErr(d.error || "Could not load the schedule."); return; }
+                prefill(d.schedule);
+            });
+        },
+    };
+})();
+
+// ── Report history overlay ────────────────────────────────────────────────
+(function () {
+    "use strict";
+    const $ = function (id) { return document.getElementById(id); };
+    const overlay = $("rsh-overlay");
+    const listEl = $("rsh-list");
+    const base = "{{ url_for('report_scheduler.index') }}".replace(/\/$/, "");
+    const csrf = document.querySelector('meta[name="csrf-token"]').content;
+    let currentId = null;
+    let currentCanEdit = true;  // whether to render the per-row Delete
+
+    function esc(s) {
+        return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+            return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+        });
+    }
+    function fmtTs(iso) { if (!iso) return ""; try { return new Date(iso).toLocaleString(); } catch (e) { return iso; } }
+
+    function load() {
+        listEl.innerHTML = '<div class="rs-loading">Loading…</div>';
+        const params = [];
+        if ($("rsh-from").value) params.push("date_from=" + encodeURIComponent($("rsh-from").value));
+        if ($("rsh-to").value) params.push("date_to=" + encodeURIComponent($("rsh-to").value));
+        const url = base + "/api/" + encodeURIComponent(currentId) + "/snapshots" + (params.length ? "?" + params.join("&") : "");
+        fetch(url, { headers: { "Accept": "application/json" } })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (!d.ok) { listEl.innerHTML = '<div class="rs-empty">' + esc(d.error || "Could not load history.") + "</div>"; return; }
+                const snaps = d.snapshots || [];
+                if (!snaps.length) { listEl.innerHTML = '<div class="rs-empty">No snapshots yet.</div>'; return; }
+                listEl.innerHTML = snaps.map(function (s) {
+                    const dr = s.date_range || {};
+                    const viewUrl = base + "/snapshots/" + encodeURIComponent(s.snapshot_id);
+                    const expBase = base + "/api/snapshots/" + encodeURIComponent(s.snapshot_id) + "/export";
+                    // a backfill record is a one-time historical-pull
+                    // run, not a viewable report: render a labeled row noting what
+                    // was backfilled, with NO View/CSV/Excel (there is no snapshot
+                    // content). Keep the per-row Delete (it's a snapshot doc — the
+                    // clutter users want to clear), like the import-run records.
+                    if (s.record_type === "backfill") {
+                        const bf = s.backfill || {};
+                        const win = (dr.from || "") + (dr.from ? " – " + dr.to : "");
+                        const nDays = bf.days || 0;
+                        const label = "Backfill" + (nDays ? " · " + nDays + (nDays === 1 ? " day" : " days") : "")
+                            + (bf.connector_id ? " · " + esc(bf.connector_id) : "");
+                        // actual covered range (how much of the requested
+                        // window landed). Shown only when known AND it differs from the
+                        // request, so "I asked for 3 months but got 1" is visible.
+                        let coveredLine = "";
+                        if (bf.covered_from && bf.covered_to
+                            && (bf.covered_from !== dr.from || bf.covered_to !== dr.to)) {
+                            coveredLine = '<div class="rsh-meta">Imported ' + esc(bf.covered_from)
+                                + " – " + esc(bf.covered_to) + " of the requested range</div>";
+                        }
+                        // outcome badges: amber "paused at rate limit", red error count.
+                        const bfErrCount = bf.error_count || 0;
+                        let bfBadges = "";
+                        if (bf.bailed_out) {
+                            bfBadges += '<span class="rsh-warn-badge" title="A Meta rate limit stopped this backfill early. '
+                                + 'Run it again to continue from where it left off.">Paused at rate limit</span>';
+                        }
+                        if (bfErrCount) {
+                            bfBadges += '<span class="rsh-err-badge" title="This backfill had ' + bfErrCount
+                                + ' problem' + (bfErrCount === 1 ? "" : "s") + '">' + bfErrCount
+                                + ' error' + (bfErrCount === 1 ? "" : "s") + "</span>";
+                        }
+                        let bfErrDetails = "";
+                        if (bfErrCount && (bf.errors || []).length) {
+                            const items = bf.errors.map(function (e) {
+                                return '<li><span class="rsh-err-title">' + esc(e.title) + ":</span> " + esc(e.message) + "</li>";
+                            });
+                            bfErrDetails = '<details class="rsh-errors"><summary>Show error'
+                                + (bfErrCount === 1 ? "" : "s") + "</summary><ul>" + items.join("") + "</ul></details>";
+                        }
+                        let bfActions = '<span class="rsh-import-only">Backfill · no report</span>';
+                        if (currentCanEdit) {
+                            bfActions += '<button type="button" class="cs-btn cs-btn-normal cs-btn-sm rsh-del-btn"'
+                                + ' data-snap-id="' + esc(s.snapshot_id) + '">Delete</button>';
+                        }
+                        return '<div class="rsh-row">'
+                            + '<div><div class="rsh-when">' + esc(fmtTs(s.generated_at)) + " " + bfBadges + "</div>"
+                            + '<div class="rsh-meta">' + esc(win) + (win ? "  ·  " : "") + label + "</div>"
+                            + coveredLine + bfErrDetails + "</div>"
+                            + '<div class="rsh-row-actions">' + bfActions + "</div></div>";
+                    }
+                    // #7 — per-run error badge + an expandable list of the
+                    // chart/table errors and any precompute-skipped reason.
+                    const errCount = s.error_count || 0;
+                    const badge = errCount
+                        ? '<span class="rsh-err-badge" title="This run had ' + errCount
+                            + ' problem' + (errCount === 1 ? "" : "s") + '">' + errCount
+                            + ' error' + (errCount === 1 ? "" : "s") + "</span>"
+                        : "";
+                    let errDetails = "";
+                    if (errCount) {
+                        const items = (s.errors || []).map(function (e) {
+                            return '<li><span class="rsh-err-title">' + esc(e.title) + ":</span> " + esc(e.message) + "</li>";
+                        });
+                        if (s.precompute_skipped) {
+                            items.unshift('<li><span class="rsh-err-title">Report skipped:</span> ' + esc(s.precompute_skipped) + "</li>");
+                        }
+                        errDetails = '<details class="rsh-errors"><summary>Show error'
+                            + (errCount === 1 ? "" : "s") + "</summary><ul>" + items.join("") + "</ul></details>";
+                    }
+                    // benign info note (configuration state, not a
+                    // failure): a grey line, NOT a red error badge. The run did its
+                    // job (refreshed data); there was just nothing to render —
+                    // either no dashboard attached, or the dashboard has no charts.
+                    // an import-only schedule (no dashboard_id) is an
+                    // import-RUN record, not a viewable report: there is no snapshot
+                    // content to open, so we suppress View/CSV/Excel for it (a
+                    // viewable-but-empty stub read as a bug). The dashboard-has-no-
+                    // charts case keeps its actions (the snapshot doc still exists).
+                    let infoNote = "";
+                    let importOnly = false;
+                    if (s.info_note) {
+                        let friendly = s.info_note;
+                        if (s.info_note === "no dashboard_id on schedule") {
+                            friendly = "Import-only schedule — no dashboard attached. This is an import-run record; there is no report to view.";
+                            importOnly = true;
+                        } else if (/ has no charts$/.test(s.info_note)) {
+                            friendly = "The attached dashboard has no charts yet, so no report was generated.";
+                        }
+                        infoNote = '<div class="rsh-info">' + esc(friendly) + "</div>";
+                    }
+                    // label reflects whatever the snapshot actually holds
+                    // (charts AND tables). chart_count counts data.charts; a table is
+                    // stored in data.tables, so a table-only dashboard used to read a
+                    // bare "0 charts". Build a natural "N chart(s), M table(s)" count,
+                    // and fall back to "No content" when both are zero.
+                    const nCharts = s.chart_count || 0;
+                    const nTables = s.table_count || 0;
+                    const parts = [];
+                    if (nCharts) parts.push(nCharts + (nCharts === 1 ? " chart" : " charts"));
+                    if (nTables) parts.push(nTables + (nTables === 1 ? " table" : " tables"));
+                    const countLabel = parts.length ? parts.join(", ") : (importOnly ? "Import run" : "No content");
+                    // CSV/Excel export a snapshot's data.tables; a
+                    // snapshot with none (graphical-only dashboard, e.g. an
+                    // Impact Report page) would download a valid-but-empty
+                    // file. Hide the buttons for those rows (hidden, not
+                    // disabled — a dead control in a dense row is noise);
+                    // View stays, it renders charts too.
+                    const exportLinks = nTables
+                        ? '<a class="cs-btn cs-btn-normal cs-btn-sm" href="' + expBase + '?format=csv">CSV</a>'
+                            + '<a class="cs-btn cs-btn-normal cs-btn-sm" href="' + expBase + '?format=xlsx">Excel</a>'
+                        : '';
+                    let actions = importOnly
+                        ? '<span class="rsh-import-only">Import run · no report</span>'
+                        : '<a class="cs-btn cs-btn-normal cs-btn-sm" href="' + viewUrl + '">View</a>' + exportLinks;
+                    // per-row Delete (owners/privileged only; the server
+                    // re-checks). Available on import-run records too — they're
+                    // snapshot docs and exactly the clutter users want to clear.
+                    if (currentCanEdit) {
+                        actions += '<button type="button" class="cs-btn cs-btn-normal cs-btn-sm rsh-del-btn"'
+                            + ' data-snap-id="' + esc(s.snapshot_id) + '">Delete</button>';
+                    }
+                    return '<div class="rsh-row">'
+                        + '<div><div class="rsh-when">' + esc(fmtTs(s.generated_at)) + "</div>"
+                        + '<div class="rsh-meta">' + esc((dr.from || "") + (dr.from ? " – " + dr.to : "")) + "  ·  "
+                        + esc(countLabel) + badge + "</div>"
+                        + errDetails + infoNote + "</div>"
+                        + '<div class="rsh-row-actions">'
+                        + actions
+                        + "</div></div>";
+                }).join("");
+            })
+            .catch(function () { listEl.innerHTML = '<div class="rs-empty">Network error.</div>'; });
+    }
+
+    function close() { overlay.classList.add("hidden"); }
+    $("rsh-close").addEventListener("click", close);
+    $("rsh-cancel").addEventListener("click", close);
+    // No backdrop-click dismiss (site-wide change). Escape is the keyboard dismiss.
+    document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape" && !overlay.classList.contains("hidden")) close();
+    });
+    $("rsh-filter").addEventListener("click", load);
+
+    // delegated per-row Delete. Confirms, calls DELETE
+    // /api/snapshots/<id>, then reloads the list in place so the removed run
+    // disappears (the snapshot is hard-deleted, refresh=wait_for, so the re-read
+    // reflects it).
+    listEl.addEventListener("click", function (e) {
+        const btn = e.target.closest(".rsh-del-btn");
+        if (!btn) return;
+        const snapId = btn.getAttribute("data-snap-id");
+        if (!snapId) return;
+        if (!confirm("Delete this report run from history? This can't be undone.")) return;
+        btn.disabled = true;
+        const label = btn.textContent;
+        btn.textContent = "Deleting…";
+        fetch(base + "/api/snapshots/" + encodeURIComponent(snapId), {
+            method: "DELETE",
+            headers: { "Accept": "application/json", "X-CSRF-Token": csrf },
+        }).then(function (r) { return r.json(); }).then(function (d) {
+            if (!d.ok) {
+                btn.disabled = false; btn.textContent = label;
+                alert("Delete failed: " + (d.error || "unknown error"));
+                return;
+            }
+            load();  // in-place refresh
+        }).catch(function () {
+            btn.disabled = false; btn.textContent = label;
+            alert("Delete failed: network error — please try again.");
+        });
+    });
+
+    window.rsHistory = {
+        open: function (scheduleId, canEdit) {
+            currentId = scheduleId;
+            // only an owner/privileged caller (canEdit) gets the per-row
+            // Delete control; default true if the caller didn't pass it.
+            currentCanEdit = canEdit !== false;
+            $("rsh-from").value = ""; $("rsh-to").value = "";
+            overlay.classList.remove("hidden");
+            load();
+        },
+    };
+})();
+
+// ── Backfill dialog ─────────────────────────────────────────────
+(function () {
+    "use strict";
+    const $ = function (id) { return document.getElementById(id); };
+    const overlay = $("rbm-overlay");
+    const base = "{{ url_for('report_scheduler.index') }}".replace(/\/$/, "");
+    const csrf = document.querySelector('meta[name="csrf-token"]').content;
+    const MAX_DAYS = 365;
+    let currentId = null;
+    let currentConnector = "";
+    let busy = false;
+
+    function showError(msg) {
+        const el = $("rbm-error");
+        if (!msg) { el.classList.add("rsm-hidden"); el.textContent = ""; return; }
+        el.textContent = msg; el.classList.remove("rsm-hidden");
+    }
+
+    function close() {
+        overlay.classList.add("hidden");
+        currentId = null;
+        currentConnector = "";
+        showError(null);
+    }
+
+    // Format a Date as YYYY-MM-DD in local time (a date input's value string).
+    function isoDate(d) {
+        const mm = String(d.getMonth() + 1).padStart(2, "0");
+        const dd = String(d.getDate()).padStart(2, "0");
+        return d.getFullYear() + "-" + mm + "-" + dd;
+    }
+
+    // validate the from/to range client-side (the route + service
+    // re-validate). Returns {from, to} on success or null after showing an error.
+    function rangeValue() {
+        const from = ($("rbm-from").value || "").trim();
+        const to = ($("rbm-to").value || "").trim();
+        if (!from || !to) { showError("Select a from and to date."); return null; }
+        const dFrom = new Date(from + "T00:00:00");
+        const dTo = new Date(to + "T00:00:00");
+        if (isNaN(dFrom.getTime()) || isNaN(dTo.getTime())) { showError("Enter valid dates."); return null; }
+        if (dFrom > dTo) { showError("The from date must be on or before the to date."); return null; }
+        const today = new Date(isoDate(new Date()) + "T00:00:00");
+        if (dTo > today) { showError("The to date cannot be in the future."); return null; }
+        const span = Math.round((dTo - dFrom) / 86400000) + 1;
+        if (span > MAX_DAYS) { showError("The date range must be " + MAX_DAYS + " days or fewer."); return null; }
+        return { from: from, to: to };
+    }
+
+    function submit() {
+        if (busy || !currentId) return;
+        const range = rangeValue();
+        if (!range) return;
+        // Overwrite only applies to Meta (the sole connector with a force path); the
+        // checkbox is hidden otherwise, so read it only for meta_ads.
+        const overwrite = currentConnector === "meta_ads" && $("rbm-overwrite").checked;
+        busy = true;
+        showError(null);
+        const okBtn = $("rbm-ok");
+        const label = okBtn.textContent;
+        okBtn.disabled = true; okBtn.textContent = "Starting…";
+        fetch(base + "/api/" + encodeURIComponent(currentId) + "/backfill", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
+            body: JSON.stringify({ date_range: range, overwrite: overwrite }),
+        })
+            .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+            .then(function (res) {
+                busy = false; okBtn.disabled = false; okBtn.textContent = label;
+                if (!res.ok || !res.d.ok) {
+                    showError((res.d && res.d.error) || "Could not start the backfill.");
+                    return;
+                }
+                close();
+                // The card's progress bar rehydrates from last_run_state on reload.
+                if (window.rsReloadList) window.rsReloadList();
+            })
+            .catch(function () {
+                busy = false; okBtn.disabled = false; okBtn.textContent = label;
+                showError("Could not start the backfill — network error. Please try again.");
+            });
+    }
+
+    $("rbm-close").addEventListener("click", close);
+    $("rbm-cancel").addEventListener("click", close);
+    $("rbm-ok").addEventListener("click", submit);
+    // A backdrop click does NOT dismiss this dialog — it holds typed input and an
+    // accidental outside-click shouldn't discard it. Escape is the deliberate
+    // keyboard dismiss; X / Cancel are the explicit ones.
+    document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape" && !overlay.classList.contains("hidden")) close();
+    });
+
+    window.rsBackfill = {
+        open: function (scheduleId, connectorId) {
+            currentId = scheduleId;
+            currentConnector = connectorId || "";
+            // Default to the last 30 days ending today; cap the To picker at today.
+            const today = new Date();
+            const from = new Date();
+            from.setDate(from.getDate() - 29);
+            $("rbm-from").value = isoDate(from);
+            $("rbm-to").value = isoDate(today);
+            $("rbm-from").max = isoDate(today);
+            $("rbm-to").max = isoDate(today);
+            // Overwrite checkbox: Meta only, always reset to unchecked.
+            $("rbm-overwrite").checked = false;
+            $("rbm-overwrite-row").classList.toggle("rsm-hidden", currentConnector !== "meta_ads");
+            showError(null);
+            overlay.classList.remove("hidden");
+            $("rbm-from").focus();
+        },
+    };
+})();
+
+// ── v2 builder: org/team tree + connector tiles (Phase B) ──────────────────
+(function () {
+    "use strict";
+    const base = "{{ url_for('report_scheduler.index') }}".replace(/\/$/, "");
+    const treeEl = document.getElementById("rs-tree");
+    const tilesEl = document.getElementById("rs-tiles");
+    const csrf = document.querySelector('meta[name="csrf-token"]').content;
+
+    function esc(s) {
+        return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+            return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+        });
+    }
+
+    function selectedTeams() {
+        return Array.prototype.slice
+            .call(treeEl.querySelectorAll('input.rs-team-cb:checked'))
+            .map(function (cb) { return cb.value; });
+    }
+
+    let tileTimer = null;
+    function refreshTiles() {
+        const teams = selectedTeams();
+        if (!teams.length) {
+            tilesEl.innerHTML = '<div class="rs-tiles-empty">Select one or more teams above to see their connectors.</div>';
+            return;
+        }
+        tilesEl.innerHTML = '<div class="rs-tiles-empty">Loading connectors…</div>';
+        fetch(base + "/api/connector-tiles", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
+            body: JSON.stringify({ team_esids: teams }),
+        }).then(function (r) { return r.json(); }).then(function (d) {
+            // Guard against a stale response if the selection changed meanwhile.
+            if (JSON.stringify(selectedTeams()) !== JSON.stringify(teams)) return;
+            const tiles = (d && d.tiles) || [];
+            if (!tiles.length) {
+                // the selected team(s) have no connector configured, so
+                // there is nothing to schedule (and no dashboard to report on). Tell
+                // the user the actionable next step rather than just stating the
+                // empty result.
+                tilesEl.innerHTML = '<div class="rs-tiles-empty">Set up a Data Connector first.</div>';
+                return;
+            }
+            tilesEl.innerHTML = tiles.map(function (t) {
+                const icon = t.icon
+                    ? '<img class="rs-tile-icon" src="' + esc(t.icon) + '" alt="">'
+                    : '<div class="rs-tile-glyph">' + esc((t.glyph || t.name || "?").charAt(0)) + "</div>";
+                return '<div class="rs-tile" data-connector="' + esc(t.connector_id) + '" data-name="' + esc(t.name) + '">'
+                    + icon
+                    + '<div class="rs-tile-name">' + esc(t.name) + "</div>"
+                    + '<div class="rs-tile-count">' + t.team_count + " team" + (t.team_count === 1 ? "" : "s") + "</div>"
+                    + "</div>";
+            }).join("");
+        }).catch(function () {
+            tilesEl.innerHTML = '<div class="rs-tiles-empty">Could not load connectors.</div>';
+        });
+    }
+    function scheduleTileRefresh() {
+        if (tileTimer) clearTimeout(tileTimer);
+        tileTimer = setTimeout(refreshTiles, 150);
+    }
+
+    function renderTree(orgs) {
+        if (!orgs || !orgs.length) {
+            treeEl.innerHTML = '<div class="rs-tiles-empty">No teams are visible to you.</div>';
+            return;
+        }
+        treeEl.innerHTML = orgs.map(function (o, i) {
+            const teamRows = o.teams.map(function (t) {
+                // amber badge for a team still on its own legacy Meta
+                // app (server-computed legacy_meta_app field; absent = clean).
+                // Reuses the.rsh-warn-badge treatment — a standing
+                // config warning, not a run failure, so never the red badge.
+                const legacyBadge = t.legacy_meta_app
+                    ? ' <span class="rsh-warn-badge" title="' + esc(t.legacy_meta_app.detail) + '">Legacy Meta app</span>'
+                    : "";
+                return '<label class="rs-team-label"><input type="checkbox" class="rs-team-cb" value="'
+                    + esc(t.esid) + '"> ' + esc(t.title) + legacyBadge + "</label>";
+            }).join("");
+            return '<div class="rs-org">'
+                + '<label class="rs-org-label"><input type="checkbox" class="rs-org-cb" data-org="' + i + '"> '
+                + esc(o.org_title) + "</label>"
+                + '<div class="rs-org-teams" data-org="' + i + '">' + teamRows + "</div>"
+                + "</div>";
+        }).join("");
+    }
+
+    // Org checkbox toggles all its teams; team change re-syncs its org + tiles.
+    treeEl.addEventListener("change", function (e) {
+        const t = e.target;
+        if (t.classList.contains("rs-org-cb")) {
+            const org = t.getAttribute("data-org");
+            treeEl.querySelectorAll('.rs-org-teams[data-org="' + org + '"] input.rs-team-cb')
+                .forEach(function (cb) { cb.checked = t.checked; });
+        } else if (t.classList.contains("rs-team-cb")) {
+            const teamsDiv = t.closest(".rs-org-teams");
+            const org = teamsDiv.getAttribute("data-org");
+            const all = teamsDiv.querySelectorAll("input.rs-team-cb");
+            const checked = teamsDiv.querySelectorAll("input.rs-team-cb:checked");
+            const orgCb = treeEl.querySelector('.rs-org-cb[data-org="' + org + '"]');
+            if (orgCb) orgCb.checked = all.length === checked.length;
+        }
+        scheduleTileRefresh();
+    });
+
+    // collapse/expand the builder body. Starts collapsed (the markup
+    // carries .rs-collapsed) so the Scheduled imports list is visible without
+    // scrolling; the heading toggles it. Select all / Clear all stay outside the
+    // collapsible body, so they remain usable while collapsed.
+    const builderEl = document.getElementById("rs-builder");
+    const builderToggle = document.getElementById("rs-builder-toggle");
+    function setBuilderCollapsed(collapsed) {
+        builderEl.classList.toggle("rs-collapsed", collapsed);
+        builderToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    }
+    builderToggle.addEventListener("click", function () {
+        setBuilderCollapsed(!builderEl.classList.contains("rs-collapsed"));
+    });
+
+    document.getElementById("rs-select-all").addEventListener("click", function () {
+        treeEl.querySelectorAll("input[type=checkbox]").forEach(function (cb) { cb.checked = true; });
+        // Expand so the user sees the selection + the connector tiles it reveals.
+        setBuilderCollapsed(false);
+        scheduleTileRefresh();
+    });
+    document.getElementById("rs-clear-all").addEventListener("click", function () {
+        treeEl.querySelectorAll("input[type=checkbox]").forEach(function (cb) { cb.checked = false; });
+        scheduleTileRefresh();
+    });
+
+    // Tile click → Phase C wizard (stub for now); selection is exposed for it.
+    tilesEl.addEventListener("click", function (e) {
+        const tile = e.target.closest(".rs-tile");
+        if (!tile) return;
+        const connectorId = tile.getAttribute("data-connector");
+        const connectorName = tile.getAttribute("data-name");
+        if (window.rsWizard && window.rsWizard.open) {
+            window.rsWizard.open(connectorId, connectorName, selectedTeams());
+        } else {
+            alert("The scheduling wizard for " + connectorName + " is coming in the next update.");
+        }
+    });
+
+    fetch(base + "/api/org-team-tree", { headers: { "Accept": "application/json" } })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            const orgs = (d && d.orgs) || [];
+            // esid → title map for the email-card scope display.
+            const map = {};
+            orgs.forEach(function (o) {
+                (o.teams || []).forEach(function (t) { if (t.esid) map[t.esid] = t.title; });
+            });
+            window.rsTeamTitleByEsid = map;
+            renderTree(orgs);
+        })
+        .catch(function () { treeEl.innerHTML = '<div class="rs-tiles-empty">Could not load teams.</div>'; });
+
+    // Exposed for Phase C (wizard reads the current selection).
+    window.rsBuilder = { selectedTeams: selectedTeams };
+})();
+</script>
+{% endblock %}

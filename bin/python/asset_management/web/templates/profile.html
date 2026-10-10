@@ -1,0 +1,884 @@
+{% extends "base_v2.html" %}
+
+{% block sidebar %}{% endblock %}
+{% block main_toolbar %}{% endblock %}
+
+{% block title %}My Profile - Kavanah Analytics{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Profile is full-width — no sidebar even for management-console users. */
+    .cs-main {
+        margin-left: 0 !important;
+    }
+    .profile-page {
+        max-width: 960px;
+        margin: 0 auto;
+    }
+    .profile-page h1 {
+        font-size: 22px;
+        font-weight: var(--cs-font-weight-bold);
+        color: var(--cs-text-heading);
+        margin-bottom: 2px;
+    }
+    .profile-subtitle {
+        color: var(--cs-text-secondary);
+        font-size: var(--cs-font-size-s);
+        margin-bottom: var(--cs-space-m);
+    }
+    /* Two-column grid for short single-field cards (name, email, time zone)
+       on wide viewports; collapses to a single column under 720px. Password
+       and MFA cards opt out with .profile-card-full and stay full-width. */
+    .profile-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: var(--cs-space-s);
+        margin-bottom: var(--cs-space-s);
+    }
+    .profile-grid > .profile-card { margin-bottom: 0; }
+    @media (max-width: 720px) {
+        .profile-grid { grid-template-columns: 1fr; }
+    }
+    .profile-card {
+        background: var(--cs-bg-primary);
+        border: 1px solid var(--cs-border-divider);
+        border-radius: var(--cs-radius-l);
+        padding: var(--cs-space-m) var(--cs-space-l);
+        margin-bottom: var(--cs-space-s);
+    }
+    .profile-card-header {
+        display: flex;
+        align-items: center;
+        gap: var(--cs-space-xs);
+        margin-bottom: var(--cs-space-s);
+        padding-bottom: 6px;
+        border-bottom: 1px solid var(--cs-border-divider);
+    }
+    .profile-card-header i {
+        color: var(--cs-text-link);
+        font-size: 16px;
+    }
+    .profile-card-title {
+        font-size: var(--cs-font-size-m);
+        font-weight: var(--cs-font-weight-bold);
+        color: var(--cs-text-heading);
+        margin: 0;
+    }
+    .profile-card-description {
+        color: var(--cs-text-secondary);
+        font-size: var(--cs-font-size-s);
+        margin: 0 0 var(--cs-space-s) 0;
+        line-height: 1.4;
+    }
+    .profile-radio {
+        display: block !important;
+        padding: 10px 12px;
+        border: 1px solid var(--cs-border-divider);
+        border-radius: var(--cs-radius-s);
+        margin-bottom: 8px;
+        cursor: pointer;
+    }
+    .profile-radio:has(input:checked) {
+        border-color: var(--cs-border-input-focus);
+        background: rgba(9, 114, 211, 0.06);
+    }
+    .profile-radio input[type="radio"] {
+        margin-right: 8px;
+    }
+    .profile-radio-hint {
+        display: block;
+        font-size: var(--cs-font-size-s);
+        color: var(--cs-text-secondary);
+        margin-left: 22px;
+        margin-top: 2px;
+        font-weight: var(--cs-font-weight-regular);
+    }
+    .profile-form-row { margin-bottom: var(--cs-space-s); }
+    .profile-form-row label {
+        display: block;
+        font-size: var(--cs-font-size-s);
+        font-weight: var(--cs-font-weight-medium);
+        color: var(--cs-text-label);
+        margin-bottom: 4px;
+    }
+    .profile-form-row input[type="text"],
+    .profile-form-row input[type="email"],
+    .profile-form-row input[type="password"] {
+        width: 100%;
+        padding: 6px 10px;
+        font-size: var(--cs-font-size-m);
+        font-family: var(--cs-font);
+        color: var(--cs-text-primary);
+        background: var(--cs-bg-primary);
+        border: 1px solid var(--cs-border-input);
+        border-radius: var(--cs-radius-s);
+        box-sizing: border-box;
+    }
+    .profile-form-row input:focus {
+        outline: none;
+        border-color: var(--cs-border-input-focus);
+        box-shadow: 0 0 0 2px rgba(9, 114, 211, 0.25);
+    }
+    .profile-actions {
+        display: flex;
+        gap: var(--cs-space-xs);
+        justify-content: flex-end;
+        margin-top: var(--cs-space-s);
+    }
+    .profile-btn {
+        padding: 6px 14px;
+        border-radius: var(--cs-radius-s);
+        font-size: var(--cs-font-size-s);
+        font-weight: var(--cs-font-weight-medium);
+        font-family: var(--cs-font);
+        cursor: pointer;
+        border: 1px solid transparent;
+        transition: all var(--cs-transition-fast);
+    }
+    .profile-btn-primary {
+        background: var(--cs-btn-primary-bg);
+        color: #fff;
+        border-color: var(--cs-btn-primary-bg);
+    }
+    .profile-btn-primary:hover { background: var(--cs-btn-primary-bg-hover); border-color: var(--cs-btn-primary-bg-hover); }
+    .profile-btn:disabled,
+    .profile-btn:disabled:hover {
+        opacity: 0.5;
+        cursor: not-allowed;
+        background: var(--cs-btn-primary-bg);
+        border-color: var(--cs-btn-primary-bg);
+    }
+    .profile-btn-secondary {
+        background: var(--cs-btn-normal-bg);
+        color: var(--cs-btn-normal-text);
+        border-color: var(--cs-btn-normal-border);
+    }
+    .profile-btn-secondary:hover { background: var(--cs-btn-normal-hover-bg); border-color: var(--cs-text-secondary); }
+    .profile-btn-danger {
+        background: #fff;
+        color: var(--cs-error);
+        border-color: var(--cs-error);
+    }
+    .profile-btn-danger:hover { background: #fef2f2; }
+    .profile-banner {
+        padding: 8px 12px;
+        border-radius: var(--cs-radius-s);
+        margin-bottom: var(--cs-space-s);
+        font-size: var(--cs-font-size-s);
+        border-left: 4px solid transparent;
+    }
+    .profile-banner-success {
+        background: #f0fdf4;
+        color: #14532d;
+        border-left-color: #22c55e;
+    }
+    .profile-banner-error {
+        background: #fef2f2;
+        color: #7f1d1d;
+        border-left-color: #ef4444;
+    }
+    .mfa-status-row {
+        display: flex;
+        align-items: center;
+        gap: var(--cs-space-s);
+        padding: 4px 0;
+        margin-bottom: var(--cs-space-s);
+    }
+    .mfa-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: var(--cs-radius-s);
+        font-size: var(--cs-font-size-s);
+        font-weight: var(--cs-font-weight-medium);
+    }
+    .mfa-badge-active { background: #f0fdf4; color: #14532d; }
+    .mfa-badge-pending { background: #fffbeb; color: #78350f; }
+    .mfa-badge-disabled { background: #f3f4f6; color: #4b5563; }
+    .mfa-method-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: var(--cs-space-s);
+        margin-top: var(--cs-space-s);
+    }
+    .mfa-method-card {
+        border: 1px solid var(--cs-border-divider);
+        border-radius: var(--cs-radius-s);
+        padding: var(--cs-space-s);
+        text-align: center;
+    }
+    .mfa-method-card i {
+        font-size: 22px;
+        color: var(--cs-text-link);
+        margin-bottom: 4px;
+    }
+    .mfa-method-card-title {
+        font-weight: var(--cs-font-weight-medium);
+        color: var(--cs-text-heading);
+        margin-bottom: 4px;
+    }
+    .mfa-method-card-desc {
+        font-size: var(--cs-font-size-s);
+        color: var(--cs-text-secondary);
+        margin-bottom: var(--cs-space-s);
+    }
+    .mfa-method-card form { margin: 0; }
+    .mfa-method-card button { width: 100%; }
+    .mfa-disable-section {
+        margin-top: var(--cs-space-s);
+        padding-top: var(--cs-space-s);
+        border-top: 1px dashed var(--cs-border-divider);
+    }
+    .mfa-disable-note {
+        font-size: var(--cs-font-size-s);
+        color: var(--cs-text-secondary);
+        margin-bottom: var(--cs-space-s);
+    }
+    .pw-strength-bar {
+        height: 4px;
+        background: #e5e7eb;
+        border-radius: 2px;
+        margin-top: 6px;
+        overflow: hidden;
+    }
+    .pw-strength-fill {
+        height: 100%;
+        width: 0;
+        background: #ef4444;
+        transition: width 0.2s, background 0.2s;
+    }
+    .pw-strength-label {
+        font-size: 11px;
+        color: var(--cs-text-tertiary);
+        margin-top: 4px;
+        min-height: 14px;
+    }
+    .profile-back-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--cs-text-link);
+        font-size: var(--cs-font-size-s);
+        text-decoration: none;
+        margin-bottom: var(--cs-space-m);
+        padding: 4px 8px;
+        margin-left: -8px;
+        border-radius: var(--cs-radius-s);
+        transition: background var(--cs-transition-fast);
+    }
+    .profile-back-link:hover {
+        background: var(--cs-bg-hover);
+        text-decoration: none;
+    }
+    .profile-back-link i { font-size: 12px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="profile-page">
+    <a href="{{ back_url }}" class="profile-back-link" id="profile-back-link">
+        <i class="fas fa-arrow-left"></i> Back
+    </a>
+    <h1>My Profile</h1>
+    <p class="profile-subtitle">Update your account details, password, and two-factor authentication.</p>
+
+    {% if success == 'name' %}
+    <div class="profile-banner profile-banner-success"><i class="fas fa-check-circle"></i> Display name updated.</div>
+    {% elif success == 'email' %}
+    <div class="profile-banner profile-banner-success"><i class="fas fa-check-circle"></i> Email address updated.</div>
+    {% elif success == 'password' %}
+    <div class="profile-banner profile-banner-success"><i class="fas fa-check-circle"></i> Password changed successfully.</div>
+    {% elif success == 'mfa' %}
+    <div class="profile-banner profile-banner-success"><i class="fas fa-check-circle"></i> Two-factor authentication is now active.</div>
+    {% elif success == 'mfa-disabled' %}
+    <div class="profile-banner profile-banner-success"><i class="fas fa-check-circle"></i> Two-factor authentication has been disabled.</div>
+    {% elif success == 'account_type' %}
+    <div class="profile-banner profile-banner-success"><i class="fas fa-check-circle"></i> Account type updated.</div>
+    {% elif success == 'time_zone' %}
+    <div class="profile-banner profile-banner-success"><i class="fas fa-check-circle"></i> Time zone saved.</div>
+    {% elif success == 'recovery-email-sent' %}
+    <div class="profile-banner profile-banner-success"><i class="fas fa-check-circle"></i> Recovery email saved. Check your inbox for the verification link.</div>
+    {% elif success == 'recovery-email-verified' %}
+    <div class="profile-banner profile-banner-success"><i class="fas fa-check-circle"></i> Recovery email verified.</div>
+    {% endif %}
+
+    {% if mfa.recovery_email_just_used %}
+    <div class="profile-banner profile-banner-error"><i class="fas fa-triangle-exclamation"></i> You recovered access by email and two-factor authentication has been turned off. Set it up again below to keep your account secure.</div>
+    {% endif %}
+
+    {% if error %}
+    <div class="profile-banner profile-banner-error"><i class="fas fa-exclamation-triangle"></i> {{ error }}</div>
+    {% endif %}
+
+    <div class="profile-grid">
+        <!-- Display Name — in-tile title removed: the "Full name"
+             field label below carries the meaning. -->
+        <div class="profile-card">
+            <form method="POST" action="{{ url_for('profile_update_name') }}" id="profile-name-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="profile-form-row">
+                    <label for="full_name">Full name</label>
+                    <input type="text" id="full_name" name="full_name" value="{{ full_name }}"
+                           maxlength="200" required autocomplete="name">
+                </div>
+                <div class="profile-actions">
+                    <button type="submit" class="profile-btn profile-btn-primary" id="profile-name-submit" disabled>Save name</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Email — in-tile title removed: the "Email" field
+             label below carries the meaning. -->
+        <div class="profile-card">
+            <form method="POST" action="{{ url_for('profile_update_email') }}" id="profile-email-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="profile-form-row">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" value="{{ email }}"
+                           maxlength="254" required autocomplete="email">
+                </div>
+                <div class="profile-actions">
+                    <button type="submit" class="profile-btn profile-btn-primary" id="profile-email-submit" disabled>Save email</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {# Password (left) and Two-factor authentication (right) sit
+       side-by-side in a row beneath the name/email tiles, sharing the
+       responsive .profile-grid that collapses to one column under 720px.
+       The row keeps the default align-items: stretch so both cards share
+       the taller card's height (the Password box matches the MFA box).
+       Time Zone moves to the very bottom (full-width). #}
+    <div class="profile-grid">
+        <!-- Password -->
+        <div class="profile-card">
+            <div class="profile-card-header">
+                <i class="fas fa-key"></i>
+                <h2 class="profile-card-title">Password</h2>
+            </div>
+            <form method="POST" action="{{ url_for('profile_change_password') }}" id="profile-pw-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="profile-form-row">
+                    <label for="current_password">Current password</label>
+                    <div class="pw-wrap">
+                        <input type="password" id="current_password" name="current_password" class="pw-input"
+                               required autocomplete="current-password" maxlength="128">
+                        {% with pw_target="current_password" %}{% include "_pw_toggle.html" %}{% endwith %}
+                    </div>
+                </div>
+                <div class="profile-form-row">
+                    <label for="new_password">New password</label>
+                    <div class="pw-wrap">
+                        <input type="password" id="new_password" name="new_password" class="pw-input"
+                               required autocomplete="new-password" minlength="8" maxlength="128"
+                               oninput="checkPwStrength(this.value)">
+                        {% with pw_target="new_password" %}{% include "_pw_toggle.html" %}{% endwith %}
+                    </div>
+                    <div class="pw-strength-bar"><div class="pw-strength-fill" id="pw-strength-fill"></div></div>
+                    <div class="pw-strength-label" id="pw-strength-label">At least 8 characters.</div>
+                </div>
+                <div class="profile-form-row">
+                    <label for="confirm_password">Confirm new password</label>
+                    <div class="pw-wrap">
+                        <input type="password" id="confirm_password" name="confirm_password" class="pw-input"
+                               required autocomplete="new-password" minlength="8" maxlength="128">
+                        {% with pw_target="confirm_password" %}{% include "_pw_toggle.html" %}{% endwith %}
+                    </div>
+                </div>
+                <div class="profile-actions">
+                    <button type="submit" class="profile-btn profile-btn-primary" id="profile-pw-submit" disabled>Change password</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- MFA -->
+        <div class="profile-card">
+            <div class="profile-card-header">
+                <i class="fas fa-shield-halved"></i>
+                <h2 class="profile-card-title">Two-factor authentication</h2>
+            </div>
+
+            <div class="mfa-status-row">
+            <strong>Status:</strong>
+            {% if mfa.enabled and mfa.setup_complete and mfa.method == 'totp' %}
+            <span class="mfa-badge mfa-badge-active"><i class="fas fa-check"></i> Active &mdash; Authenticator app</span>
+            {% elif mfa.enabled and mfa.setup_complete and mfa.method == 'yubikey' %}
+            <span class="mfa-badge mfa-badge-active"><i class="fas fa-check"></i> Active &mdash; YubiKey</span>
+            {% elif mfa.enabled and not mfa.setup_complete %}
+            <span class="mfa-badge mfa-badge-pending"><i class="fas fa-hourglass-half"></i> Pending &mdash; choose a method below</span>
+            {% else %}
+            <span class="mfa-badge mfa-badge-disabled"><i class="fas fa-circle-xmark"></i> Not set up</span>
+            {% endif %}
+        </div>
+
+        {% if mfa.enabled and mfa.setup_complete %}
+        <p class="mfa-disable-note">
+            Two-factor is currently active using
+            {% if mfa.method == 'totp' %}an authenticator app{% else %}a YubiKey{% endif %}.
+            To switch methods, set up the other one below &mdash; the new method replaces the existing one.
+        </p>
+        {% endif %}
+
+        <div class="mfa-method-grid">
+            <div class="mfa-method-card">
+                <i class="fas fa-mobile-screen"></i>
+                <div class="mfa-method-card-title">Authenticator app</div>
+                <p class="mfa-method-card-desc">Google Authenticator, Authy, 1Password, etc.</p>
+                <form method="POST" action="{{ url_for('profile_mfa_totp_setup') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="profile-btn profile-btn-secondary">
+                        {% if mfa.setup_complete and mfa.method == 'totp' %}Re-enroll{% else %}Set up{% endif %}
+                    </button>
+                </form>
+            </div>
+            <div class="mfa-method-card">
+                <i class="fas fa-key"></i>
+                <div class="mfa-method-card-title">YubiKey</div>
+                <p class="mfa-method-card-desc">Hardware security key with a USB OTP.</p>
+                <form method="POST" action="{{ url_for('profile_mfa_yubikey_setup') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="profile-btn profile-btn-secondary">
+                        {% if mfa.setup_complete and mfa.method == 'yubikey' %}Re-enroll{% else %}Set up{% endif %}
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        {% if mfa.enabled and mfa.setup_complete %}
+        {# Tier 1 — recovery codes. Shown only once a second factor is
+           confirmed. Regenerating replaces any existing codes and displays the
+           new set once. #}
+        <div class="mfa-disable-section">
+            {% if mfa.recovery_just_used_remaining is not none %}
+            <p class="mfa-disable-note">
+                <i class="fas fa-triangle-exclamation"></i>
+                You signed in with a recovery code. You have
+                <strong>{{ mfa.recovery_just_used_remaining }}</strong>
+                recovery code{{ '' if mfa.recovery_just_used_remaining == 1 else 's' }} left.
+                Regenerate a fresh set if you're running low.
+            </p>
+            {% endif %}
+            {% if mfa.recovery_legacy %}
+            {# this set predates the 80-bit keyed-hash format. #}
+            <p class="mfa-disable-note">
+                <i class="fas fa-triangle-exclamation"></i>
+                Your recovery codes were issued in an older, shorter format.
+                Regenerate them now — the new codes are longer and stored more securely.
+                Your existing codes keep working until you do.
+            </p>
+            {% endif %}
+            <p class="mfa-disable-note">
+                Recovery codes let you sign in once each if you lose your
+                {% if mfa.method == 'totp' %}authenticator app{% else %}YubiKey{% endif %}.
+                You have <strong>{{ mfa.recovery_remaining }}</strong> unused
+                recovery code{{ '' if mfa.recovery_remaining == 1 else 's' }} remaining.
+            </p>
+            <form method="POST" action="{{ url_for('profile_mfa_recovery_regenerate') }}"
+                  onsubmit="return confirm('Generate a new set of recovery codes? Your existing unused codes will stop working.');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="profile-actions">
+                    <button type="submit" class="profile-btn profile-btn-secondary">
+                        {% if mfa.recovery_remaining > 0 %}Regenerate recovery codes{% else %}Generate recovery codes{% endif %}
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        {# Tier 2 — recovery email. A verified address can receive a
+           single-use recovery link from the sign-in screen. #}
+        <div class="mfa-disable-section">
+            <p class="mfa-disable-note">
+                A verified recovery email lets you regain access if you lose your
+                {% if mfa.method == 'totp' %}authenticator app{% else %}YubiKey{% endif %}.
+                {% if mfa.recovery_email and mfa.recovery_email_verified %}
+                    Current: <strong>{{ mfa.recovery_email }}</strong>
+                    <span style="color:#037f51;">&#10003; verified</span>.
+                {% elif mfa.recovery_email %}
+                    Current: <strong>{{ mfa.recovery_email }}</strong>
+                    <span style="color:#8d6e00;">&#9888; not verified — check your inbox for the verification link</span>.
+                {% else %}
+                    No recovery email set.
+                {% endif %}
+            </p>
+            <form method="POST" action="{{ url_for('profile_mfa_recovery_email_set') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="profile-form-row">
+                    <label for="recovery_email">Recovery email</label>
+                    <input type="email" id="recovery_email" name="recovery_email"
+                           value="{{ mfa.recovery_email }}" autocomplete="email"
+                           placeholder="you@example.com" required>
+                </div>
+                <div class="profile-actions">
+                    <button type="submit" class="profile-btn profile-btn-secondary">
+                        {% if mfa.recovery_email %}Update &amp; verify recovery email{% else %}Add &amp; verify recovery email{% endif %}
+                    </button>
+                </div>
+            </form>
+        </div>
+        {% endif %}
+
+        {% if mfa.enabled %}
+        <div class="mfa-disable-section">
+            {% if enforce_mfa %}
+            <p class="mfa-disable-note">
+                <i class="fas fa-lock"></i>
+                Two-factor authentication is required for all accounts on this system and cannot be disabled.
+            </p>
+            {% else %}
+            <p class="mfa-disable-note">
+                Disabling two-factor authentication removes both your authenticator app and YubiKey enrollments.
+                You will be asked for your current password to confirm.
+            </p>
+            <form method="POST" action="{{ url_for('profile_mfa_disable') }}"
+                  onsubmit="return confirm('Disable two-factor authentication for your account?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="profile-form-row">
+                    <label for="mfa_disable_password">Current password</label>
+                    <div class="pw-wrap">
+                        <input type="password" id="mfa_disable_password" name="current_password" class="pw-input"
+                               required autocomplete="current-password">
+                        {% with pw_target="mfa_disable_password" %}{% include "_pw_toggle.html" %}{% endwith %}
+                    </div>
+                </div>
+                <div class="profile-actions">
+                    <button type="submit" class="profile-btn profile-btn-danger">Disable two-factor</button>
+                </div>
+            </form>
+            {% endif %}
+        </div>
+        {% endif %}
+        </div>
+    </div>
+
+    {# per-user time zone. Independent of the workspace-level
+       ``timezone`` set at step-5 of onboarding; this one follows the user
+       across workspaces and renders in their display surfaces. Stored on
+       ``user.metadata.time_zone`` via UserProfileService. In-tile title
+       removed; the "Time zone" field label matches the Full
+       name / Email tiles. Placed last (full-width) per the requestor's
+       layout. #}
+    <div class="profile-card">
+        <form method="POST" action="{{ url_for('profile_update_time_zone') }}" id="profile-tz-form"
+              data-tz-is-default="{{ '1' if time_zone_is_default else '0' }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="profile-form-row">
+                <label for="time_zone">Time zone</label>
+                <select id="time_zone" name="time_zone" required
+                        style="width:100%;padding:6px 10px;font-size:var(--cs-font-size-m);
+                               font-family:var(--cs-font);color:var(--cs-text-primary);
+                               background:var(--cs-bg-primary);
+                               border:1px solid var(--cs-border-input);
+                               border-radius:var(--cs-radius-s);box-sizing:border-box;">
+                    {% for tz in time_zone_options %}
+                    <option value="{{ tz }}"{% if tz == time_zone_current %} selected{% endif %}>{{ tz }}</option>
+                    {% endfor %}
+                </select>
+                <div id="profile-tz-hint" class="profile-radio-hint"
+                     style="margin-left:0;margin-top:4px;display:none;">
+                    Detected from your browser. Click <strong>Save time zone</strong> to confirm.
+                </div>
+            </div>
+            <div class="profile-actions">
+                <button type="submit" class="profile-btn profile-btn-primary" id="profile-tz-submit" disabled>Save time zone</button>
+            </div>
+        </form>
+    </div>
+
+    {# Account type. Closes the "Reversible from
+       Settings later" AC. The invited tile is omitted entirely — it
+       only makes sense as a signup entry point paired with a live
+       invite token. A user who already has account_type=invited keeps
+       that value (read-side only); the form lets them switch to one of
+       the three baseline cohorts when they decide their actual shape.
+
+       Hidden in Profile per product decision — the route + form remain
+       wired so signup still drives cohort selection and the field can
+       be re-exposed by removing the {% if false %} wrapper below. #}
+    {% if false %}
+    <div class="profile-card">
+        <div class="profile-card-header">
+            <i class="fas fa-user-tag"></i>
+            <h2 class="profile-card-title">Account type</h2>
+        </div>
+        <p class="profile-card-description">
+            How are you using Kavanah? Your selection drives onboarding defaults
+            and is used as an instrumentation cohort label. You can change it any time.
+        </p>
+        {% if account_type.current == 'invited' %}
+        <p class="profile-card-description" style="background:#fff8e1;padding:8px 12px;border-radius:6px;">
+            <i class="fas fa-info-circle"></i>
+            Your account is currently labeled <strong>Joined via invite</strong>.
+            Pick one of the options below if you'd like to change it.
+        </p>
+        {% endif %}
+        <form method="POST" action="{{ url_for('settings_set_account_type') }}" id="profile-account-type-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="profile-form-row">
+                <label class="profile-radio">
+                    <input type="radio" name="account_type" value="individual"
+                           {% if account_type.current == 'individual' %}checked{% endif %}>
+                    <strong>Just me</strong>
+                    <span class="profile-radio-hint">Solo workspace, no team.</span>
+                </label>
+                <label class="profile-radio">
+                    <input type="radio" name="account_type" value="org_owner"
+                           {% if account_type.current == 'org_owner' or (account_type.is_default and account_type.current != 'invited') %}checked{% endif %}>
+                    <strong>My team or company</strong>
+                    <span class="profile-radio-hint">One workspace shared with my team.</span>
+                </label>
+                <label class="profile-radio">
+                    <input type="radio" name="account_type" value="agency"
+                           {% if account_type.current == 'agency' %}checked{% endif %}>
+                    <strong>Agency</strong>
+                    <span class="profile-radio-hint">I manage multiple client workspaces.</span>
+                </label>
+            </div>
+            <div class="profile-actions">
+                <button type="submit" class="profile-btn profile-btn-primary"
+                        id="profile-account-type-submit" disabled>Save account type</button>
+            </div>
+        </form>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script nonce="{{ csp_nonce }}">
+(function() {
+    // ── Field length limits — must match server-side validation ──────────────
+    var MAX_NAME = 200;
+    var MAX_EMAIL = 254;
+    var MIN_PW = 8;
+    var MAX_PW = 128;
+    // RFC-5322-lite — good enough for "looks like an email" client checks.
+    var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    // ── Password strength meter (kept from earlier) ──────────────────────────
+    var newPw = document.getElementById('new_password');
+    var confirmPw = document.getElementById('confirm_password');
+    var fill = document.getElementById('pw-strength-fill');
+    var label = document.getElementById('pw-strength-label');
+
+    window.checkPwStrength = function(pw) {
+        var score = 0;
+        if (pw.length >= 8)  score++;
+        if (pw.length >= 12) score++;
+        if (/[A-Z]/.test(pw)) score++;
+        if (/[0-9]/.test(pw)) score++;
+        if (/[^A-Za-z0-9]/.test(pw)) score++;
+        var pct = Math.min(100, score * 20);
+        fill.style.width = pct + '%';
+        if (!pw) {
+            fill.style.width = '0';
+            label.textContent = 'At least 8 characters.';
+            label.style.color = '';
+            return;
+        }
+        if (score <= 1) {
+            fill.style.background = '#ef4444';
+            label.textContent = 'Weak';
+            label.style.color = '#ef4444';
+        } else if (score <= 2) {
+            fill.style.background = '#f59e0b';
+            label.textContent = 'Fair';
+            label.style.color = '#f59e0b';
+        } else if (score <= 3) {
+            fill.style.background = '#3b82f6';
+            label.textContent = 'Good';
+            label.style.color = '#3b82f6';
+        } else {
+            fill.style.background = '#22c55e';
+            label.textContent = 'Strong';
+            label.style.color = '#22c55e';
+        }
+    };
+
+    // ── Display name: enable button only when value is non-empty,
+    //    within length, and changed from the initial value. ──────────────────
+    (function() {
+        var input = document.getElementById('full_name');
+        var btn = document.getElementById('profile-name-submit');
+        if (!input || !btn) return;
+        var initial = input.value.trim();
+        function update() {
+            var v = input.value.trim();
+            btn.disabled = !v || v.length > MAX_NAME || v === initial;
+        }
+        input.addEventListener('input', update);
+        update();
+    })();
+
+    // ── Email: enable button only when value is non-empty, within length,
+    //    matches the email regex, and changed from the initial value. ────────
+    (function() {
+        var input = document.getElementById('email');
+        var btn = document.getElementById('profile-email-submit');
+        if (!input || !btn) return;
+        var initial = input.value.trim();
+        function update() {
+            var v = input.value.trim();
+            btn.disabled = !v || v.length > MAX_EMAIL || !EMAIL_RE.test(v) || v === initial;
+        }
+        input.addEventListener('input', update);
+        update();
+    })();
+
+    // ── Time zone: Save is enabled ONLY when the
+    //    picked option differs from the baseline selected when the page
+    //    finished loading — Save stays disabled until the user actively
+    //    changes the picker (no auto-enable-to-confirm).
+    //
+    //    The per-user zone is now stamped at ACCOUNT CREATION from the
+    // browser zone captured on the signup form, so a fresh
+    //    user normally already has a real stored value here. The
+    //    first-visit auto-detect below is a display-only fallback for
+    // users provisioned without one (admin-created, earlier
+    //    accounts): it pre-selects the detected zone as a convenience but
+    //    does NOT write — the user confirms with Save like any change. ──
+    (function() {
+        var sel = document.getElementById('time_zone');
+        var btn = document.getElementById('profile-tz-submit');
+        var form = document.getElementById('profile-tz-form');
+        var hint = document.getElementById('profile-tz-hint');
+        if (!sel || !btn || !form) return;
+
+        var isDefault = form.getAttribute('data-tz-is-default') === '1';
+
+        // Auto-detect runs FIRST so the captured "initial" baseline below
+        // already reflects the detected zone (display-only; no write).
+        if (isDefault) {
+            try {
+                var detected = (Intl.DateTimeFormat().resolvedOptions().timeZone || '').trim();
+                if (detected) {
+                    // Find a matching <option>; quietly leave the UTC
+                    // default in place if the detected zone isn't in the
+                    // server's option list (host tzdata mismatch).
+                    var match = sel.querySelector('option[value="' + detected.replace(/"/g, '\\"') + '"]');
+                    if (match && match.value !== sel.value) {
+                        sel.value = match.value;
+                        if (hint) hint.style.display = 'block';
+                    }
+                }
+            } catch (e) { /* ignore — server default stays selected */ }
+        }
+
+        // Baseline is whatever is selected after auto-detect — Save only
+        // enables on a genuine user change away from it.
+        var initial = sel.value;
+        function update() {
+            btn.disabled = !sel.value || sel.value === initial;
+        }
+        sel.addEventListener('change', function() {
+            // Any manual change clears the auto-detect hint — it described
+            // the pre-selected baseline, which the user has now moved off.
+            if (hint) hint.style.display = 'none';
+            update();
+        });
+        update();
+    })();
+
+    // ── Account type: enable button only when the picked radio differs
+    //    from the initially-checked one. Captures the initial value at
+    //    page load so a user who clicks back to the same radio doesn't
+    //    submit a no-op write (saves an audit-log row + an ES round-trip).
+    //    When the user's stored value is ``invited``, no radio is
+    //    pre-checked, so any pick enables the button. ────────────────────────
+    (function() {
+        var form = document.getElementById('profile-account-type-form');
+        var btn = document.getElementById('profile-account-type-submit');
+        if (!form || !btn) return;
+        var radios = form.querySelectorAll('input[name="account_type"]');
+        if (!radios.length) return;
+        var initial = null;
+        radios.forEach(function(r) { if (r.checked) initial = r.value; });
+        function update() {
+            var picked = null;
+            radios.forEach(function(r) { if (r.checked) picked = r.value; });
+            btn.disabled = !picked || picked === initial;
+        }
+        radios.forEach(function(r) { r.addEventListener('change', update); });
+        update();
+    })();
+
+    // ── Password: enable button only when all three fields are filled,
+    //    new password meets length bounds, matches confirmation, and is
+    //    different from the current password. ───────────────────────────────
+    (function() {
+        var current = document.getElementById('current_password');
+        var btn = document.getElementById('profile-pw-submit');
+        if (!current || !newPw || !confirmPw || !btn) return;
+        function update() {
+            var c = current.value;
+            var n = newPw.value;
+            var x = confirmPw.value;
+            var ok =
+                c.length > 0 && c.length <= MAX_PW &&
+                n.length >= MIN_PW && n.length <= MAX_PW &&
+                x.length >= MIN_PW &&
+                n === x &&
+                n !== c;
+            btn.disabled = !ok;
+        }
+        [current, newPw, confirmPw].forEach(function(el) {
+            el.addEventListener('input', update);
+        });
+        update();
+    })();
+
+    var form = document.getElementById('profile-pw-form');
+    if (form) {
+        var pwSubmitted = false;
+        form.addEventListener('submit', function(e) {
+            if (newPw.value !== confirmPw.value) {
+                e.preventDefault();
+                alert('New passwords do not match.');
+                return;
+            }
+            // Guard against double-submission: a duplicate password-change
+            // post triggers a "current password is incorrect" error on the
+            // second call (the first call has already rotated the hash).
+            if (pwSubmitted) { e.preventDefault(); return; }
+            pwSubmitted = true;
+            form.querySelectorAll('button[type="submit"]').forEach(function(b) {
+                b.disabled = true;
+            });
+        });
+    }
+
+    // Back link target is set server-side from the Referer header (see
+    // _capture_profile_back_url in app.py), so the link's href already
+    // points to the page the user entered /profile from. No JS needed.
+
+    // If the page is restored from the browser back-forward cache, the
+    // JS-captured "initial" values for each form are stale (they hold the
+    // pre-save value). That makes the Save button stay disabled when the
+    // user types back to the actual original value, even though the DB
+    // now has the post-save value. Force a fresh fetch so server-rendered
+    // input values + JS state line up with the current DB.
+    window.addEventListener('pageshow', function (event) {
+        if (event.persisted) {
+            window.location.reload();
+        }
+    });
+
+    // Drop the success/error banner if the user refreshed the page. Banner
+    // is rendered at first paint after the redirect from a successful save;
+    // we only want it to stick around for that one view, not for subsequent
+    // reloads. Using PerformanceNavigationTiming (rather than rewriting the
+    // URL via replaceState) avoids leaving a duplicate history entry that
+    // would force the user to click Back twice.
+    (function () {
+        var navs = (window.performance && performance.getEntriesByType)
+            ? performance.getEntriesByType('navigation') : [];
+        if (navs.length > 0 && navs[0].type === 'reload') {
+            document.querySelectorAll('.profile-banner').forEach(function (el) {
+                el.remove();
+            });
+        }
+    })();
+})();
+</script>
+{% endblock %}

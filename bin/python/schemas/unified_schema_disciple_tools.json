@@ -1,0 +1,176 @@
+{
+  "properties": {
+    "@timestamp": {
+      "type": "date"
+    },
+    "ID": {
+      "type": "keyword"
+    },
+    "post_type": {
+      "type": "keyword"
+    },
+    "title": {
+      "type": "text",
+      "fields": {
+        "keyword": {
+          "type": "keyword",
+          "ignore_above": 256
+        }
+      }
+    },
+    "date_created": {
+      "type": "keyword"
+    },
+    "date_created_ms": {
+      "type": "date",
+      "format": "epoch_millis"
+    },
+    "date_modified": {
+      "type": "keyword"
+    },
+    "date_modified_ms": {
+      "type": "date",
+      "format": "epoch_millis"
+    },
+    "team_esid": {
+      "type": "keyword"
+    },
+    "team_title": {
+      "type": "keyword"
+    },
+    "organization_title": {
+      "type": "keyword"
+    },
+    "meta": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        },
+        "overall_status": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        },
+        "seeker_path": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        },
+        "sources": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        },
+        "milestones": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        },
+        "location_grid": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        },
+        "baptism_date": {
+          "type": "keyword"
+        },
+        "baptism_date_ms": {
+          "type": "date",
+          "format": "epoch_millis"
+        },
+        "baptism_generation": {
+          "type": "long"
+        },
+        "quick_button_contact_established": {
+          "type": "long"
+        },
+        "group_status": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        },
+        "group_type": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        },
+        "health_metrics": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        },
+        "member_count": {
+          "type": "long"
+        },
+        "leader_count": {
+          "type": "long"
+        },
+        "start_date": {
+          "type": "keyword"
+        },
+        "start_date_ms": {
+          "type": "date",
+          "format": "epoch_millis"
+        },
+        "church_start_date": {
+          "type": "keyword"
+        },
+        "church_start_date_ms": {
+          "type": "date",
+          "format": "epoch_millis"
+        },
+        "contact_place": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        },
+        "contact_country": {
+          "type": "keyword"
+        }
+      }
+    }
+  }
+}

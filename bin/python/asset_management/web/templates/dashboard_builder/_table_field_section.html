@@ -1,0 +1,82 @@
+<!-- shared partial: the table "Edit" config section. Included by
+     dashboard_builder/index.html (inside #config-panel, exactly where it
+     always lived) AND by dashboard_builder/canvas.html (inside the canvas
+     properties panel's #cv-obj-table-fields group), so the Canvas Editor
+     embeds the SAME table builder UI with zero markup fork. Hydrated by
+     populateTablePanel() in builder.js on both pages. -->
+<!-- Table-only field configuration (shown when chart_type === 'table') -->
+<div id="table-field-section" data-mode="edit" style="display:none;">
+  <div class="db-section-label" data-default-collapsed="true">Table Data</div>
+  <div class="db-form-group">
+    <label>Data View</label>
+    <select id="cfg-table-data-view" onchange="onTableDataViewChange(this.value)"></select>
+  </div>
+  <div class="db-form-group">
+    <label>Max Rows</label>
+    <input type="number" id="cfg-table-num-values" min="1" max="1000" placeholder="10" oninput="updateTableConfig()">
+  </div>
+  <!-- Time-range date field (chart-level): which date field
+       the global time-range dropdown filters every column on. Default
+       kibana_date; set to closed_at so an Echo outcomes table counts
+       conversations resolved in the window. Populated with
+       the table data view's date-typed fields. -->
+  <div class="db-form-group" id="table-time-range-field-group">
+    <label>Time-range Date Field <span style="color:#888;font-size:11px;">(optional)</span></label>
+    <select id="cfg-table-time-range-field" onchange="updateGroupedTableProp('time_range_field', this.value); requeryChart()">
+      <option value="">Default (kibana_date)</option>
+    </select>
+  </div>
+  <!-- the Row (grouping) sub-section is wrapped so the
+       posts_table chart type — a raw-hits table with no x_field
+       grouping — can hide it while reusing the Data View / Max Rows /
+       Columns editor. The aggregation Table keeps it visible. -->
+  <div id="table-row-subsection">
+  <div class="db-section-label" data-default-collapsed="true" style="margin-top:8px;">Row</div>
+  <div class="db-form-group">
+    <label>Row Labels Title</label>
+    <input type="text" id="cfg-table-x-label" placeholder="e.g. Team" maxlength="200" oninput="onTableXLabelChange(this.value)">
+  </div>
+  <div class="db-form-group">
+    <label>Row Labels Field</label>
+    <select id="cfg-table-x-field" onchange="onTableXFieldChange(this.value)">
+      <option value="">— Select field —</option>
+    </select>
+  </div>
+  <!-- Date Format dropdown moved here from the Properties
+       tab. The selector lives next to Row Labels Field because that's
+       where the user just picked a date field; the discoverability
+       jump to Properties was the bug staging surfaced 2026-05-25.
+       Hidden until x_field_type=='date' (toggled by
+       onTableXFieldChange + populateConfigPanel's table branch).
+       NOTE: this is the TABLE Row-Labels date format. Bar/line charts
+       use the separate #cfg-std-date-format in #standard-field-section
+        — this element is display:none for them. -->
+  <div class="db-form-group" id="cfg-date-format-group" style="display:none;">
+    <label>Date Format</label>
+    <select id="cfg-date-format" onchange="updateChartConfig('date_format', this.value); requeryChart()">
+      <option value="">Auto (from data)</option>
+      <option value="Mon YYYY">Mon YYYY &nbsp;— Jan 2024</option>
+      <option value="Month YYYY">Month YYYY &nbsp;— January 2024</option>
+      <option value="YYYY-MM">YYYY-MM &nbsp;— 2024-01</option>
+      <option value="MM/YYYY">MM/YYYY &nbsp;— 01/2024</option>
+      <option value="DD Mon YYYY">DD Mon YYYY &nbsp;— 01 Jan 2024</option>
+      <option value="DD Mon">DD Mon &nbsp;— 01 Jan</option>
+    </select>
+  </div>
+  <div class="db-form-group">
+    <label>Sub-Row Title <span style="color:#888;font-size:11px;">(optional)</span></label>
+    <input type="text" id="cfg-table-x-label-2" placeholder="e.g. City" maxlength="200" oninput="onTableXLabel2Change(this.value)">
+  </div>
+  <div class="db-form-group">
+    <label>Sub-Row Field <span style="color:#888;font-size:11px;">(optional)</span></label>
+    <select id="cfg-table-x-field-2" onchange="onTableXField2Change(this.value)">
+      <option value="">— None —</option>
+    </select>
+  </div>
+  </div><!-- /#table-row-subsection -->
+  <div class="db-section-label" data-default-collapsed="true" style="margin-top:8px;">Columns</div>
+  <div id="table-columns-editor"></div>
+  <div style="margin-top:4px;display:flex;gap:4px;">
+    <button class="db-btn db-btn-primary db-btn-sm" onclick="requeryChart(); saveDashboard()">↻ Refresh &amp; Save</button>
+  </div>
+</div>

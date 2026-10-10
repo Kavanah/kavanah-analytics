@@ -1,0 +1,2072 @@
+{% extends "base_v2.html" %}
+
+{% block title %}Data Explorer - Kavanah Analytics Management Console{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* ── Layout: three-panel ── */
+    .de-layout {
+        display: flex;
+        height: calc(100vh - var(--cs-header-height, 56px));
+        overflow: hidden;
+        background: var(--cs-bg-page);
+    }
+
+    /* ── Left Sidebar: Query History ── */
+    .de-sidebar {
+        width: 252px;
+        flex-shrink: 0;
+        background: var(--cs-bg-primary);
+        border-right: 1px solid var(--cs-border-divider);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    .de-sidebar-section {
+        padding: var(--cs-space-s) var(--cs-space-m);
+        border-bottom: 1px solid var(--cs-border-divider);
+        flex-shrink: 0;
+    }
+
+    .de-sidebar-title {
+        font-size: var(--cs-font-size-xs);
+        font-weight: var(--cs-font-weight-bold);
+        text-transform: uppercase;
+        letter-spacing: var(--cs-letter-spacing-caps);
+        color: var(--cs-text-tertiary);
+        margin-bottom: 0;
+    }
+
+    .de-history-scroll {
+        overflow-y: auto;
+        flex: 1;
+        padding: var(--cs-space-xs);
+    }
+
+    .de-history-item {
+        padding: var(--cs-space-xs) var(--cs-space-s);
+        border-radius: var(--cs-radius-s);
+        cursor: pointer;
+        transition: background var(--cs-transition-fast);
+        border: 1px solid transparent;
+        margin-bottom: 2px;
+    }
+
+    .de-history-item:hover {
+        background: var(--cs-bg-hover);
+    }
+
+    .de-history-item.active {
+        background: var(--cs-bg-active);
+        border-color: rgba(9, 114, 211, 0.2);
+    }
+
+    .de-h-query {
+        font-size: var(--cs-font-size-xs);
+        color: var(--cs-text-primary);
+        margin-bottom: 3px;
+        line-height: 1.4;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+
+    .de-h-meta {
+        font-size: 10px;
+        color: var(--cs-text-tertiary);
+        display: flex;
+        gap: var(--cs-space-xs);
+    }
+
+    .de-h-tag {
+        padding: 1px 5px;
+        border-radius: 3px;
+        font-size: 10px;
+        background: var(--cs-info-bg);
+        color: var(--cs-info);
+    }
+
+
+    /* ── Center Content ── */
+    .de-content {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        min-width: 0;
+    }
+
+    /* Fixed query top bar */
+    .de-query-top {
+        background: var(--cs-bg-primary);
+        border-bottom: 1px solid var(--cs-border-divider);
+        flex-shrink: 0;
+        padding: var(--cs-space-s) var(--cs-space-l) 0;
+    }
+
+    .de-main-tabs {
+        display: flex;
+        gap: 0;
+        margin-top: var(--cs-space-xs);
+    }
+
+    .de-main-tab {
+        padding: 7px 16px;
+        font-size: var(--cs-font-size-s);
+        font-family: var(--cs-font);
+        font-weight: var(--cs-font-weight-medium);
+        cursor: pointer;
+        color: var(--cs-text-secondary);
+        border: none;
+        background: none;
+        border-bottom: 2px solid transparent;
+        transition: all var(--cs-transition-fast);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .de-main-tab:hover { color: var(--cs-text-primary); }
+
+    .de-main-tab.active {
+        color: var(--cs-btn-primary-bg);
+        border-bottom-color: var(--cs-btn-primary-bg);
+    }
+
+    .de-tab-actions {
+        margin-left: auto;
+        display: flex;
+        gap: 4px;
+        align-items: center;
+    }
+
+    .de-tab-actions .cs-btn-sm {
+        font-size: 11px;
+        padding: 3px 8px;
+    }
+
+    .de-tab-count {
+        font-size: 10px;
+        padding: 1px 6px;
+        border-radius: 8px;
+        background: var(--cs-bg-secondary);
+        color: var(--cs-text-tertiary);
+    }
+
+    .de-main-tab.active .de-tab-count {
+        background: var(--cs-info-bg);
+        color: var(--cs-info);
+    }
+
+    /* Tab panels */
+    .de-tab-panel {
+        flex: 1;
+        overflow-y: auto;
+    }
+
+    .de-sources-content {
+        padding: var(--cs-space-m) var(--cs-space-l);
+    }
+
+    .de-query-row {
+        display: flex;
+        gap: var(--cs-space-xs);
+        margin-bottom: var(--cs-space-s);
+        align-items: center;
+    }
+
+    .de-model-sel {
+        padding: 4px 8px;
+        background: var(--cs-bg-primary);
+        border: 1px solid var(--cs-border-input);
+        border-radius: var(--cs-radius-s);
+        color: var(--cs-text-secondary);
+        font-size: 11px;
+        font-family: var(--cs-font);
+        cursor: pointer;
+        outline: none;
+    }
+
+    .de-model-sel:focus {
+        border-color: var(--cs-border-input-focus);
+    }
+
+    .de-memory-badge {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 10px;
+        background: var(--cs-info-bg);
+        border: 1px solid rgba(9, 114, 211, 0.2);
+        border-radius: var(--cs-radius-pill);
+        font-size: 10px;
+        color: var(--cs-info);
+        white-space: nowrap;
+    }
+
+    .de-query-wrap {
+        flex: 1;
+        position: relative;
+    }
+
+    .de-q-icon {
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--cs-btn-primary-bg);
+        font-size: 14px;
+        pointer-events: none;
+    }
+
+    .de-query-input {
+        width: 100%;
+        padding: 10px 14px 10px 36px;
+        background: var(--cs-bg-primary);
+        border: 2px solid var(--cs-border-input);
+        border-radius: var(--cs-radius-m);
+        color: var(--cs-text-primary);
+        font-size: var(--cs-font-size-m);
+        font-family: var(--cs-font);
+        outline: none;
+        transition: border-color var(--cs-transition-fast), box-shadow var(--cs-transition-fast);
+    }
+
+    .de-query-input:focus {
+        border-color: var(--cs-border-input-focus);
+        box-shadow: 0 0 0 3px rgba(9, 114, 211, 0.15);
+    }
+
+    .de-query-input::placeholder {
+        color: var(--cs-text-disabled);
+    }
+
+    .de-query-meta {
+        display: flex;
+        gap: var(--cs-space-xs);
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .de-index-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+        min-width: 0;
+    }
+
+    .de-idx-label {
+        font-size: var(--cs-font-size-xs);
+        color: var(--cs-text-tertiary);
+    }
+
+    .de-index-pills {
+        display: flex;
+        gap: 4px;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+
+    .de-idx-pill {
+        padding: 2px 8px;
+        border-radius: var(--cs-radius-pill);
+        font-size: 11px;
+        line-height: 1.3;
+        cursor: pointer;
+        border: 1px solid var(--cs-border-default);
+        background: var(--cs-bg-secondary);
+        color: var(--cs-text-secondary);
+        transition: all var(--cs-transition-fast);
+        user-select: none;
+        white-space: nowrap;
+    }
+
+    .de-idx-pill.on {
+        background: var(--cs-info-bg);
+        border-color: var(--cs-info);
+        color: var(--cs-info);
+    }
+
+    .de-orgteam-row {
+        display: flex;
+        gap: var(--cs-space-xs);
+        margin-top: var(--cs-space-xs);
+        padding-top: var(--cs-space-xs);
+        border-top: 1px solid var(--cs-border-divider);
+    }
+
+    .de-time-row {
+        display: flex;
+        align-items: center;
+        gap: var(--cs-space-s);
+        margin-top: var(--cs-space-xs);
+        padding-top: var(--cs-space-xs);
+        border-top: 1px solid var(--cs-border-divider);
+    }
+
+    .de-time-label {
+        font-size: 10px;
+        font-weight: var(--cs-font-weight-bold);
+        text-transform: uppercase;
+        letter-spacing: var(--cs-letter-spacing-caps);
+        color: var(--cs-text-tertiary);
+    }
+
+    .de-time-select {
+        /* follow-up: room for the global chevron + background-color
+         * (not the `background` shorthand) so the chevron isn't reset. */
+        padding: 3px 26px 3px 8px;
+        font-size: 11px;
+        font-family: var(--cs-font);
+        color: var(--cs-text-primary);
+        background-color: var(--cs-bg-primary);
+        border: 1px solid var(--cs-border-default);
+        border-radius: var(--cs-radius-s);
+        outline: none;
+        cursor: pointer;
+    }
+
+    .de-time-select:hover {
+        border-color: var(--cs-info);
+    }
+
+    .de-time-hint {
+        font-size: 10px;
+        color: var(--cs-text-tertiary);
+        font-style: italic;
+    }
+
+    .de-listbox {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        border: 1px solid var(--cs-border-default);
+        border-radius: var(--cs-radius-s);
+        background: var(--cs-bg-primary);
+        overflow: hidden;
+    }
+
+    .de-listbox-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 3px 8px;
+        background: var(--cs-bg-secondary);
+        border-bottom: 1px solid var(--cs-border-divider);
+    }
+
+    .de-listbox-title {
+        font-size: 10px;
+        font-weight: var(--cs-font-weight-bold);
+        text-transform: uppercase;
+        letter-spacing: var(--cs-letter-spacing-caps);
+        color: var(--cs-text-tertiary);
+    }
+
+    .de-listbox-toggle {
+        font-size: 10px;
+        padding: 1px 6px;
+        border: 1px solid var(--cs-border-default);
+        border-radius: 3px;
+        background: var(--cs-bg-primary);
+        color: var(--cs-text-secondary);
+        cursor: pointer;
+        font-family: var(--cs-font);
+        transition: all var(--cs-transition-fast);
+    }
+
+    .de-listbox-toggle:hover {
+        border-color: var(--cs-info);
+        color: var(--cs-info);
+    }
+
+    .de-listbox-filter {
+        padding: 4px 8px;
+        border: none;
+        border-bottom: 1px solid var(--cs-border-divider);
+        font-size: 11px;
+        font-family: var(--cs-font);
+        color: var(--cs-text-primary);
+        outline: none;
+        background: var(--cs-bg-primary);
+    }
+
+    .de-listbox-filter::placeholder {
+        color: var(--cs-text-disabled);
+    }
+
+    .de-listbox-items {
+        height: 90px;
+        overflow-y: auto;
+    }
+
+    .de-listbox-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 2px 8px;
+        font-size: 11px;
+        cursor: pointer;
+        color: var(--cs-text-primary);
+        transition: background var(--cs-transition-fast);
+        user-select: none;
+    }
+
+    .de-listbox-item:hover {
+        background: var(--cs-bg-hover);
+    }
+
+    .de-listbox-item.selected {
+        background: var(--cs-bg-active);
+        color: var(--cs-info);
+    }
+
+    .de-listbox-item .de-lb-check {
+        width: 12px;
+        height: 12px;
+        border: 1.5px solid var(--cs-border-input);
+        border-radius: 2px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        font-size: 8px;
+        color: transparent;
+        transition: all var(--cs-transition-fast);
+    }
+
+    .de-listbox-item.selected .de-lb-check {
+        background: var(--cs-btn-primary-bg);
+        border-color: var(--cs-btn-primary-bg);
+        color: white;
+    }
+
+    .de-listbox-item .de-lb-label {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .de-listbox-status {
+        padding: 2px 8px;
+        font-size: 10px;
+        color: var(--cs-text-tertiary);
+        border-top: 1px solid var(--cs-border-divider);
+        background: var(--cs-bg-secondary);
+    }
+
+    .de-sugg-row {
+        margin-top: var(--cs-space-xs);
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+
+    .de-sugg-label {
+        font-size: 10px;
+        color: var(--cs-text-tertiary);
+    }
+
+    .de-sugg-chip {
+        padding: 4px 11px;
+        background: var(--cs-bg-secondary);
+        border: 1px solid var(--cs-border-default);
+        border-radius: var(--cs-radius-pill);
+        font-size: var(--cs-font-size-xs);
+        color: var(--cs-text-secondary);
+        cursor: pointer;
+        transition: all var(--cs-transition-fast);
+    }
+
+    .de-sugg-chip:hover {
+        background: var(--cs-bg-active);
+        border-color: var(--cs-info);
+        color: var(--cs-info);
+    }
+
+    /* Results Area */
+    .de-results-area {
+        flex: 1;
+        overflow-y: auto;
+        padding: var(--cs-space-l);
+    }
+
+    .de-results-empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        gap: var(--cs-space-s);
+        color: var(--cs-text-tertiary);
+    }
+
+    .de-empty-icon {
+        font-size: 44px;
+        opacity: 0.25;
+    }
+
+    .de-results-empty h3 {
+        font-size: var(--cs-font-size-l);
+        color: var(--cs-text-secondary);
+    }
+
+    .de-results-empty p {
+        font-size: var(--cs-font-size-xs);
+        text-align: center;
+        max-width: 400px;
+        line-height: 1.6;
+    }
+
+    /* Thinking animation */
+    .de-thinking {
+        display: flex;
+        align-items: center;
+        gap: var(--cs-space-s);
+        padding: var(--cs-space-s) var(--cs-space-m);
+        background: var(--cs-bg-primary);
+        border: 1px solid var(--cs-border-default);
+        border-radius: var(--cs-radius-m);
+        margin-bottom: var(--cs-space-s);
+    }
+
+    .de-t-dots {
+        display: flex;
+        gap: 4px;
+    }
+
+    .de-t-dot {
+        width: 6px;
+        height: 6px;
+        background: var(--cs-btn-primary-bg);
+        border-radius: 50%;
+        animation: de-bounce 1.1s infinite;
+    }
+
+    .de-t-dot:nth-child(2) { animation-delay: 0.18s; }
+    .de-t-dot:nth-child(3) { animation-delay: 0.36s; }
+
+    @keyframes de-bounce {
+        0%, 60%, 100% { transform: translateY(0); }
+        30% { transform: translateY(-6px); }
+    }
+
+    .de-t-steps {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+    }
+
+    .de-t-step {
+        font-size: var(--cs-font-size-xs);
+        color: var(--cs-text-tertiary);
+    }
+
+    .de-t-step.done { color: var(--cs-success); }
+    .de-t-step.current { color: var(--cs-text-secondary); }
+
+    /* AI Summary Card */
+    .de-ai-card {
+        background: var(--cs-bg-primary);
+        border: 1px solid var(--cs-border-default);
+        border-radius: var(--cs-radius-m);
+        margin-bottom: var(--cs-space-s);
+        overflow: hidden;
+        box-shadow: var(--cs-shadow-xs);
+    }
+
+    .de-ai-card-head {
+        display: flex;
+        align-items: center;
+        gap: var(--cs-space-xs);
+        padding: var(--cs-space-s) var(--cs-space-m);
+        border-bottom: 1px solid var(--cs-border-divider);
+        background: var(--cs-info-bg);
+    }
+
+    .de-v-avatar {
+        width: 22px;
+        height: 22px;
+        background: var(--cs-btn-primary-bg);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        font-weight: 800;
+        color: white;
+    }
+
+    .de-ai-label {
+        font-size: var(--cs-font-size-xs);
+        font-weight: var(--cs-font-weight-bold);
+        color: var(--cs-btn-primary-bg);
+    }
+
+    .de-ai-ts {
+        font-size: 10px;
+        color: var(--cs-text-tertiary);
+        margin-left: auto;
+    }
+
+    .de-ai-body {
+        padding: var(--cs-space-m);
+        font-size: var(--cs-font-size-s);
+        line-height: 1.75;
+        color: var(--cs-text-primary);
+    }
+
+    .de-ai-body .hl {
+        font-weight: var(--cs-font-weight-bold);
+        color: var(--cs-btn-primary-bg);
+    }
+
+    .de-ai-body .up {
+        color: var(--cs-success);
+        font-weight: 600;
+    }
+
+    .de-ai-body .dn {
+        color: var(--cs-error);
+        font-weight: 600;
+    }
+
+    /* Stat Cards */
+    .de-stat-row {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: var(--cs-space-s);
+        margin-bottom: var(--cs-space-s);
+    }
+
+    .de-stat-card {
+        background: var(--cs-bg-primary);
+        border: 1px solid var(--cs-border-default);
+        border-radius: var(--cs-radius-m);
+        padding: var(--cs-space-s) var(--cs-space-m);
+        box-shadow: var(--cs-shadow-xs);
+    }
+
+    .de-sc-label {
+        font-size: 10px;
+        color: var(--cs-text-tertiary);
+        text-transform: uppercase;
+        letter-spacing: var(--cs-letter-spacing-caps);
+        margin-bottom: 5px;
+    }
+
+    .de-sc-value {
+        font-size: var(--cs-font-size-xl);
+        font-weight: var(--cs-font-weight-bold);
+        color: var(--cs-text-primary);
+        margin-bottom: 3px;
+    }
+
+    .de-sc-change {
+        font-size: var(--cs-font-size-xs);
+    }
+
+    .de-sc-change.up { color: var(--cs-success); }
+    .de-sc-change.dn { color: var(--cs-error); }
+    .de-sc-change.neu { color: var(--cs-text-tertiary); }
+
+    /* Tabs */
+    .de-tabs {
+        display: flex;
+        gap: 2px;
+        border-bottom: 1px solid var(--cs-border-divider);
+        margin-bottom: var(--cs-space-s);
+    }
+
+    .de-tab {
+        padding: 7px 13px;
+        font-size: var(--cs-font-size-xs);
+        cursor: pointer;
+        color: var(--cs-text-secondary);
+        border: none;
+        background: none;
+        border-bottom: 2px solid transparent;
+        margin-bottom: -1px;
+        transition: all var(--cs-transition-fast);
+        font-family: var(--cs-font);
+    }
+
+    .de-tab:hover { color: var(--cs-text-primary); }
+
+    .de-tab.active {
+        color: var(--cs-btn-primary-bg);
+        border-bottom-color: var(--cs-btn-primary-bg);
+    }
+
+    /* Chart */
+    .de-chart-box {
+        background: var(--cs-bg-primary);
+        border: 1px solid var(--cs-border-default);
+        border-radius: var(--cs-radius-m);
+        padding: var(--cs-space-l);
+        margin-bottom: var(--cs-space-s);
+        position: relative;
+        height: 290px;
+        box-shadow: var(--cs-shadow-xs);
+    }
+
+    .de-chart-actions {
+        position: absolute;
+        top: 11px;
+        right: 11px;
+        display: flex;
+        gap: 4px;
+    }
+
+    .de-ct-btn {
+        padding: 3px 8px;
+        background: var(--cs-bg-secondary);
+        border: 1px solid var(--cs-border-default);
+        border-radius: var(--cs-radius-s);
+        font-size: 10px;
+        color: var(--cs-text-secondary);
+        cursor: pointer;
+        transition: all var(--cs-transition-fast);
+        font-family: var(--cs-font);
+    }
+
+    .de-ct-btn.active,
+    .de-ct-btn:hover {
+        background: var(--cs-bg-active);
+        border-color: var(--cs-info);
+        color: var(--cs-info);
+    }
+
+    /* Table */
+    .de-table-box {
+        background: var(--cs-bg-primary);
+        border: 1px solid var(--cs-border-default);
+        border-radius: var(--cs-radius-m);
+        overflow: hidden;
+        margin-bottom: var(--cs-space-s);
+        box-shadow: var(--cs-shadow-xs);
+    }
+
+    .de-data-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: var(--cs-font-size-xs);
+    }
+
+    .de-data-table th {
+        padding: 9px 13px;
+        text-align: left;
+        font-size: 10px;
+        font-weight: var(--cs-font-weight-bold);
+        text-transform: uppercase;
+        letter-spacing: var(--cs-letter-spacing-caps);
+        color: var(--cs-text-tertiary);
+        background: var(--cs-bg-secondary);
+        border-bottom: 1px solid var(--cs-border-default);
+        cursor: pointer;
+    }
+
+    .de-data-table th:hover { color: var(--cs-text-primary); }
+
+    .de-data-table td {
+        padding: 9px 13px;
+        border-bottom: 1px solid var(--cs-border-divider);
+        color: var(--cs-text-primary);
+    }
+
+    .de-data-table tr:last-child td { border-bottom: none; }
+    .de-data-table tr:hover td { background: var(--cs-bg-hover); }
+
+    td.up { color: var(--cs-success); }
+    td.dn { color: var(--cs-error); }
+
+    /* ES Query display */
+    .de-es-box {
+        background: #1e1e2e;
+        border: 1px solid var(--cs-border-default);
+        border-radius: var(--cs-radius-m);
+        padding: var(--cs-space-m);
+        margin-bottom: var(--cs-space-s);
+        font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+        font-size: var(--cs-font-size-xs);
+        color: #cdd6f4;
+        overflow-x: auto;
+        line-height: 1.65;
+        white-space: pre-wrap;
+    }
+
+    .de-es-box .k { color: var(--cs-info); }
+    .de-es-box .s { color: var(--cs-success); }
+    .de-es-box .n { color: #ffa657; }
+    .de-es-method { color: #ff7b72; font-weight: 600; }
+    .de-es-path { color: #d2a8ff; }
+
+    .de-es-box-wrap { position: relative; }
+    .de-es-copy-btn {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        z-index: 1;
+        background: rgba(255,255,255,0.1);
+        border: 1px solid rgba(255,255,255,0.15);
+        color: #cdd6f4;
+        padding: 4px 10px;
+        border-radius: var(--cs-radius-s);
+        font-size: var(--cs-font-size-xs);
+        cursor: pointer;
+        transition: background 0.15s;
+    }
+    .de-es-copy-btn:hover { background: rgba(255,255,255,0.2); }
+
+    /* Result actions */
+    .de-result-actions {
+        display: flex;
+        gap: 7px;
+        justify-content: flex-end;
+        padding-top: var(--cs-space-xxs);
+    }
+
+    /* Error display */
+    .de-error-card {
+        padding: var(--cs-space-m);
+        background: var(--cs-error-bg);
+        border: 1px solid var(--cs-error);
+        border-radius: var(--cs-radius-m);
+        color: var(--cs-error);
+        font-size: var(--cs-font-size-s);
+        margin-bottom: var(--cs-space-s);
+    }
+
+    /* ── Right Panel: Report Builder ── */
+    .de-report-panel {
+        width: 252px;
+        flex-shrink: 0;
+        background: var(--cs-bg-primary);
+        border-left: 1px solid var(--cs-border-divider);
+        display: flex;
+        flex-direction: column;
+    }
+
+    .de-panel-head {
+        padding: var(--cs-space-s) var(--cs-space-m);
+        border-bottom: 1px solid var(--cs-border-divider);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-shrink: 0;
+    }
+
+    .de-panel-title {
+        font-size: var(--cs-font-size-xs);
+        font-weight: var(--cs-font-weight-bold);
+    }
+
+    .de-panel-badge {
+        background: var(--cs-btn-primary-bg);
+        color: white;
+        border-radius: 10px;
+        padding: 2px 7px;
+        font-size: var(--cs-font-size-xs);
+        font-weight: var(--cs-font-weight-bold);
+    }
+
+    .de-report-items {
+        flex: 1;
+        overflow-y: auto;
+        padding: var(--cs-space-s);
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
+    }
+
+    .de-report-empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        gap: var(--cs-space-xs);
+        color: var(--cs-text-tertiary);
+        font-size: var(--cs-font-size-xs);
+        text-align: center;
+        padding: var(--cs-space-m);
+    }
+
+    .de-rpt-item {
+        padding: 9px 11px;
+        background: var(--cs-bg-secondary);
+        border: 1px solid var(--cs-border-default);
+        border-radius: var(--cs-radius-s);
+        cursor: pointer;
+        transition: all var(--cs-transition-fast);
+    }
+
+    .de-rpt-item:hover { border-color: var(--cs-info); }
+
+    .de-rpt-item.active {
+        border-color: var(--cs-btn-primary-bg);
+        background: var(--cs-bg-active);
+    }
+
+    .de-rpt-check {
+        width: 14px;
+        height: 14px;
+        accent-color: var(--cs-btn-primary-bg);
+        cursor: pointer;
+        flex-shrink: 0;
+        margin-top: 1px;
+    }
+
+    .de-rpt-query {
+        font-size: var(--cs-font-size-xs);
+        color: var(--cs-text-primary);
+        margin-bottom: 3px;
+        line-height: 1.4;
+    }
+
+    .de-rpt-meta {
+        font-size: 10px;
+        color: var(--cs-text-tertiary);
+    }
+
+    .de-panel-foot {
+        padding: var(--cs-space-s);
+        border-top: 1px solid var(--cs-border-divider);
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
+        flex-shrink: 0;
+    }
+
+    .de-rpt-name {
+        width: 100%;
+        padding: 6px 10px;
+        background: var(--cs-bg-primary);
+        border: 1px solid var(--cs-border-input);
+        border-radius: var(--cs-radius-s);
+        color: var(--cs-text-primary);
+        font-size: var(--cs-font-size-xs);
+        font-family: var(--cs-font);
+        outline: none;
+    }
+
+    .de-rpt-name:focus { border-color: var(--cs-border-input-focus); }
+
+    /* Usage info (collapsible in footer) */
+    .de-usage-row {
+        display: flex;
+        gap: var(--cs-space-xs);
+        font-size: 10px;
+        color: var(--cs-text-tertiary);
+        padding-top: var(--cs-space-xxs);
+        justify-content: center;
+    }
+
+    /* Fade animation */
+    @keyframes de-fadeUp {
+        from { opacity: 0; transform: translateY(7px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .de-fade { animation: de-fadeUp 0.22s ease forwards; }
+    .de-hidden { display: none !important; }
+
+    /* Responsive: hide sidebars on smaller screens */
+    @media (max-width: 1100px) {
+        .de-sidebar { display: none; }
+        .de-report-panel { display: none; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="de-layout">
+
+    <!-- LEFT: Query History -->
+    <aside class="de-sidebar">
+        <div class="de-sidebar-section" style="display:flex;align-items:center;justify-content:space-between;">
+            <div class="de-sidebar-title">Recent Queries</div>
+            <button class="de-listbox-toggle" id="de-clear-history" title="Clear all queries">Clear All</button>
+        </div>
+        <div class="de-history-scroll" id="de-hist-list"></div>
+    </aside>
+
+    <!-- CENTER: Query + Results -->
+    <div class="de-content">
+        <!-- Fixed query input (always visible) -->
+        <div class="de-query-top">
+            <div class="de-query-row">
+                <div class="de-query-wrap">
+                    <i class="fas fa-search de-q-icon"></i>
+                    <input class="de-query-input" id="de-q-input" type="text"
+                        placeholder="Ask Kavanah anything about your data..."
+                        autocomplete="off" />
+                </div>
+                <button class="cs-btn cs-btn-primary" id="de-ask-btn" onclick="deRunQuery()">
+                    Ask <i class="fas fa-arrow-right" style="margin-left:4px;font-size:11px;"></i>
+                </button>
+                <select class="de-model-sel" id="de-model-sel" title="Select AI model">
+                    <option value="haiku">Haiku 4.5 (fast)</option>
+                    <option value="sonnet">Sonnet 4 (smart)</option>
+                </select>
+                <span class="de-memory-badge" id="de-memory-badge" title="Queries learned by Kavanah">
+                    <i class="fas fa-brain"></i> <span id="de-mem-count">0</span>
+                </span>
+            </div>
+            <div class="de-usage-row" id="de-usage-row">
+                <span id="de-stat-queries">-</span> |
+                <span id="de-stat-cost">-</span> cost today |
+                <span id="de-stat-tokens">-</span> tokens today
+            </div>
+            <!-- Tab bar -->
+            <div class="de-main-tabs">
+                <button class="de-main-tab active" id="de-tab-sources-btn" onclick="deMainTab('sources')">
+                    <i class="fas fa-filter"></i> Filters
+                    <span class="de-tab-count" id="de-sources-count"></span>
+                </button>
+                <button class="de-main-tab" id="de-tab-results-btn" onclick="deMainTab('results')">
+                    <i class="fas fa-chart-bar"></i> Results
+                </button>
+                <div class="de-tab-actions" id="de-result-actions">
+                    <button class="cs-btn cs-btn-normal cs-btn-sm" id="de-btn-helpful" onclick="deRate(true)"><i class="fas fa-thumbs-up"></i> Helpful</button>
+                    <button class="cs-btn cs-btn-normal cs-btn-sm" onclick="deRate(false)"><i class="fas fa-thumbs-down"></i> Refine</button>
+                    <button class="cs-btn cs-btn-normal cs-btn-sm" id="de-save-rpt-btn" onclick="deSaveToRpt()"><i class="fas fa-plus"></i> Save to Report</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Data Sources -->
+        <div class="de-tab-panel" id="de-panel-sources">
+            <div class="de-sources-content">
+                <div class="de-query-meta">
+                    <div class="de-index-pills" id="de-index-pills">
+                        <span class="de-idx-label">Data Views:</span>
+                    </div>
+                </div>
+                <div class="de-time-row">
+                    <label class="de-time-label" for="de-time-range">Time Range</label>
+                    <select class="de-time-select" id="de-time-range" title="Default time window for queries (overridden if you mention a date/period in your question)">
+                        <option value="last_7_days">Last 7 days</option>
+                        <option value="last_30_days" selected>Last 30 days</option>
+                        <option value="last_90_days">Last 90 days</option>
+                        <option value="last_6_months">Last 6 months</option>
+                        <option value="last_12_months">Last 12 months</option>
+                        <option value="year_to_date">Year to date</option>
+                        <option value="all_time">All time</option>
+                    </select>
+                    <span class="de-time-hint">Overridden if you mention a date/period in your question</span>
+                </div>
+                <div class="de-orgteam-row" id="de-orgteam-row">
+                    <div class="de-listbox">
+                        <div class="de-listbox-head">
+                            <span class="de-listbox-title">Organizations</span>
+                            <button class="de-listbox-toggle" id="de-org-toggle" title="Select / deselect all">All</button>
+                        </div>
+                        <input class="de-listbox-filter" id="de-org-filter" type="text" placeholder="Filter orgs..." />
+                        <div class="de-listbox-items" id="de-org-list"></div>
+                        <div class="de-listbox-status" id="de-org-status">0 selected</div>
+                    </div>
+                    <div class="de-listbox">
+                        <div class="de-listbox-head">
+                            <span class="de-listbox-title">Teams</span>
+                            <button class="de-listbox-toggle" id="de-team-toggle" title="Select / deselect all">All</button>
+                        </div>
+                        <input class="de-listbox-filter" id="de-team-filter" type="text" placeholder="Filter teams..." />
+                        <div class="de-listbox-items" id="de-team-list"></div>
+                        <div class="de-listbox-status" id="de-team-status">0 selected</div>
+                    </div>
+                </div>
+                <div class="de-sugg-row" id="de-sugg-row">
+                    <span class="de-sugg-label">Try:</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Results -->
+        <div class="de-tab-panel de-hidden" id="de-panel-results">
+            <div class="de-results-area" id="de-results">
+                <div class="de-results-empty" id="de-r-empty">
+                    <div class="de-empty-icon"><i class="fas fa-search"></i></div>
+                    <h3>Ask Kavanah anything about your data</h3>
+                    <p>Kavanah has access to all your data views. Ask about ad spend, campaign performance, ROI, channel comparisons, creative effectiveness, and more.</p>
+                </div>
+                <div id="de-r-content" class="de-hidden"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- RIGHT: Report Builder -->
+    <div class="de-report-panel">
+        <div class="de-panel-head">
+            <span class="de-panel-title"><i class="fas fa-file-alt" style="margin-right:4px;"></i> Report Builder</span>
+            <span class="de-panel-badge" id="de-rpt-badge">0</span>
+        </div>
+        <div style="padding:var(--cs-space-xs) var(--cs-space-s);border-bottom:1px solid var(--cs-border-divider);flex-shrink:0;">
+            <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;color:var(--cs-text-tertiary);margin-bottom:2px;">Report Title</div>
+            <input class="de-rpt-name" id="de-rpt-name" placeholder="Enter report title..." value="" />
+            <div style="display:flex;gap:4px;margin-top:4px;">
+                <button class="cs-btn cs-btn-normal cs-btn-sm" style="flex:1" onclick="deExportReport('excel')">
+                    <i class="fas fa-file-excel"></i> Excel
+                </button>
+                <button class="cs-btn cs-btn-normal cs-btn-sm" style="flex:1" onclick="deExportReport('pdf')">
+                    <i class="fas fa-file-pdf"></i> PDF
+                </button>
+            </div>
+        </div>
+        <div class="de-report-items" id="de-rpt-items">
+            <div class="de-report-empty" id="de-rpt-empty">
+                <i class="fas fa-clipboard-list" style="font-size:26px;opacity:0.25;"></i>
+                <div>Save query results here to build a report.<br>Check items to include in export.</div>
+            </div>
+        </div>
+        <div class="de-panel-foot">
+        </div>
+    </div>
+</div>
+
+<script nonce="{{ csp_nonce }}">
+(function() {
+    'use strict';
+
+    const prefix = "{{ url_for('data_explorer.index') }}".replace(/\/$/, '');
+
+    // ── State ──
+    let activeChart = null;
+    let curResult = null;
+    let curQuery = '';
+    let curEsQueryCopyText = '';
+
+    // ── Report sections (persisted in localStorage) ──
+    const RPT_KEY = 'de_report_sections';
+    const RPT_NAME_KEY = 'de_report_name';
+    let reportSections = loadReportFromStorage();
+    let rptCount = reportSections.length;
+    const checkedReports = new Set(); // indices of sections checked for export
+
+    function loadReportFromStorage() {
+        try {
+            const raw = localStorage.getItem(RPT_KEY);
+            return raw ? JSON.parse(raw) : [];
+        } catch (e) { return []; }
+    }
+
+    function saveReportToStorage() {
+        try {
+            localStorage.setItem(RPT_KEY, JSON.stringify(reportSections));
+            localStorage.setItem(RPT_NAME_KEY, document.getElementById('de-rpt-name').value || '');
+        } catch (e) { /* quota exceeded */ }
+    }
+
+    // User's default orgs from server (role-based)
+    const USER_DEFAULT_ORGS = {{ user_orgs | tojson }};
+
+    // ── Query history (persisted in localStorage) ──
+    const HISTORY_KEY = 'de_query_history';
+    const HISTORY_MAX = 50;
+    let queryHistory = loadHistoryFromStorage();
+
+    function loadHistoryFromStorage() {
+        try {
+            const raw = localStorage.getItem(HISTORY_KEY);
+            return raw ? JSON.parse(raw) : [];
+        } catch (e) { return []; }
+    }
+
+    function saveHistoryToStorage() {
+        try {
+            localStorage.setItem(HISTORY_KEY, JSON.stringify(queryHistory.slice(0, HISTORY_MAX)));
+        } catch (e) { /* quota exceeded — ignore */ }
+    }
+
+    // ── DOM refs ──
+    const qInput = document.getElementById('de-q-input');
+    const askBtn = document.getElementById('de-ask-btn');
+    const resultsEl = document.getElementById('de-results');
+    const emptyEl = document.getElementById('de-r-empty');
+    const contentEl = document.getElementById('de-r-content');
+    const histList = document.getElementById('de-hist-list');
+    const indexPills = document.getElementById('de-index-pills');
+    const suggRow = document.getElementById('de-sugg-row');
+    const orgList = document.getElementById('de-org-list');
+    const teamList = document.getElementById('de-team-list');
+    const orgFilter = document.getElementById('de-org-filter');
+    const teamFilter = document.getElementById('de-team-filter');
+    const orgStatus = document.getElementById('de-org-status');
+    const teamStatus = document.getElementById('de-team-status');
+
+    // ── Load available data views for index pills ──
+    function loadDataViews() {
+        fetch(prefix + '/api/data-views')
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success || !data.data_views) return;
+                // Remove old pills but keep the label
+                Array.from(indexPills.querySelectorAll('.de-idx-pill')).forEach(p => p.remove());
+                data.data_views.forEach((dv, i) => {
+                    const pill = document.createElement('div');
+                    pill.className = 'de-idx-pill' + (i < 3 ? ' on' : '');
+                    pill.textContent = dv.label || dv.id;
+                    pill.dataset.id = dv.id;
+                    pill.addEventListener('click', function() {
+                        this.classList.toggle('on');
+                        updateIdxLabel();
+                    });
+                    indexPills.appendChild(pill);
+                });
+            })
+            .catch(() => {
+                Array.from(indexPills.querySelectorAll('.de-idx-pill')).forEach(p => p.remove());
+            });
+    }
+
+    // ── Org/Team listbox filters ──
+    let allOrgs = [];
+    let allTeams = [];
+    const selectedOrgs = new Set();
+    const selectedTeams = new Set();
+
+    function loadOrgTeamOptions() {
+        fetch('/api/dashboards/filter-options')
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success) return;
+                allOrgs = (data.organizations || []).map(o => o.title).filter(Boolean).sort();
+                allTeams = (data.teams || []).map(t => t.title).filter(Boolean).sort();
+
+                // Pre-select user's default orgs from roles
+                if (USER_DEFAULT_ORGS && USER_DEFAULT_ORGS.length > 0) {
+                    USER_DEFAULT_ORGS.forEach(o => {
+                        if (allOrgs.includes(o)) selectedOrgs.add(o);
+                    });
+                }
+
+                renderListbox(orgList, allOrgs, selectedOrgs, updateOrgStatus);
+                updateOrgStatus();
+
+                // If default orgs were selected, scope teams to those orgs
+                if (selectedOrgs.size > 0) {
+                    onOrgSelectionChanged();
+                } else {
+                    renderListbox(teamList, allTeams, selectedTeams, updateTeamStatus);
+                }
+            })
+            .catch(() => {});
+    }
+
+    function renderListbox(container, items, selectedSet, statusFn, filterText) {
+        container.innerHTML = '';
+        const ft = (filterText || '').toLowerCase();
+        const filtered = ft ? items.filter(n => n.toLowerCase().includes(ft)) : items;
+        if (filtered.length === 0) {
+            container.innerHTML = '<div style="padding:6px 8px;font-size:11px;color:var(--cs-text-tertiary);">' +
+                (ft ? 'No matches' : 'None available') + '</div>';
+            return;
+        }
+        filtered.forEach(name => {
+            const el = document.createElement('div');
+            el.className = 'de-listbox-item' + (selectedSet.has(name) ? ' selected' : '');
+            el.innerHTML = '<span class="de-lb-check"><i class="fas fa-check"></i></span>' +
+                '<span class="de-lb-label">' + escapeHtml(name) + '</span>';
+            el.addEventListener('click', function() {
+                if (selectedSet.has(name)) {
+                    selectedSet.delete(name);
+                    el.classList.remove('selected');
+                } else {
+                    selectedSet.add(name);
+                    el.classList.add('selected');
+                }
+                statusFn();
+                // If orgs changed, re-scope teams
+                if (selectedSet === selectedOrgs) onOrgSelectionChanged();
+            });
+            container.appendChild(el);
+        });
+    }
+
+    function updateOrgStatus() {
+        orgStatus.textContent = selectedOrgs.size ? selectedOrgs.size + ' selected' : 'All orgs';
+        updateSourcesCount();
+    }
+
+    function updateTeamStatus() {
+        teamStatus.textContent = selectedTeams.size ? selectedTeams.size + ' selected' : 'All teams';
+        updateSourcesCount();
+    }
+
+    function onOrgSelectionChanged() {
+        if (selectedOrgs.size === 0) {
+            currentScopedTeams = null;
+            renderListbox(teamList, allTeams, selectedTeams, updateTeamStatus, teamFilter.value);
+            return;
+        }
+        const orgsParam = 'orgs=' + encodeURIComponent(Array.from(selectedOrgs).join(','));
+        fetch('/api/dashboards/filter-options?' + orgsParam)
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success) return;
+                const scopedTeams = (data.teams || []).map(t => t.title).filter(Boolean).sort();
+                currentScopedTeams = scopedTeams;
+                // Remove team selections that are no longer in scope
+                for (const t of selectedTeams) {
+                    if (!scopedTeams.includes(t)) selectedTeams.delete(t);
+                }
+                renderListbox(teamList, scopedTeams, selectedTeams, updateTeamStatus, teamFilter.value);
+                updateTeamStatus();
+            })
+            .catch(() => {});
+    }
+
+    function getSelectedOrgs() { return Array.from(selectedOrgs); }
+    function getSelectedTeams() { return Array.from(selectedTeams); }
+    function getSelectedTimeRangeLabel() {
+        const sel = document.getElementById('de-time-range');
+        if (!sel) return 'Last 30 days';
+        return sel.options[sel.selectedIndex].text;
+    }
+
+    // Filter inputs
+    orgFilter.addEventListener('input', function() {
+        renderListbox(orgList, allOrgs, selectedOrgs, updateOrgStatus, this.value);
+    });
+    // Track scoped teams so team filter can re-render without re-fetching
+    let currentScopedTeams = null;
+
+    teamFilter.addEventListener('input', function() {
+        const teams = currentScopedTeams || allTeams;
+        renderListbox(teamList, teams, selectedTeams, updateTeamStatus, this.value);
+    });
+
+    // Select/deselect all buttons
+    document.getElementById('de-org-toggle').addEventListener('click', function() {
+        if (selectedOrgs.size === allOrgs.length) {
+            selectedOrgs.clear();
+        } else {
+            allOrgs.forEach(o => selectedOrgs.add(o));
+        }
+        renderListbox(orgList, allOrgs, selectedOrgs, updateOrgStatus, orgFilter.value);
+        updateOrgStatus();
+        onOrgSelectionChanged();
+    });
+
+    document.getElementById('de-team-toggle').addEventListener('click', function() {
+        const teams = currentScopedTeams || allTeams;
+        if (selectedTeams.size === teams.length && teams.length > 0) {
+            selectedTeams.clear();
+        } else {
+            teams.forEach(t => selectedTeams.add(t));
+        }
+        renderListbox(teamList, teams, selectedTeams, updateTeamStatus, teamFilter.value);
+        updateTeamStatus();
+    });
+
+    // ── Suggested queries (from memory store, with fallbacks) ──
+    const DEFAULT_SUGGESTIONS = [
+        'Compare ad spend across channels',
+        'Top 5 campaigns by ROI',
+        'Monthly performance trends',
+        'Which campaigns have the highest CPM?',
+        'Ad spend breakdown by platform',
+    ];
+
+    function renderSuggestionChips(queries) {
+        // Remove old chips but keep the label
+        Array.from(suggRow.querySelectorAll('.de-sugg-chip')).forEach(c => c.remove());
+        queries.forEach(q => {
+            const chip = document.createElement('div');
+            chip.className = 'de-sugg-chip';
+            chip.textContent = q;
+            chip.addEventListener('click', function() {
+                qInput.value = q;
+                deRunQuery();
+            });
+            suggRow.appendChild(chip);
+        });
+    }
+
+    function loadSuggestions() {
+        // Load defaults immediately, then replace with memory-backed ones
+        renderSuggestionChips(DEFAULT_SUGGESTIONS);
+
+        fetch(prefix + '/api/suggestions')
+            .then(r => r.json())
+            .then(data => {
+                if (data.success && data.suggestions && data.suggestions.length > 0) {
+                    renderSuggestionChips(data.suggestions);
+                }
+            })
+            .catch(() => {});
+    }
+
+    // ── Get selected indices (empty = search all) ──
+    function getSelectedIndices() {
+        const pills = indexPills.querySelectorAll('.de-idx-pill.on');
+        return Array.from(pills).map(p => p.dataset.id).filter(Boolean);
+    }
+
+    // Update label when pills change
+    function updateIdxLabel() {
+        const label = document.querySelector('.de-idx-label');
+        const selected = getSelectedIndices();
+        label.textContent = selected.length ? 'Data Views:' : 'Data Views: (all)';
+        updateSourcesCount();
+    }
+
+    // ── Run / Stop query ──
+    let activeAbort = null;
+
+    function setQueryRunning(running) {
+        if (running) {
+            askBtn.innerHTML = '<i class="fas fa-stop" style="margin-right:4px;font-size:11px;"></i> Stop';
+            askBtn.classList.remove('cs-btn-primary');
+            askBtn.classList.add('cs-btn-normal');
+            askBtn.onclick = deStopQuery;
+        } else {
+            askBtn.innerHTML = 'Ask <i class="fas fa-arrow-right" style="margin-left:4px;font-size:11px;"></i>';
+            askBtn.classList.remove('cs-btn-normal');
+            askBtn.classList.add('cs-btn-primary');
+            askBtn.onclick = function() { deRunQuery(); };
+            activeAbort = null;
+        }
+    }
+
+    window.deStopQuery = function() {
+        if (activeAbort) {
+            activeAbort.abort();
+            activeAbort = null;
+        }
+        setQueryRunning(false);
+        contentEl.innerHTML = '<div class="de-error-card" style="background:var(--cs-warning-bg);border-color:var(--cs-warning);color:var(--cs-warning);">' +
+            '<i class="fas fa-hand-paper"></i> Query canceled.</div>';
+    };
+
+    window.deRunQuery = function(overrideQuery) {
+        const query = overrideQuery || qInput.value.trim();
+        if (!query) return;
+
+        // Cancel any in-flight query
+        if (activeAbort) activeAbort.abort();
+        activeAbort = new AbortController();
+        setQueryRunning(true);
+
+        const indices = getSelectedIndices();
+        const orgs = getSelectedOrgs();
+        const teams = getSelectedTeams();
+        const dateRange = getSelectedTimeRangeLabel();
+        // Switch to Results tab and show thinking state
+        deMainTab('results');
+        emptyEl.classList.add('de-hidden');
+        contentEl.classList.remove('de-hidden');
+        contentEl.innerHTML = buildThinkingHTML();
+
+        // Add to history
+        addHistory(query);
+        qInput.value = '';
+
+        // Animate thinking steps
+        setTimeout(() => {
+            const steps = contentEl.querySelectorAll('.de-t-step');
+            if (steps[0]) { steps[0].classList.add('done'); steps[0].innerHTML = '<i class="fas fa-check"></i> Parsed query intent'; }
+            if (steps[1]) steps[1].classList.add('current');
+        }, 400);
+
+        // Call API
+        fetch(prefix + '/api/ask', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                query: query,
+                indices: indices,
+                organizations: orgs.length ? orgs : null,
+                teams: teams.length ? teams : null,
+                date_range: dateRange,
+                model: document.getElementById('de-model-sel').value,
+            }),
+            signal: activeAbort.signal,
+        })
+        .then(r => {
+            const ct = r.headers.get('content-type') || '';
+            if (!ct.includes('application/json')) {
+                if (r.status === 403 || r.status === 401) {
+                    throw new Error('Session expired or access denied. Please refresh the page and log in again.');
+                }
+                throw new Error('Server returned an unexpected response (HTTP ' + r.status + '). Try refreshing the page.');
+            }
+            return r.json();
+        })
+        .then(data => {
+            setQueryRunning(false);
+            if (!data.success) {
+                contentEl.innerHTML = '<div class="de-error-card"><i class="fas fa-exclamation-triangle"></i> ' +
+                    escapeHtml(data.error || 'Unknown error') + '</div>';
+                return;
+            }
+            console.log('Ask Kavanah response:', JSON.stringify(data.result, null, 2));
+            curResult = data;
+            curQuery = query;
+            renderResults(data);
+            loadUsage();
+            loadMemoryCount();
+            setTimeout(loadSuggestions, 2000);
+        })
+        .catch(err => {
+            setQueryRunning(false);
+            if (err.name === 'AbortError') return; // user cancelled — already handled
+            contentEl.innerHTML = '<div class="de-error-card"><i class="fas fa-exclamation-triangle"></i> ' +
+                escapeHtml(err.message) + '</div>';
+        });
+    };
+
+    // ── Build thinking HTML ──
+    function buildThinkingHTML() {
+        return '<div class="de-thinking de-fade">' +
+            '<div class="de-t-dots"><div class="de-t-dot"></div><div class="de-t-dot"></div><div class="de-t-dot"></div></div>' +
+            '<div class="de-t-steps">' +
+            '<div class="de-t-step current"><i class="fas fa-spinner fa-spin"></i> Parsing query intent...</div>' +
+            '<div class="de-t-step"><i class="far fa-circle"></i> Generating Elasticsearch query...</div>' +
+            '<div class="de-t-step"><i class="far fa-circle"></i> Executing against data views</div>' +
+            '<div class="de-t-step"><i class="far fa-circle"></i> Synthesizing results</div>' +
+            '</div></div>';
+    }
+
+    // ── Render results ──
+    function renderResults(data) {
+        emptyEl.classList.add('de-hidden');
+        contentEl.classList.remove('de-hidden');
+        const r = data.result || {};
+        const narrative = r.narrative || 'No narrative available.';
+        const stats = r.stats || [];
+        const table = r.table || {};
+        const chartConfig = r.chart || null;
+        const esQuery = r.es_query || '';
+        const esIndex = r.es_index || '';
+        const model = data.usage ? data.usage.model : '';
+        // Stat cards
+        const statsHTML = stats.map(s => {
+            const cls = (s.direction === 'up') ? 'up' : (s.direction === 'down') ? 'dn' : 'neu';
+            return '<div class="de-stat-card">' +
+                '<div class="de-sc-label">' + escapeHtml(s.label || '') + '</div>' +
+                '<div class="de-sc-value">' + escapeHtml(s.value || '') + '</div>' +
+                '<div class="de-sc-change ' + cls + '">' + escapeHtml(s.change || '') + '</div>' +
+                '</div>';
+        }).join('');
+
+        // Table
+        const tHead = (table.headers || []).map(h => '<th>' + escapeHtml(h) + '</th>').join('');
+        const tRows = (table.rows || []).map(row =>
+            '<tr>' + row.map(cell => {
+                const cellStr = String(cell);
+                const cls = cellStr.includes('\u2191') ? ' class="up"' : cellStr.includes('\u2193') ? ' class="dn"' : '';
+                return '<td' + cls + '>' + escapeHtml(cellStr) + '</td>';
+            }).join('') + '</tr>'
+        ).join('');
+
+        // ES Query display — format as Kibana Dev Tools syntax
+        const esQueryBody = typeof esQuery === 'object' ? JSON.stringify(esQuery, null, 2) : esQuery;
+        const devToolsPrefix = esIndex ? 'GET /' + esIndex + '/_search\n' : '';
+        const esQueryDisplay = esQueryBody;
+        const esQueryCopyText = devToolsPrefix + esQueryBody;
+        curEsQueryCopyText = esQueryCopyText;
+
+        var html = '<div class="de-fade">' +
+            // AI Card
+            '<div class="de-ai-card">' +
+            '<div class="de-ai-card-head">' +
+            '<div class="de-v-avatar">K</div>' +
+            '<span class="de-ai-label">Kavanah Analysis</span>' +
+            '<span class="de-ai-ts">just now &middot; ' + escapeHtml(model) + '</span>' +
+            '</div>' +
+            '<div class="de-ai-body">' + formatNarrative(narrative) + '</div>' +
+            '</div>' +
+            // Stats
+            (stats.length ? '<div class="de-stat-row">' + statsHTML + '</div>' : '');
+
+        // Only show tabs if there's actual data (chart, table, or ES query)
+        const hasData = chartConfig || tHead || esQueryDisplay;
+        if (hasData) {
+            html +=
+                '<div class="de-tabs">' +
+                '<button class="de-tab active" onclick="deSwitchTab(this,\'chart\')"><i class="fas fa-chart-bar"></i> Chart</button>' +
+                '<button class="de-tab" onclick="deSwitchTab(this,\'table\')"><i class="fas fa-table"></i> Table</button>' +
+                '<button class="de-tab" onclick="deSwitchTab(this,\'esq\')"><i class="fas fa-code"></i> ES Query</button>' +
+                '</div>' +
+                '<div id="de-tab-chart">' +
+                '<div class="de-chart-box">' +
+                '<div class="de-chart-actions">' +
+                '<span class="de-ct-btn active" onclick="deSwChartType(this,\'bar\')">Bar</span>' +
+                '<span class="de-ct-btn" onclick="deSwChartType(this,\'line\')">Line</span>' +
+                '</div>' +
+                '<canvas id="de-the-chart" style="max-height:230px"></canvas>' +
+                '</div></div>' +
+                '<div id="de-tab-table" class="de-hidden">' +
+                '<div class="de-table-box">' +
+                '<table class="de-data-table">' +
+                '<thead><tr>' + tHead + '</tr></thead>' +
+                '<tbody>' + tRows + '</tbody>' +
+                '</table></div></div>' +
+                '<div id="de-tab-esq" class="de-hidden">' +
+                '<div class="de-es-box-wrap">' +
+                '<button class="de-es-copy-btn" onclick="deCopyEsQuery()" title="Copy as Kibana Dev Tools query">' +
+                '<i class="fas fa-copy"></i> Copy for Dev Tools</button>' +
+                '<div class="de-es-box">' +
+                (esIndex ? '<span class="de-es-method">GET</span> <span class="de-es-path">/' + escapeHtml(esIndex) + '/_search</span>\n' : '') +
+                syntaxHighlightJSON(esQueryDisplay) + '</div>' +
+                '</div></div>';
+        }
+        html += '</div>';
+        contentEl.innerHTML = html;
+
+        // Render chart
+        if (chartConfig && hasData) {
+            drawChart(chartConfig);
+        }
+    }
+
+    // ── Format narrative (bold numbers, up/down indicators) ──
+    function formatNarrative(text) {
+        let html = escapeHtml(text);
+        // Bold: **text**
+        html = html.replace(/\*\*(.+?)\*\*/g, '<strong class="hl">$1</strong>');
+        // Up arrows
+        html = html.replace(/(\u2191[^<]*)/g, '<span class="up">$1</span>');
+        // Down arrows
+        html = html.replace(/(\u2193[^<]*)/g, '<span class="dn">$1</span>');
+        return html;
+    }
+
+    // ── Syntax highlight JSON for ES query display ──
+    function syntaxHighlightJSON(json) {
+        if (!json) return '';
+        return escapeHtml(json)
+            .replace(/"([^"]+)":/g, '<span class="k">"$1"</span>:')
+            .replace(/: "([^"]+)"/g, ': <span class="s">"$1"</span>')
+            .replace(/: (\d+)/g, ': <span class="n">$1</span>');
+    }
+
+    // ── Draw Chart.js chart ──
+    function drawChart(config) {
+        const ctx = document.getElementById('de-the-chart');
+        if (!ctx) return;
+        if (activeChart) { activeChart.destroy(); activeChart = null; }
+
+        const type = config.type || 'bar';
+        const data = config.data || { labels: [], datasets: [] };
+
+        // Apply Cloudscape colors to datasets
+        const colors = [
+            'rgba(9, 114, 211, 0.7)',   // cs-btn-primary-bg
+            'rgba(3, 127, 12, 0.7)',    // cs-success
+            'rgba(217, 21, 21, 0.5)',   // cs-error
+            'rgba(141, 102, 5, 0.6)',   // cs-warning
+            'rgba(95, 107, 122, 0.5)',  // cs-text-secondary
+            'rgba(9, 114, 211, 0.4)',
+        ];
+        const borderColors = [
+            '#0972D3', '#037F0C', '#D91515', '#8D6605', '#5F6B7A', '#0972D3',
+        ];
+
+        data.datasets.forEach((ds, i) => {
+            if (!ds.backgroundColor) {
+                if (type === 'doughnut' || type === 'pie') {
+                    ds.backgroundColor = colors;
+                    ds.borderColor = borderColors;
+                    ds.borderWidth = 2;
+                } else {
+                    ds.backgroundColor = colors[i % colors.length];
+                    ds.borderColor = borderColors[i % borderColors.length];
+                    ds.borderWidth = 1.5;
+                    ds.borderRadius = 3;
+                }
+            }
+            if (type === 'line' && !ds.tension) {
+                ds.tension = 0.4;
+                ds.fill = false;
+            }
+        });
+
+        const isDoughnut = type === 'doughnut' || type === 'pie';
+
+        activeChart = new Chart(ctx, {
+            type: type,
+            data: data,
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        labels: {
+                            color: '#5F6B7A',
+                            font: { size: 11, family: "'Inter', sans-serif" },
+                            padding: 14,
+                            boxWidth: 12,
+                        },
+                    },
+                    tooltip: {
+                        backgroundColor: '#fff',
+                        titleColor: '#000716',
+                        bodyColor: '#5F6B7A',
+                        borderColor: '#D5DBDB',
+                        borderWidth: 1,
+                        padding: 10,
+                    },
+                },
+                scales: isDoughnut ? {} : {
+                    y: {
+                        grid: { color: 'rgba(0,7,22,0.06)' },
+                        ticks: { color: '#7D8998', font: { size: 11 } },
+                    },
+                    x: {
+                        grid: { color: 'rgba(0,7,22,0.03)' },
+                        ticks: { color: '#7D8998', font: { size: 11 } },
+                    },
+                },
+            },
+        });
+    }
+
+    // ── Copy ES query for Kibana Dev Tools ──
+    window.deCopyEsQuery = function() {
+        if (!curEsQueryCopyText) return;
+        navigator.clipboard.writeText(curEsQueryCopyText).then(function() {
+            var btn = document.querySelector('.de-es-copy-btn');
+            if (btn) {
+                btn.innerHTML = '<i class="fas fa-check"></i> Copied!';
+                setTimeout(function() {
+                    btn.innerHTML = '<i class="fas fa-copy"></i> Copy for Dev Tools';
+                }, 2000);
+            }
+        });
+    };
+
+    // ── Tab switching ──
+    window.deSwitchTab = function(btn, tab) {
+        document.querySelectorAll('.de-tab').forEach(t => t.classList.remove('active'));
+        btn.classList.add('active');
+        ['chart', 'table', 'esq'].forEach(t => {
+            const el = document.getElementById('de-tab-' + t);
+            if (el) el.classList.toggle('de-hidden', t !== tab);
+        });
+    };
+
+    // ── Chart type switching ──
+    window.deSwChartType = function(btn, type) {
+        document.querySelectorAll('.de-ct-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        if (curResult && curResult.result && curResult.result.chart) {
+            drawChart({ ...curResult.result.chart, type: type });
+        }
+    };
+
+    // ── History ──
+    function addHistory(query) {
+        // Avoid duplicate of the most recent query
+        if (queryHistory.length > 0 && queryHistory[0].query === query) return;
+        queryHistory.unshift({ query: query, ts: Date.now() });
+        saveHistoryToStorage();
+        renderHistory();
+    }
+
+    function formatTimeAgo(ts) {
+        const diff = Date.now() - ts;
+        if (diff < 60000) return 'just now';
+        if (diff < 3600000) return Math.floor(diff / 60000) + 'm ago';
+        if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago';
+        if (diff < 604800000) return Math.floor(diff / 86400000) + 'd ago';
+        return new Date(ts).toLocaleDateString();
+    }
+
+    function renderHistory() {
+        histList.innerHTML = '';
+        queryHistory.forEach((item, i) => {
+            const el = document.createElement('div');
+            el.className = 'de-history-item' + (i === 0 ? ' active' : '');
+            el.innerHTML = '<div style="display:flex;align-items:start;gap:6px;">' +
+                '<div style="flex:1;min-width:0;">' +
+                '<div class="de-h-query">' + escapeHtml(item.query) + '</div>' +
+                '<div class="de-h-meta"><span>' + formatTimeAgo(item.ts) + '</span></div>' +
+                '</div>' +
+                '<button class="de-listbox-toggle" title="Remove" style="flex-shrink:0;">&times;</button>' +
+                '</div>';
+            el.addEventListener('click', function(e) {
+                if (e.target.tagName === 'BUTTON') return;
+                histList.querySelectorAll('.de-history-item').forEach(h => h.classList.remove('active'));
+                el.classList.add('active');
+                qInput.value = item.query;
+                deRunQuery(item.query);
+            });
+            el.querySelector('button').addEventListener('click', function(e) {
+                e.stopPropagation();
+                queryHistory.splice(i, 1);
+                saveHistoryToStorage();
+                renderHistory();
+            });
+            histList.appendChild(el);
+        });
+    }
+
+    // ── Report builder ──
+    function renderReportItems() {
+        const items = document.getElementById('de-rpt-items');
+        items.innerHTML = '';
+        if (reportSections.length === 0) {
+            checkedReports.clear();
+            items.innerHTML = '<div class="de-report-empty" id="de-rpt-empty">' +
+                '<i class="fas fa-clipboard-list" style="font-size:26px;opacity:0.25;"></i>' +
+                '<div>Save query results here to build a report.<br>Check items to include in export.</div></div>';
+        }
+        reportSections.forEach((sec, i) => {
+            const el = document.createElement('div');
+            el.className = 'de-rpt-item';
+            el.innerHTML = '<div style="display:flex;align-items:start;gap:6px;">' +
+                '<input type="checkbox" class="de-rpt-check" data-idx="' + i + '"' +
+                (checkedReports.has(i) ? ' checked' : '') + ' />' +
+                '<div style="flex:1;min-width:0;">' +
+                '<div class="de-rpt-query">' + escapeHtml(sec.query) + '</div>' +
+                '<div class="de-rpt-meta">' + (sec.stats ? sec.stats.length + ' stats' : '') +
+                (sec.table && sec.table.rows ? ' · ' + sec.table.rows.length + ' rows' : '') + '</div>' +
+                '</div>' +
+                '<button class="de-listbox-toggle" title="Remove" style="flex-shrink:0;">&times;</button>' +
+                '</div>';
+            // Checkbox: toggle include in export
+            el.querySelector('.de-rpt-check').addEventListener('click', function(e) {
+                e.stopPropagation();
+                if (this.checked) {
+                    checkedReports.add(i);
+                } else {
+                    checkedReports.delete(i);
+                }
+                updateRptBadge();
+            });
+            // Click card (not checkbox, not ×): view in results
+            el.addEventListener('click', function(e) {
+                if (e.target.classList.contains('de-rpt-check') || e.target.tagName === 'BUTTON') return;
+                document.querySelectorAll('.de-rpt-item').forEach(r => r.classList.remove('active'));
+                el.classList.add('active');
+                curResult = { result: sec, usage: {} };
+                curQuery = sec.query;
+                renderResults(curResult);
+                deMainTab('results');
+            });
+            // × button: remove
+            el.querySelector('button').addEventListener('click', function(e) {
+                e.stopPropagation();
+                checkedReports.delete(i);
+                // Shift down checked indices above the removed one
+                const newChecked = new Set();
+                for (const idx of checkedReports) {
+                    if (idx < i) newChecked.add(idx);
+                    else if (idx > i) newChecked.add(idx - 1);
+                }
+                checkedReports.clear();
+                for (const idx of newChecked) checkedReports.add(idx);
+                reportSections.splice(i, 1);
+                rptCount = reportSections.length;
+                saveReportToStorage();
+                renderReportItems();
+            });
+            items.appendChild(el);
+        });
+        updateRptBadge();
+    }
+
+    function updateRptBadge() {
+        const checked = checkedReports.size;
+        const total = reportSections.length;
+        document.getElementById('de-rpt-badge').textContent = checked > 0 ? checked + '/' + total : total;
+    }
+
+    window.deSaveToRpt = function() {
+        if (!curResult || !curResult.result) return;
+        const r = curResult.result;
+        reportSections.push({
+            query: curQuery || 'Query result',
+            narrative: r.narrative || '',
+            stats: r.stats || [],
+            table: r.table || { headers: [], rows: [] },
+            chart: r.chart || null,
+            es_query: r.es_query || {},
+            es_index: r.es_index || '',  // lets export re-query for all rows
+        });
+        rptCount = reportSections.length;
+        renderReportItems();
+        saveReportToStorage();
+
+        // Auto-set report name from first section
+        const nameInput = document.getElementById('de-rpt-name');
+        if (!nameInput.value && curQuery) {
+            nameInput.value = curQuery.substring(0, 60);
+            saveReportToStorage();
+        }
+
+        const btn = document.getElementById('de-save-rpt-btn');
+        if (btn) {
+            btn.innerHTML = '<i class="fas fa-check"></i> Saved';
+            btn.style.color = 'var(--cs-success)';
+            setTimeout(() => {
+                btn.innerHTML = '<i class="fas fa-plus"></i> Save to Report';
+                btn.style.color = '';
+            }, 1600);
+        }
+    };
+
+    // ── Rating ──
+    window.deRate = function(helpful) {
+        const rating = helpful ? 1 : -1;
+        fetch(prefix + '/api/feedback', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: curQuery, rating: rating }),
+        }).catch(() => {});
+
+        if (helpful) {
+            // Visual confirmation
+            event.target.innerHTML = '<i class="fas fa-check"></i> Thanks!';
+            event.target.style.color = 'var(--cs-success)';
+        } else {
+            qInput.value = 'Refine: ' + curQuery + ' — ';
+            qInput.focus();
+        }
+    };
+
+    // ── Export report ──
+    window.deExportReport = function(format) {
+        // Export only checked sections (or all if none checked)
+        var sectionsToExport;
+        if (checkedReports.size > 0) {
+            sectionsToExport = reportSections.filter((_, i) => checkedReports.has(i));
+        } else {
+            sectionsToExport = reportSections;
+        }
+        if (sectionsToExport.length === 0) {
+            alert('Check the reports you want to include, or save some query results first.');
+            return;
+        }
+        const name = document.getElementById('de-rpt-name').value || 'Untitled Report';
+        const endpoint = format === 'pdf' ? '/api/export/pdf' : '/api/export/excel';
+
+        fetch(prefix + endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                report_name: name,
+                sections: sectionsToExport,
+            }),
+        })
+        .then(r => {
+            if (!r.ok) {
+                return r.json().then(d => { throw new Error(d.error || 'Export failed'); });
+            }
+            return r.blob();
+        })
+        .then(blob => {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = name.replace(/ /g, '_') + (format === 'pdf' ? '.pdf' : '.xlsx');
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        })
+        .catch(err => {
+            alert('Export failed: ' + err.message);
+        });
+    };
+
+    // ── Usage stats ──
+    function loadUsage() {
+        fetch(prefix + '/api/usage')
+            .then(r => r.json())
+            .then(data => {
+                if (data.success && data.stats) {
+                    const s = data.stats;
+                    document.getElementById('de-stat-queries').textContent = s.queries_today + ' queries';
+                    document.getElementById('de-stat-cost').textContent = '$' + s.cost_today_usd.toFixed(2);
+                    document.getElementById('de-stat-tokens').textContent = (s.tokens_today || 0).toLocaleString() + ' tokens';
+                }
+            })
+            .catch(() => {});
+    }
+
+    // ── Memory badge ──
+    function loadMemoryCount() {
+        fetch(prefix + '/api/memory-count')
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById('de-mem-count').textContent = data.count;
+                }
+            })
+            .catch(() => {});
+    }
+
+    // ── Utilities ──
+    function escapeHtml(str) {
+        if (!str) return '';
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    // ── Main tab switching ──
+    window.deMainTab = function(tab) {
+        document.getElementById('de-tab-sources-btn').classList.toggle('active', tab === 'sources');
+        document.getElementById('de-tab-results-btn').classList.toggle('active', tab === 'results');
+        document.getElementById('de-panel-sources').classList.toggle('de-hidden', tab !== 'sources');
+        document.getElementById('de-panel-results').classList.toggle('de-hidden', tab !== 'results');
+    };
+
+    function updateSourcesCount() {
+        const idx = getSelectedIndices().length;
+        const org = selectedOrgs.size;
+        const team = selectedTeams.size;
+        const parts = [getSelectedTimeRangeLabel()];
+        if (idx > 0) parts.push(idx + (idx === 1 ? ' view' : ' views'));
+        if (org > 0) parts.push(org + (org === 1 ? ' org' : ' orgs'));
+        if (team > 0) parts.push(team + (team === 1 ? ' team' : ' teams'));
+        const countEl = document.getElementById('de-sources-count');
+        countEl.textContent = parts.join(', ');
+    }
+
+    // ── Keyboard shortcut ──
+    qInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') deRunQuery();
+    });
+
+    // ── Clear All history ──
+    document.getElementById('de-clear-history').addEventListener('click', function() {
+        queryHistory = [];
+        saveHistoryToStorage();
+        renderHistory();
+    });
+
+    // ── Time range selector ──
+    document.getElementById('de-time-range').addEventListener('change', updateSourcesCount);
+
+    // ── Init ──
+    loadDataViews();
+    loadOrgTeamOptions();
+    loadSuggestions();
+    loadUsage();
+    loadMemoryCount();
+    renderHistory();
+    updateSourcesCount();
+
+    // Restore report builder state from localStorage
+    if (reportSections.length > 0) {
+        renderReportItems();
+        const savedName = localStorage.getItem(RPT_NAME_KEY);
+        if (savedName) document.getElementById('de-rpt-name').value = savedName;
+    }
+
+})();
+</script>
+{% endblock %}

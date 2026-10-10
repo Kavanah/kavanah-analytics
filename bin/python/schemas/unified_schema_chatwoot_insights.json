@@ -1,0 +1,27 @@
+{
+  "properties": {
+    "@timestamp": {"type": "date"},
+    "date": {"type": "date", "format": "yyyy-MM-dd"},
+    "kibana_date": {"type": "date", "format": "yyyy-MM-dd"},
+    "chatwoot_account_title": {"type": "keyword"},
+    "chatwoot_account_id": {"type": "keyword"},
+    "chatwoot_account_esid": {"type": "keyword"},
+    "team_title": {"type": "keyword"},
+    "team_esid": {"type": "keyword"},
+    "organization_title": {"type": "keyword"},
+    "conversations_count": {"type": "integer"},
+    "incoming_messages_count": {"type": "integer"},
+    "outgoing_messages_count": {"type": "integer"},
+    "resolutions_count": {"type": "integer"},
+    "avg_first_response_time": {"type": "float"},
+    "avg_resolution_time": {"type": "float"},
+    "avg_reply_time": {"type": "float"},
+    "facebook_page_id": {"type": "keyword"},
+    "instagram_id": {"type": "keyword"},
+    "inbox_names": {"type": "keyword"},
+    "inbox_id": {"type": "integer"},
+    "inbox_name": {"type": "keyword"},
+    "inbox_channel_type": {"type": "keyword"},
+    "contacts_started": {"type": "integer"}
+  }
+}

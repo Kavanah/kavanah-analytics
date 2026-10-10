@@ -1,0 +1,20 @@
+[Unit]
+Description=DEAM container watchdog timer (every 2 minutes)
+Documentation=file://__WATCHDOG_PATH__
+
+[Timer]
+# Wait 30 seconds after boot before the first check — gives docker time to
+# bring up containers under their own restart policies, so the watchdog's
+# first probe sees the steady state, not the transient.
+OnBootSec=30s
+# Then every 2 minutes after the previous run *finished*. Using
+# OnUnitInactiveSec rather than OnCalendar avoids overlap if a run takes
+# longer than the period (eg if a container takes time to stabilize).
+OnUnitInactiveSec=2min
+Unit=container-watchdog.service
+# Persist=false: don't catch up on missed runs after sleep/shutdown — the
+# next scheduled run is fine.
+Persistent=false
+
+[Install]
+WantedBy=timers.target

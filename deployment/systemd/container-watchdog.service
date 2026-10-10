@@ -1,0 +1,29 @@
+[Unit]
+Description=DEAM container watchdog (recovery for es01, imports_container, kib01, nginx-reverse-proxy)
+Documentation=file://__WATCHDOG_PATH__
+# Don't start until docker is up — otherwise the very first run after boot
+# will see all four containers as "missing" and fail noisily.
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+# Path is templated at install time by install-watchdog.sh based on the
+# repo location (~/DE-Reporting on staging, ~/kavanah-analytics on prod).
+ExecStart=__WATCHDOG_PATH__
+# Don't restart on failure — the timer fires again in 2 minutes anyway,
+# and exit=1 means the watchdog has already concluded a human is needed.
+StandardOutput=journal
+StandardError=journal
+# Read-only filesystem hardening: the watchdog only needs to talk to the
+# docker socket, never write to disk.
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+# Docker socket access — required to inspect/start containers.
+SupplementaryGroups=docker
+
+[Install]
+WantedBy=multi-user.target

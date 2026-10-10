@@ -1,0 +1,269 @@
+{
+  "connector_id": "tiktok",
+  "created_at": "2026-09-26T00:00:00+00:00",
+  "description": "First-look TikTok dashboard. TikTok reports lifetime totals, so gains start at the first import.",
+  "echarts_config": {
+    "charts": [
+      {
+        "aggregation": "max",
+        "chart_id": "fl_tt_followers",
+        "chart_type": "metric",
+        "data_view": "*_tiktok_organic",
+        "filters": [
+          {
+            "field": "tiktok_open_id",
+            "op": "match_phrase_any",
+            "value": [
+              "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+            ]
+          }
+        ],
+        "hide_title": false,
+        "position": {
+          "col": 0,
+          "h": 2,
+          "row": 0,
+          "w": 3
+        },
+        "title": "Followers",
+        "y_fields": [
+          "follower_count"
+        ]
+      },
+      {
+        "aggregation": "sum",
+        "chart_id": "fl_tt_followers_gained",
+        "chart_type": "metric",
+        "data_view": "*_tiktok_organic",
+        "filters": [
+          {
+            "field": "tiktok_open_id",
+            "op": "match_phrase_any",
+            "value": [
+              "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+            ]
+          }
+        ],
+        "hide_title": false,
+        "position": {
+          "col": 3,
+          "h": 2,
+          "row": 0,
+          "w": 3
+        },
+        "title": "Followers gained",
+        "y_fields": [
+          "followers_gained"
+        ]
+      },
+      {
+        "aggregation": "sum",
+        "chart_id": "fl_tt_views_gained",
+        "chart_type": "metric",
+        "data_view": "*_tiktok_organic",
+        "filters": [
+          {
+            "field": "tiktok_open_id",
+            "op": "match_phrase_any",
+            "value": [
+              "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+            ]
+          },
+          {
+            "field": "record_type",
+            "op": "eq",
+            "value": "video_daily"
+          }
+        ],
+        "hide_title": false,
+        "position": {
+          "col": 6,
+          "h": 2,
+          "row": 0,
+          "w": 3
+        },
+        "title": "Video views gained",
+        "y_fields": [
+          "views_gained"
+        ]
+      },
+      {
+        "aggregation": "sum",
+        "chart_id": "fl_tt_likes_gained",
+        "chart_type": "metric",
+        "data_view": "*_tiktok_organic",
+        "filters": [
+          {
+            "field": "tiktok_open_id",
+            "op": "match_phrase_any",
+            "value": [
+              "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+            ]
+          }
+        ],
+        "hide_title": false,
+        "position": {
+          "col": 9,
+          "h": 2,
+          "row": 0,
+          "w": 3
+        },
+        "title": "Likes gained",
+        "y_fields": [
+          "likes_gained"
+        ]
+      },
+      {
+        "aggregation": "sum",
+        "chart_id": "fl_tt_views_daily",
+        "chart_type": "bar",
+        "data_view": "*_tiktok_organic",
+        "filters": [
+          {
+            "field": "tiktok_open_id",
+            "op": "match_phrase_any",
+            "value": [
+              "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+            ]
+          },
+          {
+            "field": "record_type",
+            "op": "eq",
+            "value": "video_daily"
+          }
+        ],
+        "hide_title": false,
+        "position": {
+          "col": 0,
+          "h": 4,
+          "row": 2,
+          "w": 6
+        },
+        "title": "Video views gained per day",
+        "x_field": "kibana_date",
+        "y_fields": [
+          "views_gained"
+        ]
+      },
+      {
+        "aggregation": "max",
+        "chart_id": "fl_tt_followers_daily",
+        "chart_type": "line",
+        "data_view": "*_tiktok_organic",
+        "filters": [
+          {
+            "field": "tiktok_open_id",
+            "op": "match_phrase_any",
+            "value": [
+              "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+            ]
+          }
+        ],
+        "hide_title": false,
+        "position": {
+          "col": 6,
+          "h": 4,
+          "row": 2,
+          "w": 6
+        },
+        "title": "Followers",
+        "x_field": "kibana_date",
+        "x_field_type": "date",
+        "y_fields": [
+          "follower_count"
+        ]
+      },
+      {
+        "aggregation": "sum",
+        "chart_id": "fl_tt_top_videos",
+        "chart_type": "table",
+        "data_view": "*_tiktok_organic",
+        "filters": [
+          {
+            "field": "tiktok_open_id",
+            "op": "match_phrase_any",
+            "value": [
+              "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+            ]
+          },
+          {
+            "field": "record_type",
+            "op": "eq",
+            "value": "video_daily"
+          }
+        ],
+        "hide_title": false,
+        "max_rows": 10,
+        "num_values": 100,
+        "position": {
+          "col": 0,
+          "h": 4,
+          "row": 6,
+          "w": 12
+        },
+        "sort_col_field": "views_gained",
+        "sort_direction": "desc",
+        "table_columns": [
+          {
+            "aggregation": "sum",
+            "decimals": 0,
+            "field": "views_gained",
+            "format": "000,",
+            "label": "Views gained"
+          },
+          {
+            "aggregation": "max",
+            "decimals": 0,
+            "field": "view_count",
+            "format": "000,",
+            "label": "Total views"
+          },
+          {
+            "aggregation": "sum",
+            "decimals": 0,
+            "field": "video_likes_gained",
+            "format": "000,",
+            "label": "Likes gained"
+          },
+          {
+            "aggregation": "sum",
+            "decimals": 0,
+            "field": "comments_gained",
+            "format": "000,",
+            "label": "Comments gained"
+          },
+          {
+            "aggregation": "sum",
+            "decimals": 0,
+            "field": "shares_gained",
+            "format": "000,",
+            "label": "Shares gained"
+          }
+        ],
+        "title": "Top videos",
+        "x_field": "video_title",
+        "x_label": "Video",
+        "y_fields": [
+          "views_gained",
+          "view_count",
+          "video_likes_gained",
+          "comments_gained",
+          "shares_gained"
+        ]
+      }
+    ],
+    "filters": [],
+    "global_date_range": null
+  },
+  "frozen_from_dashboard_id": null,
+  "menu_position": 0,
+  "menu_title": "TikTok",
+  "name": "TikTok — Followers & video views",
+  "pack_id": "tiktok",
+  "placeholder_field": "tiktok_open_id",
+  "required_sources": [
+    "tiktok"
+  ],
+  "template_id": "first_look_tiktok",
+  "updated_at": "2026-09-26T00:00:00+00:00"
+}

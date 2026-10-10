@@ -1,0 +1,1275 @@
+{% extends "base_v2.html" %}
+
+{% block title %}Data Inventory - Kavanah Analytics Management Console{% endblock %}
+
+{% block extra_css %}
+<style>
+    .di-content { padding: 20px; }
+    .di-section {
+        margin-bottom: var(--cs-space-l);
+        padding: var(--cs-space-xl);
+        background: var(--cs-bg-primary);
+        border: 1px solid var(--cs-border-default);
+        border-radius: var(--cs-radius-m);
+        box-shadow: var(--cs-shadow-xs);
+    }
+    .di-section h2 { margin-top: 0; }
+    .di-intro { color: var(--cs-text-secondary); margin-bottom: var(--cs-space-l); }
+
+    .di-controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--cs-space-l);
+        align-items: flex-end;
+    }
+    .di-control { display: flex; flex-direction: column; gap: var(--cs-space-xxs); }
+    .di-control label {
+        font-size: var(--cs-font-size-xs);
+        font-weight: var(--cs-font-weight-bold);
+        color: var(--cs-text-secondary);
+    }
+    .di-control select,
+    .di-control input[type="date"] {
+        height: 32px;
+        min-width: 220px;
+        padding: 0 10px;
+        font-family: var(--cs-font);
+        font-size: var(--cs-font-size-m);
+        border: 1px solid var(--cs-border-default);
+        border-radius: var(--cs-radius-s);
+        background: var(--cs-bg-primary);
+        color: var(--cs-text-primary);
+    }
+    .di-control select[multiple] { height: auto; min-height: 96px; }
+    /* read-only workspace name shown when the user has a single
+       workspace (the switcher is auto-selected and disabled). */
+    .di-ws-fixed {
+        display: inline-flex; align-items: center; height: 32px;
+        font-family: var(--cs-font); font-size: var(--cs-font-size-m);
+        font-weight: var(--cs-font-weight-medium); color: var(--cs-text-primary);
+    }
+
+    .di-date-range { display: flex; align-items: flex-end; gap: var(--cs-space-s); }
+    .di-date-range span { padding-bottom: 6px; color: var(--cs-text-secondary); }
+
+    .di-placeholder {
+        margin-top: var(--cs-space-l);
+        padding: var(--cs-space-xl);
+        border: 1px dashed var(--cs-border-default);
+        border-radius: var(--cs-radius-m);
+        color: var(--cs-text-secondary);
+        text-align: center;
+    }
+    .di-empty { color: var(--cs-text-secondary); font-style: italic; }
+
+    .btn {
+        display: inline-flex; align-items: center; height: 32px; padding: 0 14px;
+        font-family: var(--cs-font); font-size: var(--cs-font-size-m);
+        font-weight: var(--cs-font-weight-medium); border-radius: var(--cs-radius-s);
+        border: 1px solid var(--cs-btn-normal-border); background: var(--cs-btn-normal-bg);
+        color: var(--cs-btn-normal-text); cursor: pointer;
+    }
+    .btn-success {
+        background: var(--cs-btn-primary-bg); color: var(--cs-btn-primary-text);
+        border-color: var(--cs-btn-primary-bg); font-weight: var(--cs-font-weight-bold);
+    }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .di-fields, .di-teams-block { margin-top: var(--cs-space-l); }
+    .di-fields-label {
+        display: block; font-size: var(--cs-font-size-xs);
+        font-weight: var(--cs-font-weight-bold); color: var(--cs-text-secondary);
+    }
+    .di-block-head {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: var(--cs-space-m); margin-bottom: var(--cs-space-xs); flex-wrap: wrap;
+    }
+    .di-block-actions { display: flex; align-items: center; gap: var(--cs-space-s); }
+    .di-link-btn {
+        background: none; border: none; padding: 0; cursor: pointer;
+        font-size: var(--cs-font-size-s); color: var(--cs-link-default, #0972d3);
+        font-family: var(--cs-font);
+    }
+    .di-link-btn:hover { text-decoration: underline; }
+    .di-collapse-toggle {
+        display: inline-flex; align-items: center; gap: 6px;
+        background: none; border: none; padding: 0; cursor: pointer;
+        font-family: var(--cs-font); font-size: var(--cs-font-size-xs);
+        font-weight: var(--cs-font-weight-bold); color: var(--cs-text-secondary);
+    }
+    .di-caret { display: inline-block; transition: transform 0.12s; font-size: 11px; }
+    .di-collapsed .di-caret { transform: rotate(-90deg); }
+    .di-collapsed .di-tree { display: none; }
+    .di-teams-count { font-weight: var(--cs-font-weight-normal); color: var(--cs-text-secondary); }
+    .di-filter-input {
+        height: 28px; padding: 0 8px; font-family: var(--cs-font);
+        font-size: var(--cs-font-size-s); border: 1px solid var(--cs-border-default);
+        border-radius: var(--cs-radius-s); background: var(--cs-bg-primary);
+        color: var(--cs-text-primary); min-width: 180px;
+    }
+
+    /* Scrollable field box — ~12 rows visible (item 5). */
+    .di-fields-list {
+        display: flex; flex-direction: column; gap: 2px;
+        max-height: 312px; overflow-y: auto;
+        border: 1px solid var(--cs-border-default); border-radius: var(--cs-radius-s);
+        padding: var(--cs-space-s); margin-bottom: var(--cs-space-m);
+    }
+    .di-field-chip {
+        display: flex; align-items: center; gap: var(--cs-space-xs);
+        padding: 3px 4px; font-size: var(--cs-font-size-s);
+        color: var(--cs-text-primary); cursor: pointer; user-select: none;
+    }
+    .di-field-chip:hover { background: var(--cs-bg-secondary); }
+    .di-field-chip input { margin: 0; }
+    .di-field-chip.di-hidden { display: none; }
+
+    /* collapsible body — hidden when the parent block is collapsed. */
+    .di-collapsed .di-collapsible-body { display: none; }
+
+    /* non-numeric field links + top-values box. */
+    .di-nonnum-field {
+        display: flex; align-items: center; gap: var(--cs-space-xs);
+        padding: 3px 4px; font-size: var(--cs-font-size-s);
+    }
+    .di-nonnum-field.di-hidden { display: none; }
+    .di-nonnum-link {
+        background: none; border: none; padding: 0; cursor: pointer;
+        font-family: var(--cs-font); font-size: var(--cs-font-size-s);
+        color: var(--cs-link-default, #0972d3); text-align: left;
+    }
+    .di-nonnum-link:hover { text-decoration: underline; }
+    .di-nonnum-link:focus-visible { outline: 2px solid var(--cs-link-default, #0972d3); outline-offset: 2px; border-radius: 2px; }
+    .di-nonnum-link.di-active { font-weight: var(--cs-font-weight-bold); }
+    .di-nonnum-type {
+        font-size: var(--cs-font-size-xs); color: var(--cs-text-secondary);
+        text-transform: uppercase; letter-spacing: 0.03em;
+    }
+    /* A field with no aggregatable form (text with no .keyword) reads as plain,
+       disabled text with a reason. */
+    .di-nonnum-disabled { color: var(--cs-text-secondary); font-style: italic; }
+
+    .di-values {
+        margin-top: var(--cs-space-l);
+        padding: var(--cs-space-l);
+        border: 1px solid var(--cs-border-default);
+        border-radius: var(--cs-radius-m);
+        background: var(--cs-bg-primary);
+    }
+    .di-values-list {
+        max-height: 340px; overflow-y: auto;
+        border: 1px solid var(--cs-border-default); border-radius: var(--cs-radius-s);
+    }
+    .di-value-row {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: var(--cs-space-l); padding: 6px 12px;
+        border-bottom: 1px solid var(--cs-border-divider, #e9ebed);
+        font-size: var(--cs-font-size-m);
+    }
+    .di-value-row:last-child { border-bottom: none; }
+    .di-value-name { color: var(--cs-text-primary); word-break: break-word; }
+    .di-value-count { color: var(--cs-text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .di-values-more { margin-top: var(--cs-space-s); color: var(--cs-text-secondary); font-size: var(--cs-font-size-s); }
+
+    /* Teams tree — mirrors report scheduler (orgs > teams checkboxes). */
+    .di-tree {
+        max-height: 340px; overflow-y: auto;
+        border: 1px solid var(--cs-border-default); border-radius: var(--cs-radius-s);
+        padding: var(--cs-space-s);
+    }
+    .di-org { margin-bottom: var(--cs-space-s); }
+    .di-org-label {
+        display: flex; align-items: center; gap: 8px; padding: 4px 0;
+        font-weight: var(--cs-font-weight-bold); color: var(--cs-text-primary); cursor: pointer;
+    }
+    .di-org-teams { margin-left: 24px; }
+    .di-team-label {
+        display: flex; align-items: center; gap: 8px; padding: 3px 0;
+        color: var(--cs-text-primary); cursor: pointer;
+    }
+    .di-team-label input, .di-org-label input { margin: 0; }
+
+    .di-grid-wrap { margin-top: var(--cs-space-l); overflow-x: auto; }
+    .di-grid { width: 100%; border-collapse: collapse; font-size: var(--cs-font-size-m); }
+    .di-grid th, .di-grid td {
+        padding: 8px 12px; text-align: right; border-bottom: 1px solid var(--cs-border-default);
+    }
+    .di-grid th:first-child, .di-grid td:first-child { text-align: left; }
+    .di-grid thead th {
+        font-weight: var(--cs-font-weight-bold); color: var(--cs-text-secondary);
+        border-bottom: 2px solid var(--cs-border-default);
+    }
+    .di-grid tfoot td {
+        font-weight: var(--cs-font-weight-bold);
+        border-top: 2px solid var(--cs-border-default); border-bottom: none;
+    }
+    .di-grid tbody tr:hover { background: var(--cs-bg-secondary); }
+    .di-grid tbody tr { cursor: pointer; }
+    .di-grid tbody tr.di-row-active { background: var(--cs-bg-secondary); }
+    /* Team name reads as a link so it's clear the row is selectable. */
+    .di-team-link {
+        background: none; border: none; padding: 0; cursor: pointer;
+        font-family: var(--cs-font); font-size: var(--cs-font-size-m);
+        color: var(--cs-link-default, #0972d3); text-align: left;
+    }
+    .di-team-link:hover { text-decoration: underline; }
+    .di-team-link:focus-visible { outline: 2px solid var(--cs-link-default, #0972d3); outline-offset: 2px; border-radius: 2px; }
+    .di-grid-hint { color: var(--cs-text-secondary); font-size: var(--cs-font-size-s); margin: 0 0 var(--cs-space-s); }
+    .di-actions { display: flex; gap: var(--cs-space-s); margin-top: var(--cs-space-l); }
+    /* backfill export bar — hint left, export buttons right. */
+    .di-backfill-bar {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: var(--cs-space-m); flex-wrap: wrap; margin-bottom: var(--cs-space-s);
+    }
+    .di-backfill-bar .di-grid-hint { margin: 0; }
+
+    /* Coverage drill-down (phase 3). */
+    .di-coverage {
+        margin-top: var(--cs-space-l);
+        padding: var(--cs-space-l);
+        border: 1px solid var(--cs-border-default);
+        border-radius: var(--cs-radius-m);
+        background: var(--cs-bg-primary);
+    }
+    .di-coverage-summary {
+        display: flex; flex-wrap: wrap; gap: var(--cs-space-xl);
+        margin-bottom: var(--cs-space-m); font-size: var(--cs-font-size-m);
+    }
+    .di-coverage-summary b { color: var(--cs-text-secondary); font-weight: var(--cs-font-weight-bold); }
+    .di-coverage-legend {
+        display: flex; flex-wrap: wrap; gap: var(--cs-space-l);
+        font-size: var(--cs-font-size-xs); color: var(--cs-text-secondary);
+        margin-bottom: var(--cs-space-s);
+    }
+    .di-sw { display: inline-block; width: 11px; height: 11px; border-radius: 2px; vertical-align: middle; margin-right: 4px; }
+    .di-sw-data { background: var(--cs-status-success, #037f0c); }
+    .di-sw-nodata { background: var(--cs-color-charts-grey, #8d99a8); }
+    .di-coverage-strip { display: flex; flex-wrap: wrap; gap: 2px; }
+    .di-day {
+        width: 12px; height: 12px; border-radius: 2px; background: var(--cs-border-divider, #e9ebed);
+    }
+    .di-day-data { background: var(--cs-status-success, #037f0c); }
+    .di-day-no_data { background: var(--cs-color-charts-grey, #8d99a8); }
+</style>
+{% endblock %}
+
+{% block page_content %}
+<div class="di-content">
+<div class="di-section">
+    <h2>Data Inventory</h2>
+    <p class="di-intro">
+        See at a glance what data a team or workspace has, what dates it covers,
+        and what its fields contain. Choose a workspace, a data view, and the
+        teams and date range you want to inspect.
+    </p>
+
+    <div class="di-controls">
+        <div class="di-control">
+            <label for="di-workspace">Workspace</label>
+            <select id="di-workspace">
+                <option value="">— Select a workspace —</option>
+            </select>
+        </div>
+        <div class="di-control">
+            <label for="di-data-view">Data view</label>
+            <select id="di-data-view" disabled>
+                <option value="">— Select a workspace first —</option>
+            </select>
+        </div>
+        <div class="di-control">
+            <label>Date range</label>
+            <div class="di-date-range">
+                <input type="date" id="di-from-date">
+                <span>to</span>
+                <input type="date" id="di-to-date">
+            </div>
+        </div>
+    </div>
+
+    <div class="di-teams-block" id="di-teams-block" style="display:none">
+        <div class="di-block-head">
+            <button type="button" class="di-collapse-toggle" id="di-teams-toggle" aria-expanded="true">
+                <span class="di-caret" id="di-teams-caret">▾</span> Teams <span class="di-teams-count" id="di-teams-count"></span>
+            </button>
+            <div class="di-block-actions">
+                <button type="button" class="di-link-btn" id="di-teams-all">Select all</button>
+                <button type="button" class="di-link-btn" id="di-teams-none">Deselect all</button>
+            </div>
+        </div>
+        <div class="di-tree" id="di-teams-tree"></div>
+    </div>
+
+    <div class="di-fields" id="di-fields-block" style="display:none">
+        <div class="di-block-head">
+            <button type="button" class="di-collapse-toggle" id="di-fields-toggle" aria-expanded="true">
+                <span class="di-caret" id="di-fields-caret">▾</span> Numeric fields to total
+            </button>
+            <div class="di-block-actions">
+                <input type="text" id="di-fields-filter" class="di-filter-input" placeholder="Filter fields…">
+                <button type="button" class="di-link-btn" id="di-fields-all">Select all</button>
+                <button type="button" class="di-link-btn" id="di-fields-none">Deselect all</button>
+            </div>
+        </div>
+        <div class="di-fields-list di-collapsible-body" id="di-fields-list"></div>
+    </div>
+
+    <!-- non-numeric fields (text / keyword / date / boolean). Each is
+         a clickable link that opens a top-values breakdown; sum is meaningless
+         for these types, so they are NOT totals columns. -->
+    <div class="di-fields" id="di-nonnum-block" style="display:none">
+        <div class="di-block-head">
+            <button type="button" class="di-collapse-toggle" id="di-nonnum-toggle" aria-expanded="true">
+                <span class="di-caret" id="di-nonnum-caret">▾</span> Non-numeric fields
+            </button>
+            <div class="di-block-actions">
+                <input type="text" id="di-nonnum-filter" class="di-filter-input" placeholder="Filter fields…">
+            </div>
+        </div>
+        <p class="di-grid-hint" id="di-nonnum-hint" style="margin-bottom:var(--cs-space-s)">
+            Click a field to see its most common values for the selected teams and date range.
+        </p>
+        <div class="di-fields-list di-collapsible-body" id="di-nonnum-list"></div>
+
+        <!-- top-values drill-down for a clicked non-numeric field —
+             sits directly under the field list it belongs to, so the result
+             appears where the user is looking (not at the page bottom). -->
+        <div class="di-values" id="di-values" style="display:none">
+            <div class="di-block-head">
+                <label class="di-fields-label" id="di-values-title">Top values</label>
+                <button type="button" class="di-link-btn" id="di-values-close">Close</button>
+            </div>
+            <div class="di-values-list" id="di-values-list"></div>
+            <div class="di-values-more" id="di-values-more" style="display:none"></div>
+        </div>
+    </div>
+
+    <!-- data-view subset picker, shown only in "All data views" mode. -->
+    <div class="di-fields" id="di-views-block" style="display:none">
+        <div class="di-block-head">
+            <label class="di-fields-label">Data views to include in the backfill report</label>
+            <div class="di-block-actions">
+                <button type="button" class="di-link-btn" id="di-views-all">Select all</button>
+                <button type="button" class="di-link-btn" id="di-views-none">Deselect all</button>
+            </div>
+        </div>
+        <div class="di-fields-list" id="di-views-list"></div>
+    </div>
+
+    <div class="di-actions" id="di-actions-block" style="display:none">
+        <button type="button" class="btn btn-success" id="di-show-btn" disabled>Show inventory</button>
+        <button type="button" class="btn btn-success" id="di-backfill-btn" style="display:none" disabled>Backfill report</button>
+    </div>
+
+    <div class="di-placeholder" id="di-grid-placeholder">
+        Select a workspace and data view, then pick the numeric fields to total.
+    </div>
+
+    <div class="di-grid-wrap" id="di-grid-wrap" style="display:none">
+        <p class="di-grid-hint">Click a team row to see how far back its data goes and which dates have no data.</p>
+        <table class="di-grid" id="di-grid">
+            <thead id="di-grid-head"></thead>
+            <tbody id="di-grid-body"></tbody>
+            <tfoot id="di-grid-foot"></tfoot>
+        </table>
+    </div>
+
+    <div class="di-coverage" id="di-coverage" style="display:none">
+        <div class="di-block-head">
+            <label class="di-fields-label" id="di-coverage-title">Date coverage</label>
+            <button type="button" class="di-link-btn" id="di-coverage-close">Close</button>
+        </div>
+        <div class="di-coverage-summary" id="di-coverage-summary"></div>
+        <div class="di-coverage-legend">
+            <span><i class="di-sw di-sw-data"></i> Has data</span>
+            <span><i class="di-sw di-sw-nodata"></i> No data</span>
+        </div>
+        <div class="di-coverage-strip" id="di-coverage-strip"></div>
+    </div>
+
+    <!-- backfill report (All-data-views mode). Separate grid from the
+         single-view inventory grid so neither clobbers the other. -->
+    <div class="di-grid-wrap" id="di-backfill-wrap" style="display:none">
+        <div class="di-backfill-bar">
+            <p class="di-grid-hint" id="di-backfill-hint">Days of imports and last import date per team, per data view.</p>
+            <div class="di-block-actions">
+                <button type="button" class="btn" id="di-backfill-csv">Export CSV</button>
+                <button type="button" class="btn" id="di-backfill-xlsx">Export Excel</button>
+            </div>
+        </div>
+        <table class="di-grid" id="di-backfill-grid">
+            <thead id="di-backfill-head"></thead>
+            <tbody id="di-backfill-body"></tbody>
+        </table>
+    </div>
+</div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script nonce="{{ csp_nonce }}">
+(function () {
+    'use strict';
+
+    // url_for renders the correct /assets-prefixed path (APPLICATION_ROOT).
+    // Hardcoding bare "/api/..." breaks under the reverse-proxy prefix.
+    const URL_WORKSPACES = '{{ url_for("data_inventory_workspaces") }}';
+    const URL_DATA_VIEWS = '{{ url_for("data_inventory_data_views") }}';
+    const URL_TEAMS = '{{ url_for("data_inventory_teams") }}';
+    const URL_FIELDS = '{{ url_for("data_inventory_fields") }}';
+    const URL_TOTALS = '{{ url_for("data_inventory_totals") }}';
+    const URL_TOP_VALUES = '{{ url_for("data_inventory_top_values") }}';
+    const URL_COVERAGE = '{{ url_for("data_inventory_coverage") }}';
+    const URL_BACKFILL = '{{ url_for("data_inventory_backfill") }}';
+    const URL_BACKFILL_EXPORT = '{{ url_for("data_inventory_backfill_export") }}';
+
+    // sentinel value for the "All data views" dropdown option.
+    const ALL_VIEWS = '__ALL__';
+
+    const wsSel = document.getElementById('di-workspace');
+    const dvSel = document.getElementById('di-data-view');
+    const fromEl = document.getElementById('di-from-date');
+    const toEl = document.getElementById('di-to-date');
+    const teamsBlock = document.getElementById('di-teams-block');
+    const teamsTree = document.getElementById('di-teams-tree');
+    const teamsToggle = document.getElementById('di-teams-toggle');
+    const teamsCount = document.getElementById('di-teams-count');
+    const fieldsBlock = document.getElementById('di-fields-block');
+    const fieldsList = document.getElementById('di-fields-list');
+    const fieldsFilter = document.getElementById('di-fields-filter');
+    // non-numeric fields section + top-values box.
+    const nonnumBlock = document.getElementById('di-nonnum-block');
+    const nonnumList = document.getElementById('di-nonnum-list');
+    const nonnumFilter = document.getElementById('di-nonnum-filter');
+    const valuesBlock = document.getElementById('di-values');
+    const valuesTitle = document.getElementById('di-values-title');
+    const valuesListEl = document.getElementById('di-values-list');
+    const valuesMore = document.getElementById('di-values-more');
+    const viewsBlock = document.getElementById('di-views-block');
+    const viewsList = document.getElementById('di-views-list');
+    const actionsBlock = document.getElementById('di-actions-block');
+    const showBtn = document.getElementById('di-show-btn');
+    const backfillBtn = document.getElementById('di-backfill-btn');
+    const backfillWrap = document.getElementById('di-backfill-wrap');
+    const backfillHead = document.getElementById('di-backfill-head');
+    const backfillBody = document.getElementById('di-backfill-body');
+
+    // Catalogue of {id,label} data views, captured when the dropdown loads, so
+    // the All-views mode can render the subset picker without a second fetch.
+    let allViews = [];
+
+    function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+
+    function csrfToken() {
+        const m = document.querySelector('meta[name="csrf-token"]');
+        return m ? m.content : '';
+    }
+    const placeholder = document.getElementById('di-grid-placeholder');
+    const gridWrap = document.getElementById('di-grid-wrap');
+    const gridHead = document.getElementById('di-grid-head');
+    const gridBody = document.getElementById('di-grid-body');
+    const gridFoot = document.getElementById('di-grid-foot');
+    const coverageBlock = document.getElementById('di-coverage');
+    const coverageTitle = document.getElementById('di-coverage-title');
+    const coverageSummary = document.getElementById('di-coverage-summary');
+    const coverageStrip = document.getElementById('di-coverage-strip');
+
+    const numFmt = new Intl.NumberFormat();
+
+    function resetSelect(sel, placeholder) {
+        sel.innerHTML = '';
+        if (placeholder) {
+            const opt = document.createElement('option');
+            opt.value = '';
+            opt.textContent = placeholder;
+            sel.appendChild(opt);
+        }
+    }
+
+    async function getJSON(url) {
+        const resp = await fetch(url, { credentials: 'same-origin' });
+        if (!resp.ok) throw new Error('Request failed: ' + resp.status);
+        return resp.json();
+    }
+
+    async function loadWorkspaces() {
+        try {
+            const data = await getJSON(URL_WORKSPACES);
+            const workspaces = data.workspaces || [];
+            resetSelect(wsSel, '— Select a workspace —');
+            workspaces.forEach(function (w) {
+                const opt = document.createElement('option');
+                opt.value = w.workspace_esid;
+                opt.textContent = w.workspace_title;
+                wsSel.appendChild(opt);
+            });
+            // when the user's scope resolves to exactly ONE workspace
+            // (workspace owners / org owners), the pick is unambiguous — auto-
+            // select it, render the switcher read-only, and drive the same
+            // downstream load a manual pick would (data views → teams → fields).
+            // Users with >1 workspace keep the interactive switcher unchanged.
+            if (workspaces.length === 1) {
+                autoSelectSingleWorkspace(workspaces[0]);
+            }
+        } catch (e) {
+            resetSelect(wsSel, '— Could not load workspaces —');
+        }
+    }
+
+    function autoSelectSingleWorkspace(ws) {
+        wsSel.value = ws.workspace_esid;
+        // Render the switcher read-only: keep the <select> in the DOM (so its
+        // value still feeds the API calls) but disable it, and show the
+        // workspace name as a static label beside it.
+        wsSel.disabled = true;
+        wsSel.setAttribute('aria-disabled', 'true');
+        const label = document.querySelector('label[for="di-workspace"]');
+        if (label && !document.getElementById('di-workspace-fixed')) {
+            const fixed = document.createElement('span');
+            fixed.id = 'di-workspace-fixed';
+            fixed.className = 'di-ws-fixed';
+            fixed.textContent = ws.workspace_title;
+            // Replace the dropdown visually with the read-only name; the
+            // disabled <select> stays in the DOM but hidden so wsSel.value works.
+            wsSel.style.display = 'none';
+            wsSel.parentNode.appendChild(fixed);
+        }
+        // Fire the same handler a manual selection would, so the rest of the
+        // page loads without the user touching the (now read-only) control.
+        wsSel.dispatchEvent(new Event('change'));
+    }
+
+    async function loadDataViews(workspace) {
+        resetSelect(dvSel, '— Select a data view —');
+        teamsTree.innerHTML = '';
+        teamsBlock.style.display = 'none';
+        dvSel.disabled = true;
+        allViews = [];
+        if (!workspace) return;
+        try {
+            const data = await getJSON(URL_DATA_VIEWS + '?workspace=' + encodeURIComponent(workspace));
+            const views = data.data_views || [];
+            if (!views.length) {
+                resetSelect(dvSel, '— No data views with data —');
+                return;
+            }
+            allViews = views.slice();
+            // "All data views" leads the list (above the individual
+            // views) — selecting it switches the page into backfill-report mode.
+            const allOpt = document.createElement('option');
+            allOpt.value = ALL_VIEWS;
+            allOpt.textContent = 'All data views';
+            dvSel.appendChild(allOpt);
+            views.forEach(function (v) {
+                const opt = document.createElement('option');
+                opt.value = v.id;
+                opt.textContent = v.label;
+                dvSel.appendChild(opt);
+            });
+            dvSel.disabled = false;
+        } catch (e) {
+            resetSelect(dvSel, '— Could not load data views —');
+        }
+    }
+
+    // render the data-view subset picker (All-views mode). Mirrors the
+    // fields-list chip style; all views start checked.
+    function renderViewsPicker() {
+        viewsList.innerHTML = '';
+        allViews.forEach(function (v) {
+            const label = document.createElement('label');
+            label.className = 'di-field-chip';
+            const cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.value = v.id;
+            cb.checked = true;
+            cb.addEventListener('change', syncBackfillBtn);
+            label.appendChild(cb);
+            label.appendChild(document.createTextNode(v.label));
+            viewsList.appendChild(label);
+        });
+    }
+
+    function selectedViews() {
+        return Array.from(viewsList.querySelectorAll('input:checked')).map(function (i) { return i.value; });
+    }
+
+    function syncBackfillBtn() {
+        // Enabled in All-views mode once ≥1 view is selected.
+        backfillBtn.disabled = !(dvSel.value === ALL_VIEWS && selectedViews().length > 0);
+    }
+
+    function isAllViews() { return dvSel.value === ALL_VIEWS; }
+
+    function renderTeamsTree(orgs) {
+        if (!orgs || !orgs.length) {
+            teamsTree.innerHTML = '<span class="di-empty">No teams with data in this view.</span>';
+            return;
+        }
+        teamsTree.innerHTML = orgs.map(function (o, i) {
+            const rows = o.teams.map(function (t) {
+                return '<label class="di-team-label"><input type="checkbox" class="di-team-cb" value="'
+                    + esc(t.title) + '"> ' + esc(t.title) + '</label>';
+            }).join('');
+            return '<div class="di-org">'
+                + '<label class="di-org-label"><input type="checkbox" class="di-org-cb" data-org="' + i + '"> '
+                + esc(o.org_title) + '</label>'
+                + '<div class="di-org-teams" data-org="' + i + '">' + rows + '</div>'
+                + '</div>';
+        }).join('');
+    }
+
+    async function loadTeams(workspace, dataView) {
+        teamsTree.innerHTML = '';
+        teamsBlock.style.display = 'none';
+        if (!workspace || !dataView) return;
+        try {
+            const url = URL_TEAMS + '?workspace=' + encodeURIComponent(workspace) +
+                        '&data_view=' + encodeURIComponent(dataView);
+            const data = await getJSON(url);
+            renderTeamsTree(data.orgs || []);
+            teamsBlock.style.display = '';
+            teamsBlock.classList.remove('di-collapsed');
+            teamsToggle.setAttribute('aria-expanded', 'true');
+            syncTeamsCount();
+        } catch (e) {
+            teamsTree.innerHTML = '<span class="di-empty">Could not load teams.</span>';
+            teamsBlock.style.display = '';
+        }
+    }
+
+    function selectedTeams() {
+        return Array.from(teamsTree.querySelectorAll('input.di-team-cb:checked'))
+            .map(function (cb) { return cb.value; });
+    }
+
+    function syncTeamsCount() {
+        const total = teamsTree.querySelectorAll('input.di-team-cb').length;
+        const sel = selectedTeams().length;
+        teamsCount.textContent = total ? '(' + (sel ? sel + ' of ' : '') + total + ')' : '';
+    }
+
+    function clearGrid() {
+        gridWrap.style.display = 'none';
+        gridHead.innerHTML = '';
+        gridBody.innerHTML = '';
+        gridFoot.innerHTML = '';
+        placeholder.style.display = '';
+        coverageBlock.style.display = 'none';
+        // close any open top-values drill-down.
+        valuesBlock.style.display = 'none';
+        clearNonNumActive();
+        // also clear the backfill grid so switching modes / views
+        // never leaves a stale report on screen.
+        backfillWrap.style.display = 'none';
+        backfillHead.innerHTML = '';
+        backfillBody.innerHTML = '';
+    }
+
+    // strip the active-link highlight from the non-numeric list.
+    function clearNonNumActive() {
+        nonnumList.querySelectorAll('.di-nonnum-link.di-active').forEach(function (a) {
+            a.classList.remove('di-active');
+        });
+    }
+
+    function selectedFields() {
+        // Only count checked fields whose chip is currently visible (not
+        // filtered out) — a hidden-but-checked field stays selected, which is
+        // intended: filtering narrows the view, not the selection.
+        return Array.from(fieldsList.querySelectorAll('input:checked')).map(function (i) { return i.value; });
+    }
+
+    function syncShowBtn() {
+        // Enabled whenever a data view is loaded — fields are OPTIONAL (a
+        // contact/conversation view shows just the Records count). Disabled
+        // only before a view (single-view mode) is chosen.
+        showBtn.disabled = fieldsBlock.style.display === 'none';
+    }
+
+    // switch the page between single-view inventory and All-views
+    // backfill mode. Single view → fields picker + Show button. All views →
+    // view subset picker + Backfill button (no numeric-field picker).
+    function applyMode() {
+        const allMode = isAllViews();
+        // Field picker + non-numeric section only in single-view mode.
+        if (allMode) {
+            fieldsBlock.style.display = 'none';
+            nonnumBlock.style.display = 'none';
+        }
+        // View-subset picker only in All-views mode.
+        viewsBlock.style.display = allMode ? '' : 'none';
+        // Action buttons: show the relevant one, hide the other.
+        showBtn.style.display = allMode ? 'none' : '';
+        backfillBtn.style.display = allMode ? '' : 'none';
+        actionsBlock.style.display = dvSel.value ? '' : 'none';
+        if (allMode) syncBackfillBtn();
+        else syncShowBtn();
+    }
+
+    function applyFieldFilter() {
+        const q = (fieldsFilter ? fieldsFilter.value : '').trim().toLowerCase();
+        fieldsList.querySelectorAll('.di-field-chip').forEach(function (chip) {
+            const match = !q || (chip.dataset.name || '').indexOf(q) !== -1;
+            chip.classList.toggle('di-hidden', !match);
+        });
+    }
+
+    function setFieldsChecked(checked) {
+        // Only toggle the VISIBLE (non-filtered) chips, so select-all respects
+        // an active filter.
+        fieldsList.querySelectorAll('.di-field-chip:not(.di-hidden) input').forEach(function (cb) {
+            cb.checked = checked;
+        });
+        syncShowBtn();
+    }
+
+    async function loadFields(workspace, dataView) {
+        fieldsList.innerHTML = '';
+        fieldsBlock.style.display = 'none';
+        clearGrid();
+        if (!workspace || !dataView) return;
+        try {
+            const url = URL_FIELDS + '?workspace=' + encodeURIComponent(workspace) +
+                        '&data_view=' + encodeURIComponent(dataView);
+            const data = await getJSON(url);
+            const fields = data.fields || [];
+            if (!fields.length) {
+                fieldsList.innerHTML = '<span class="di-empty">'
+                    + 'This view has no summable numeric fields — the grid will show the '
+                    + 'record count per team.</span>';
+                fieldsBlock.style.display = '';
+                syncShowBtn();
+                return;
+            }
+            fields.forEach(function (f) {
+                const label = document.createElement('label');
+                label.className = 'di-field-chip';
+                label.dataset.name = f.name.toLowerCase();
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.value = f.name;
+                cb.addEventListener('change', syncShowBtn);
+                label.appendChild(cb);
+                label.appendChild(document.createTextNode(f.name));
+                fieldsList.appendChild(label);
+            });
+            fieldsBlock.style.display = '';
+            if (fieldsFilter) fieldsFilter.value = '';
+            applyFieldFilter();
+            syncShowBtn();
+        } catch (e) {
+            fieldsList.innerHTML = '<span class="di-empty">Could not load fields.</span>';
+            fieldsBlock.style.display = '';
+        }
+    }
+
+    // apply the non-numeric field filter (name substring).
+    function applyNonNumFilter() {
+        const q = (nonnumFilter ? nonnumFilter.value : '').trim().toLowerCase();
+        nonnumList.querySelectorAll('.di-nonnum-field').forEach(function (row) {
+            const match = !q || (row.dataset.name || '').indexOf(q) !== -1;
+            row.classList.toggle('di-hidden', !match);
+        });
+    }
+
+    // load the view's non-numeric fields as clickable links. A field
+    // with no aggregatable form (text with no .keyword subfield) renders
+    // disabled with a reason rather than a working link.
+    async function loadNonNumericFields(workspace, dataView) {
+        nonnumList.innerHTML = '';
+        nonnumBlock.style.display = 'none';
+        if (!workspace || !dataView) return;
+        try {
+            const url = URL_FIELDS + '?workspace=' + encodeURIComponent(workspace) +
+                        '&data_view=' + encodeURIComponent(dataView) + '&kind=non-numeric';
+            const data = await getJSON(url);
+            const fields = data.fields || [];
+            if (!fields.length) {
+                nonnumList.innerHTML = '<span class="di-empty">This view has no text, keyword, date, or boolean fields.</span>';
+                nonnumBlock.style.display = '';
+                return;
+            }
+            fields.forEach(function (f) {
+                const row = document.createElement('div');
+                row.className = 'di-nonnum-field';
+                row.dataset.name = f.name.toLowerCase();
+                if (f.agg_field) {
+                    const link = document.createElement('button');
+                    link.type = 'button';
+                    link.className = 'di-nonnum-link';
+                    link.textContent = f.name;
+                    link.dataset.field = f.name;
+                    link.title = 'Show top values for ' + f.name;
+                    link.addEventListener('click', function () { loadTopValues(f.name, link); });
+                    row.appendChild(link);
+                } else {
+                    // Non-aggregatable text field: show it, disabled, with why.
+                    const span = document.createElement('span');
+                    span.className = 'di-nonnum-disabled';
+                    span.textContent = f.name;
+                    span.title = 'No keyword sub-field — values can’t be aggregated';
+                    row.appendChild(span);
+                }
+                const type = document.createElement('span');
+                type.className = 'di-nonnum-type';
+                type.textContent = f.type;
+                row.appendChild(type);
+                nonnumList.appendChild(row);
+            });
+            nonnumBlock.style.display = '';
+            if (nonnumFilter) nonnumFilter.value = '';
+            applyNonNumFilter();
+        } catch (e) {
+            nonnumList.innerHTML = '<span class="di-empty">Could not load non-numeric fields.</span>';
+            nonnumBlock.style.display = '';
+        }
+    }
+
+    // fetch + render the top values of one non-numeric field, scoped
+    // to the current workspace + selected teams + date range.
+    async function loadTopValues(field, linkEl) {
+        clearNonNumActive();
+        if (linkEl) linkEl.classList.add('di-active');
+        valuesBlock.style.display = '';
+        valuesTitle.textContent = 'Top values — ' + field;
+        valuesListEl.innerHTML = '<div class="di-value-row"><span class="di-empty">Loading…</span></div>';
+        valuesMore.style.display = 'none';
+        // Bring the box into view — it may sit below the fold on a long field
+        // list, so a click near the top otherwise looks like nothing happened.
+        try { valuesBlock.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (e) { /* older browsers */ }
+        const payload = {
+            workspace: wsSel.value,
+            data_view: dvSel.value,
+            field: field,
+            teams: selectedTeams(),
+            from_date: fromEl.value || '',
+            to_date: toEl.value || '',
+        };
+        try {
+            const resp = await fetch(URL_TOP_VALUES, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
+                body: JSON.stringify(payload),
+            });
+            if (!resp.ok) throw new Error('Request failed: ' + resp.status);
+            const data = await resp.json();
+            if (data.aggregatable === false) {
+                valuesListEl.innerHTML = '<div class="di-value-row"><span class="di-empty">'
+                    + 'This field has no keyword sub-field, so its values can’t be listed.</span></div>';
+                valuesMore.style.display = 'none';
+                return;
+            }
+            const values = data.values || [];
+            if (!values.length) {
+                valuesListEl.innerHTML = '<div class="di-value-row"><span class="di-empty">'
+                    + 'No values for the selected teams and date range.</span></div>';
+                valuesMore.style.display = 'none';
+                return;
+            }
+            valuesListEl.innerHTML = '';
+            values.forEach(function (v) {
+                const row = document.createElement('div');
+                row.className = 'di-value-row';
+                const name = document.createElement('span');
+                name.className = 'di-value-name';
+                // A boolean/keyword value may be true/false/number — coerce to text.
+                name.textContent = (v.value === '' ? '(empty)' : String(v.value));
+                const count = document.createElement('span');
+                count.className = 'di-value-count';
+                count.textContent = numFmt.format(v.count || 0);
+                row.appendChild(name);
+                row.appendChild(count);
+                valuesListEl.appendChild(row);
+            });
+            if (data.other_count > 0) {
+                valuesMore.style.display = '';
+                valuesMore.textContent = 'and ' + numFmt.format(data.other_count)
+                    + ' more record' + (data.other_count === 1 ? '' : 's') + ' in other values';
+            } else {
+                valuesMore.style.display = 'none';
+            }
+        } catch (e) {
+            valuesListEl.innerHTML = '<div class="di-value-row"><span class="di-empty">Could not load values.</span></div>';
+            valuesMore.style.display = 'none';
+        }
+    }
+
+    function renderGrid(fields, rows, totals, recordTotal) {
+        // Columns: Team | Records | <selected numeric fields…>. The Records
+        // count is always shown — it's the meaningful number for contact /
+        // conversation views (DT, Echo, Chatwoot) that have no summable fields.
+        const headRow = document.createElement('tr');
+        ['Team', 'Records'].forEach(function (h) {
+            const th = document.createElement('th');
+            th.textContent = h;
+            headRow.appendChild(th);
+        });
+        fields.forEach(function (f) {
+            const th = document.createElement('th');
+            th.textContent = f;
+            headRow.appendChild(th);
+        });
+        gridHead.innerHTML = '';
+        gridHead.appendChild(headRow);
+
+        gridBody.innerHTML = '';
+        rows.forEach(function (r) {
+            const tr = document.createElement('tr');
+            tr.dataset.team = r.team_title;
+            tr.addEventListener('click', function () {
+                gridBody.querySelectorAll('tr.di-row-active').forEach(function (x) {
+                    x.classList.remove('di-row-active');
+                });
+                tr.classList.add('di-row-active');
+                loadCoverage(r.team_title);
+            });
+            const td0 = document.createElement('td');
+            // Render the team name as a link-styled button so it's visually
+            // clear the row is selectable (and keyboard-accessible). A click on
+            // it bubbles to the row handler above — one code path, no double
+            // fire — so Enter/Space on the focused button selects the team too.
+            const teamBtn = document.createElement('button');
+            teamBtn.type = 'button';
+            teamBtn.className = 'di-team-link';
+            teamBtn.textContent = r.team_title;
+            teamBtn.title = 'View date coverage for ' + r.team_title;
+            td0.appendChild(teamBtn);
+            tr.appendChild(td0);
+            const tdc = document.createElement('td');
+            tdc.textContent = numFmt.format(r.record_count || 0);
+            tr.appendChild(tdc);
+            fields.forEach(function (f) {
+                const td = document.createElement('td');
+                td.textContent = numFmt.format(r.values[f] || 0);
+                tr.appendChild(td);
+            });
+            gridBody.appendChild(tr);
+        });
+
+        gridFoot.innerHTML = '';
+        const footRow = document.createElement('tr');
+        const ft0 = document.createElement('td');
+        ft0.textContent = 'Total (' + rows.length + ' team' + (rows.length === 1 ? '' : 's') + ')';
+        footRow.appendChild(ft0);
+        const ftc = document.createElement('td');
+        ftc.textContent = numFmt.format(recordTotal || 0);
+        footRow.appendChild(ftc);
+        fields.forEach(function (f) {
+            const td = document.createElement('td');
+            td.textContent = numFmt.format(totals[f] || 0);
+            footRow.appendChild(td);
+        });
+        gridFoot.appendChild(footRow);
+
+        placeholder.style.display = 'none';
+        gridWrap.style.display = '';
+    }
+
+    async function loadCoverage(team) {
+        coverageBlock.style.display = '';
+        coverageTitle.textContent = 'Date coverage — ' + team;
+        coverageSummary.innerHTML = '<span class="di-empty">Loading…</span>';
+        coverageStrip.innerHTML = '';
+        const params = new URLSearchParams();
+        params.set('workspace', wsSel.value);
+        params.set('data_view', dvSel.value);
+        params.set('team', team);
+        if (fromEl.value) params.set('from_date', fromEl.value);
+        if (toEl.value) params.set('to_date', toEl.value);
+        try {
+            const data = await getJSON(URL_COVERAGE + '?' + params.toString());
+            const fmtDate = function (d) { return d ? String(d).slice(0, 10) : '—'; };
+            coverageSummary.innerHTML =
+                '<span><b>First date:</b> ' + esc(fmtDate(data.first_date)) + '</span>'
+                + '<span><b>Last date:</b> ' + esc(fmtDate(data.last_date)) + '</span>'
+                + '<span><b>Last pulled:</b> ' + esc(fmtDate(data.last_pulled)) + '</span>';
+            const days = data.days || [];
+            if (!days.length) {
+                coverageStrip.innerHTML = '<span class="di-empty">No dates in range.</span>';
+                return;
+            }
+            coverageStrip.innerHTML = '';
+            days.forEach(function (d) {
+                const cell = document.createElement('span');
+                cell.className = 'di-day di-day-' + d.state;
+                cell.title = d.date + ' — ' + (d.state === 'data' ? (d.doc_count + ' docs') : 'no data');
+                coverageStrip.appendChild(cell);
+            });
+        } catch (e) {
+            coverageSummary.innerHTML = '<span class="di-empty">Could not load coverage.</span>';
+        }
+    }
+
+    async function showInventory() {
+        // fields MAY be empty — a contact/conversation view shows just the
+        // Records count. The Show button is enabled whenever data is loaded.
+        const fields = selectedFields();
+        const teams = selectedTeams();
+        // POST (not GET): a wide view's field list (FB Ad Insights has ~106
+        // summable fields) makes a GET query string long enough to be rejected
+        // at the proxy layer ("Could not load") before it reaches the app.
+        // The body carries the selection, so length is no longer a factor.
+        const payload = {
+            workspace: wsSel.value,
+            data_view: dvSel.value,
+            fields: fields,
+            teams: teams,
+            from_date: fromEl.value || '',
+            to_date: toEl.value || '',
+        };
+
+        showBtn.disabled = true;
+        const prevLabel = showBtn.textContent;
+        showBtn.textContent = 'Loading…';
+        // Show a loading state in the result area too — not the stale previous
+        // message or a premature error.
+        gridWrap.style.display = 'none';
+        placeholder.style.display = '';
+        placeholder.textContent = 'Loading…';
+        try {
+            const resp = await fetch(URL_TOTALS, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
+                body: JSON.stringify(payload),
+            });
+            if (!resp.ok) throw new Error('Request failed: ' + resp.status);
+            const data = await resp.json();
+            if (!(data.rows || []).length) {
+                clearGrid();
+                placeholder.textContent = 'No data for the selected teams and date range.';
+            } else {
+                renderGrid(data.fields, data.rows, data.totals || {}, data.record_total || 0);
+            }
+        } catch (e) {
+            clearGrid();
+            placeholder.textContent = 'Could not load the inventory.';
+        } finally {
+            showBtn.textContent = prevLabel;
+            syncShowBtn();
+        }
+    }
+
+    // Teams tree: org checkbox toggles its teams; a team re-syncs its org box.
+    teamsTree.addEventListener('change', function (e) {
+        const t = e.target;
+        if (t.classList.contains('di-org-cb')) {
+            const org = t.getAttribute('data-org');
+            teamsTree.querySelectorAll('.di-org-teams[data-org="' + org + '"] input.di-team-cb')
+                .forEach(function (cb) { cb.checked = t.checked; });
+        } else if (t.classList.contains('di-team-cb')) {
+            const teamsDiv = t.closest('.di-org-teams');
+            const org = teamsDiv.getAttribute('data-org');
+            const all = teamsDiv.querySelectorAll('input.di-team-cb');
+            const checked = teamsDiv.querySelectorAll('input.di-team-cb:checked');
+            const orgCb = teamsTree.querySelector('.di-org-cb[data-org="' + org + '"]');
+            if (orgCb) orgCb.checked = all.length === checked.length;
+        }
+        syncTeamsCount();
+    });
+    document.getElementById('di-teams-all').addEventListener('click', function () {
+        teamsTree.querySelectorAll('input[type=checkbox]').forEach(function (cb) { cb.checked = true; });
+        syncTeamsCount();
+    });
+    document.getElementById('di-teams-none').addEventListener('click', function () {
+        teamsTree.querySelectorAll('input[type=checkbox]').forEach(function (cb) { cb.checked = false; });
+        syncTeamsCount();
+    });
+    // Item 1: collapsible teams box.
+    teamsToggle.addEventListener('click', function () {
+        const collapsed = teamsBlock.classList.toggle('di-collapsed');
+        teamsToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    });
+
+    // Fields: filter input + select/deselect-all (visible chips only).
+    if (fieldsFilter) fieldsFilter.addEventListener('input', applyFieldFilter);
+    document.getElementById('di-fields-all').addEventListener('click', function () { setFieldsChecked(true); });
+    document.getElementById('di-fields-none').addEventListener('click', function () { setFieldsChecked(false); });
+
+    // data-view subset picker — select/deselect-all toggles every chip.
+    function setViewsChecked(checked) {
+        viewsList.querySelectorAll('input[type=checkbox]').forEach(function (cb) { cb.checked = checked; });
+        syncBackfillBtn();
+    }
+    document.getElementById('di-views-all').addEventListener('click', function () { setViewsChecked(true); });
+    document.getElementById('di-views-none').addEventListener('click', function () { setViewsChecked(false); });
+
+    function renderBackfill(report) {
+        const views = report.views || [];
+        const teams = report.teams || [];
+        const cells = report.cells || {};
+
+        // Header: Team | <view> # days | <view> Last date … per selected view.
+        const headRow = document.createElement('tr');
+        const th0 = document.createElement('th');
+        th0.textContent = 'Team';
+        headRow.appendChild(th0);
+        views.forEach(function (v) {
+            const th1 = document.createElement('th');
+            th1.textContent = v.label + ' — # days';
+            headRow.appendChild(th1);
+            const th2 = document.createElement('th');
+            th2.textContent = v.label + ' — Last date';
+            headRow.appendChild(th2);
+        });
+        backfillHead.innerHTML = '';
+        backfillHead.appendChild(headRow);
+
+        backfillBody.innerHTML = '';
+        teams.forEach(function (team) {
+            const tr = document.createElement('tr');
+            const td0 = document.createElement('td');
+            td0.textContent = team;
+            tr.appendChild(td0);
+            const teamCells = cells[team] || {};
+            views.forEach(function (v) {
+                const cell = teamCells[v.id] || {};
+                const tdDays = document.createElement('td');
+                tdDays.textContent = numFmt.format(cell.days || 0);
+                tr.appendChild(tdDays);
+                const tdLast = document.createElement('td');
+                // Em-dash when this team has never imported into this view.
+                tdLast.textContent = cell.last_date || '—';
+                tr.appendChild(tdLast);
+            });
+            backfillBody.appendChild(tr);
+        });
+
+        placeholder.style.display = 'none';
+        gridWrap.style.display = 'none';
+        backfillWrap.style.display = '';
+    }
+
+    function backfillPayload() {
+        return {
+            workspace: wsSel.value,
+            views: selectedViews(),
+            teams: selectedTeams(),
+            from_date: fromEl.value || '',
+            to_date: toEl.value || '',
+        };
+    }
+
+    async function runBackfill() {
+        const payload = backfillPayload();
+        backfillBtn.disabled = true;
+        const prevLabel = backfillBtn.textContent;
+        backfillBtn.textContent = 'Loading…';
+        backfillWrap.style.display = 'none';
+        placeholder.style.display = '';
+        placeholder.textContent = 'Loading…';
+        try {
+            const resp = await fetch(URL_BACKFILL, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
+                body: JSON.stringify(payload),
+            });
+            if (!resp.ok) throw new Error('Request failed: ' + resp.status);
+            const data = await resp.json();
+            if (!(data.teams || []).length) {
+                clearGrid();
+                placeholder.textContent = 'No data for the selected teams, views, and date range.';
+            } else {
+                renderBackfill(data);
+            }
+        } catch (e) {
+            clearGrid();
+            placeholder.textContent = 'Could not load the backfill report.';
+        } finally {
+            backfillBtn.textContent = prevLabel;
+            syncBackfillBtn();
+        }
+    }
+
+    async function exportBackfill(fmt) {
+        // POST the current selection and download the returned file as a blob —
+        // the server recomputes the report so the file matches the scoped data.
+        try {
+            const resp = await fetch(URL_BACKFILL_EXPORT + '?format=' + encodeURIComponent(fmt), {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
+                body: JSON.stringify(backfillPayload()),
+            });
+            if (!resp.ok) throw new Error('Export failed: ' + resp.status);
+            const blob = await resp.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'Data_Inventory_Backfill_Report.' + (fmt === 'xlsx' ? 'xlsx' : 'csv');
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+        } catch (e) {
+            placeholder.style.display = '';
+            placeholder.textContent = 'Could not export the backfill report.';
+        }
+    }
+
+    wsSel.addEventListener('change', function () {
+        loadDataViews(wsSel.value);
+        fieldsBlock.style.display = 'none';
+        nonnumBlock.style.display = 'none';
+        viewsBlock.style.display = 'none';
+        actionsBlock.style.display = 'none';
+        clearGrid();
+    });
+    dvSel.addEventListener('change', function () {
+        clearGrid();
+        if (!dvSel.value) {
+            // Back to the "select a view" state.
+            fieldsBlock.style.display = 'none';
+            nonnumBlock.style.display = 'none';
+            viewsBlock.style.display = 'none';
+            teamsBlock.style.display = 'none';
+            actionsBlock.style.display = 'none';
+            return;
+        }
+        // Teams load in both modes (the report/grid is per team).
+        loadTeams(wsSel.value, dvSel.value);
+        if (isAllViews()) {
+            renderViewsPicker();
+        } else {
+            loadFields(wsSel.value, dvSel.value);
+            loadNonNumericFields(wsSel.value, dvSel.value);
+        }
+        applyMode();
+    });
+    showBtn.addEventListener('click', showInventory);
+    backfillBtn.addEventListener('click', runBackfill);
+    document.getElementById('di-backfill-csv').addEventListener('click', function () { exportBackfill('csv'); });
+    document.getElementById('di-backfill-xlsx').addEventListener('click', function () { exportBackfill('xlsx'); });
+    document.getElementById('di-coverage-close').addEventListener('click', function () {
+        coverageBlock.style.display = 'none';
+        gridBody.querySelectorAll('tr.di-row-active').forEach(function (x) { x.classList.remove('di-row-active'); });
+    });
+
+    // collapsible numeric-fields section (AC #1). Collapsing only
+    // hides the picker — it does not change the selected fields or the totals.
+    document.getElementById('di-fields-toggle').addEventListener('click', function () {
+        const collapsed = fieldsBlock.classList.toggle('di-collapsed');
+        this.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    });
+    // collapsible non-numeric-fields section + its filter + the
+    // top-values box close button.
+    document.getElementById('di-nonnum-toggle').addEventListener('click', function () {
+        const collapsed = nonnumBlock.classList.toggle('di-collapsed');
+        this.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    });
+    if (nonnumFilter) nonnumFilter.addEventListener('input', applyNonNumFilter);
+    document.getElementById('di-values-close').addEventListener('click', function () {
+        valuesBlock.style.display = 'none';
+        clearNonNumActive();
+    });
+
+    loadWorkspaces();
+})();
+</script>
+{% endblock %}

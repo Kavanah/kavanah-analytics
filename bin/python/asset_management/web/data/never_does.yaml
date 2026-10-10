@@ -1,0 +1,35 @@
+# "Kavanah will never" reassurance list — rendered below the step-5 scope
+# board. Marketing can edit copy here without touching Python.
+#
+# - `default:` is the list shown for any connector that has no per-connector
+#   override below. Order matters: the user reads top-down, so privacy items
+# lead and billing items close.
+# - `connectors:` is an optional per-connector override map keyed by the
+#   connector_id used in connector_catalog_service / connector_scope_manifest_service
+#   (e.g. `meta_ads`, `google_ads`). Add a key here only when a connector
+#   needs a tailored list — otherwise the default applies.
+#
+# Editing rules:
+# - Keep each item short (≤ 6 words) so the two-column grid stays balanced.
+# - Items render verbatim; HTML is not interpreted. Use plain text only.
+# - The list must not be empty. The renderer treats an empty list as a
+#   manifest bug and shows the default — but the YAML loader's tests will
+#   fail before deploy if `default:` is empty or missing.
+
+default:
+  - Post to your account
+  - Change campaign settings
+  - Run new ads
+  - Charge your card
+  - Access private messages
+  - Share data outside your workspace
+
+connectors:
+  # meta_ads inherits `default:` today. Uncomment + edit to override:
+  # meta_ads:
+  #   - Post to your account
+  #   - Change campaign settings
+  #   - Run new ads
+  #   - Charge your card
+  #   - Access private messages
+  #   - Share data outside your workspace

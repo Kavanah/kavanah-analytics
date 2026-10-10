@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <title>Dashboard Debug — DEAM</title>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; color: #333; font-size: 14px; }
+    header { background: #232F3E; color: #fff; padding: 16px 24px; display: flex; align-items: center; gap: 16px; }
+    header h1 { font-size: 18px; font-weight: 600; }
+    header a { color: #aed6f1; font-size: 13px; text-decoration: none; }
+    header a:hover { text-decoration: underline; }
+    .toolbar { background: #fff; border-bottom: 1px solid #ddd; padding: 12px 24px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+    .toolbar label { font-size: 13px; color: #555; display: flex; align-items: center; gap: 6px; }
+    .toolbar input[type=date], .toolbar input[type=text] { border: 1px solid #ccc; border-radius: 4px; padding: 5px 8px; font-size: 13px; }
+    .toolbar input[type=text] { width: 160px; }
+    .toolbar button { background: #2c6da0; color: #fff; border: none; border-radius: 4px; padding: 7px 16px; font-size: 13px; cursor: pointer; }
+    .toolbar button:hover { background: #1a5276; }
+    .toolbar button:disabled { background: #aaa; cursor: default; }
+    .content { padding: 20px 24px; }
+    .status { font-size: 13px; color: #888; margin-bottom: 12px; min-height: 20px; }
+    table { width: 100%; border-collapse: collapse; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.1); border-radius: 6px; overflow: hidden; }
+    thead tr { background: #232F3E; color: #fff; }
+    thead th { padding: 10px 14px; text-align: left; font-size: 13px; font-weight: 600; white-space: nowrap; }
+    thead th:not(:first-child) { text-align: right; width: 140px; }
+    tbody tr:nth-child(even) { background: #f9f9f9; }
+    tbody tr.group-header td { background: #eaf0f6; font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: #2c6da0; padding: 6px 14px; border-top: 2px solid #d5e8f5; }
+    tbody td { padding: 8px 14px; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
+    tbody td.val { text-align: right; font-variant-numeric: tabular-nums; font-family: 'SF Mono', Consolas, monospace; font-size: 13px; }
+    .val-ok   { color: #1a7a2e; font-weight: 600; }
+    .val-zero { color: #aaa; }
+    .val-err  { color: #c0392b; font-size: 12px; }
+    .val-na   { color: #ccc; }
+    .val-load { color: #bbb; font-style: italic; }
+    .mismatch { background: #fff8e1 !important; }
+    td.mismatch-cell { background: #ffe0b2 !important; }
+    .legend { font-size: 12px; color: #888; margin-top: 10px; }
+    .legend span { margin-right: 14px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Dashboard Debug</h1>
+  <a href="../">← Builder</a>
+</header>
+
+<div class="toolbar">
+  <label>From <input type="date" id="date-from"></label>
+  <label>To <input type="date" id="date-to"></label>
+  <label>Org <input type="text" id="filter-org" placeholder="(all)"></label>
+  <label>Team <input type="text" id="filter-team" placeholder="(all)"></label>
+  <button id="refresh-btn">Refresh</button>
+</div>
+
+<div class="content">
+  <div class="status" id="status">Set a date range and click Refresh.</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Stat</th>
+        <th>Summary</th>
+        <th>Trends (total)</th>
+        <th>Maps (total)</th>
+      </tr>
+    </thead>
+    <tbody id="debug-tbody"></tbody>
+  </table>
+  <div class="legend">
+    <span>Highlighted row = Summary vs Trends mismatch &gt;1%</span>
+    <span style="color:#ccc">— = not applicable</span>
+  </div>
+</div>
+
+<script nonce="{{ csp_nonce }}">
+// ── stat definitions ─────────────────────────────────────────────────────────
+// summary: query config for the /api/query endpoint
+// trends:  label matching the Trends dashboard series name
+// maps:    statistic key for /api/map-data, or null
+const STATS = [
+  // ── Content ────────────────────────────────────────────────────────────────
+  { group: 'Content' },
+  { label: 'Meta Reach',
+    summary: { data_view: '*fb_insights',     field: 'insight_reach',            agg: 'sum' },
+    trends: 'Meta', maps: 'reach' },
+  { label: 'Organic Facebook',
+    // page_impressions_unique → page_total_media_view_unique (Meta v23 deprecation).
+    summary: { data_view: '*fb_page_insights', field: 'page_total_media_view_unique',  agg: 'sum' },
+    trends: 'Organic Facebook', maps: 'organic_facebook' },
+  { label: 'Organic Instagram',
+    summary: { data_view: '*ig_insights',      field: 'ig_insight_reach',         agg: 'sum' },
+    trends: 'Organic Instagram', maps: 'organic_instagram' },
+  { label: 'Organic Web',
+    summary: { data_view: '*ga_metrics',       field: 'totalUsers',               agg: 'sum' },
+    trends: 'Organic Web', maps: 'organic_web' },
+
+  // ── Video / Engagement ─────────────────────────────────────────────────────
+  { group: 'Video & Engagement' },
+  { label: '15s Video Views',
+    summary: { data_view: '*fb_page_insights', field: 'page_video_views_15s_total',     agg: 'sum' },
+    trends: '15s Video Views', maps: 'videos_15s' },
+  { label: 'View Time (s)',
+    summary: { data_view: '*fb_page_insights', field: 'page_video_avg_sec_watched',     agg: 'sum' },
+    trends: 'View Time', maps: 'view_time' },
+  { label: 'FB Reactions',
+    summary: { data_view: '*fb_page_insights', field: 'page_actions_post_reactions_total', agg: 'sum' },
+    trends: 'FB Reactions', maps: 'fb_reactions' },
+  { label: 'FB Shares',
+    summary: { data_view: '*fb_page_insights', field: 'page_posts_shares_total',        agg: 'sum' },
+    trends: 'FB Shares', maps: 'fb_shares' },
+  { label: 'IG Reactions',
+    summary: { data_view: '*ig_insights',      field: 'ig_media_total_likes',           agg: 'sum' },
+    trends: 'IG Reactions', maps: 'ig_reactions' },
+  { label: 'IG Shares',
+    summary: { data_view: '*ig_insights',      field: 'ig_media_total_shares',          agg: 'sum' },
+    trends: 'IG Shares', maps: 'ig_shares' },
+  { label: 'YT Reactions',
+    summary: { data_view: '*youtube_analytics', field: 'likes',    agg: 'sum' },
+    trends: 'YT Likes', maps: 'yt_reactions' },
+  { label: 'YT Shares',
+    summary: { data_view: '*youtube_analytics', field: 'shares',   agg: 'sum' },
+    trends: 'YT Shares', maps: 'yt_shares' },
+  { label: 'YT Comments',
+    summary: { data_view: '*youtube_analytics', field: 'comments', agg: 'sum' },
+    trends: 'Comments', maps: 'comments' },
+
+  // ── Follows ────────────────────────────────────────────────────────────────
+  { group: 'Follows / Installs' },
+  { label: 'FB Follows',
+    summary: { data_view: '*fb_page_insights', field: 'page_follows',            agg: 'sum' },
+    trends: 'Facebook Follows', maps: 'follows_facebook' },
+  { label: 'IG Follows',
+    summary: { data_view: '*ig_insights',      field: 'ig_user_followers_count', agg: 'sum' },
+    trends: 'Instagram Follows', maps: 'follows_instagram' },
+  { label: 'YT Subs',
+    summary: { data_view: '*youtube_analytics', field: 'subscribers_gained',     agg: 'sum' },
+    trends: 'YouTube Subs', maps: 'follows_youtube' },
+  { label: 'App Installs',
+    summary: { data_view: '*google_ads',        field: 'app_installs',           agg: 'sum' },
+    trends: 'App Installs', maps: 'google_ads_app_installs' },
+
+  // ── Messaging / Echo ───────────────────────────────────────────────────────
+  { group: 'Messaging (Echo)' },
+  { label: 'Messaging Contacts',
+    summary: { data_view: '*echo_conversations', field: 'client_id', agg: 'cardinality' },
+    // maps: null — per-country cardinality sums don't equal global unique count (a contact
+    // in 3 countries is counted 3×), so the map total is always larger than the summary.
+    trends: 'Messaging Contacts', maps: null },
+  { label: 'Messages Received',
+    summary: { data_view: '*echo_conversations', field: 'incomingMessagesCount', agg: 'sum' },
+    trends: 'Messages Received', maps: 'messages' },
+  { label: 'Messages Sent',
+    summary: { data_view: '*echo_conversations', field: 'outboundMessagesCount', agg: 'sum' },
+    trends: 'Messages Sent', maps: 'messages_sent' },
+  { label: 'Spiritual Convos (Echo)',
+    summary: { data_view: '*echo_conversations', field: 'spiritual_conversation', agg: 'sum' },
+    trends: null, maps: null },
+  { label: 'Spiritual Convos (DT)',
+    summary: { data_view: 'disciple-tools', field: 'meta.quick_button_contact_established', agg: 'sum', dt: true },
+    trends: 'Spiritual Convos', maps: 'spiritual_conversations' },
+
+  // ── Disciple Tools Journey ─────────────────────────────────────────────────
+  { group: 'Journey (Disciple Tools)' },
+  { label: 'New Contacts',
+    summary: { data_view: 'disciple-tools', field: 'meta.first_contact_date', agg: 'query date', dt: true },
+    trends: 'New Contacts', maps: 'dt_contacts' },
+  { label: '1st Meetings',
+    summary: { data_view: 'disciple-tools', field: 'meta.seeker_path', agg: 'equals', equals_value: 'met', dt: true },
+    trends: '1st Meetings', maps: 'first_meetings' },
+  { label: 'Baptisms',
+    summary: { data_view: 'disciple-tools', field: 'meta.milestone.formatted', agg: 'equals', equals_value: 'milestone_baptized', dt: true },
+    trends: 'Baptisms', maps: 'baptisms' },
+  { label: 'New Groups',
+    summary: { data_view: 'disciple-tools', field: 'meta.start_date', agg: 'query date', dt: true, dt_date_unix: true },
+    trends: 'New Groups', maps: 'new_groups' },
+  { label: 'New Churches',
+    summary: { data_view: 'disciple-tools', field: 'meta.church_start_date', agg: 'query date', dt: true, dt_date_unix: true },
+    trends: 'New Churches', maps: 'new_churches' },
+];
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+const BASE = (window.location.pathname.replace(/\/debug\/?$/, '') + '/').replace('//', '/');
+
+function toEpochStr(dateStr, addDay) {
+  const d = new Date(dateStr + 'T00:00:00Z');
+  if (addDay) d.setUTCDate(d.getUTCDate() + 1);
+  return String(Math.floor(d.getTime() / 1000));
+}
+
+function fmtNum(v) {
+  if (v === null || v === undefined) return { txt: '—', cls: 'val-na' };
+  if (typeof v === 'string' && v.startsWith('ERR')) return { txt: v, cls: 'val-err' };
+  if (v === 0) return { txt: '0', cls: 'val-zero' };
+  if (v >= 1e6) return { txt: (v/1e6).toFixed(1)+'M', cls: 'val-ok' };
+  if (v >= 1e3) return { txt: (v/1e3).toFixed(1)+'K', cls: 'val-ok' };
+  return { txt: v.toLocaleString(undefined, {maximumFractionDigits: 2}), cls: 'val-ok' };
+}
+
+function mismatch(a, b) {
+  if (a == null || b == null) return false;
+  if (a === 0 && b === 0) return false;
+  const denom = Math.max(Math.abs(a), Math.abs(b));
+  return Math.abs(a - b) / denom > 0.01;
+}
+
+// ── query functions ──────────────────────────────────────────────────────────
+async function querySummary(stat, fromDate, toDate, org, team) {
+  const s = stat.summary;
+  let dateRange = null;
+  const isDT = s.dt || (s.data_view || '').includes('disciple-tools');
+
+  if (isDT) {
+    if (s.agg === 'query date') {
+      const dtField = s.field.endsWith('.keyword') ? s.field : s.field + '.keyword';
+      const from = s.dt_date_unix ? toEpochStr(fromDate, false) : fromDate;
+      const to   = s.dt_date_unix ? toEpochStr(toDate, true)    : toDate;
+      dateRange = { field: dtField, from, to };
+    } else {
+      // count/sum/equals — use date_created.keyword for time scoping
+      dateRange = { field: 'date_created.keyword', from: fromDate, to: toDate };
+    }
+  } else {
+    dateRange = { field: 'kibana_date', from: fromDate, to: toDate };
+  }
+
+  const filters = [];
+  if (org)  filters.push({ field: 'organization_title', op: 'match_phrase', value: org });
+  if (team) filters.push({ field: 'team_title',         op: 'match_phrase', value: team });
+
+  const config = {
+    chart_type: 'metric',
+    data_view: s.data_view,
+    x_field: null,
+    x_field_type: null,
+    y_fields: s.field ? [s.field] : [],
+    aggregation: s.agg || 'sum',
+    equals_value: s.equals_value || null,
+    date_range: dateRange,
+    filters,
+  };
+
+  try {
+    const r = await fetch(BASE + 'api/query', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config),
+    });
+    const d = await r.json();
+    if (d.error) return 'ERR: ' + d.error;
+    return d.value !== undefined ? d.value : null;
+  } catch (e) { return 'ERR: fetch'; }
+}
+
+async function queryTrends(fromDate, toDate, org, team) {
+  // Fetch all trend line sources in one call and return {label: total}
+  const sources = STATS.filter(s => s.label && s.trends).map(s => ({
+    label: s.trends,
+    data_view: s.summary.data_view,
+    field: s.summary.field || null,
+    date_field: s.summary.dt ? 'date_created' : 'kibana_date',
+  }));
+
+  const filters = [];
+  if (org)  filters.push({ field: 'organization_title', op: 'match_phrase', value: org });
+  if (team) filters.push({ field: 'team_title',         op: 'match_phrase', value: team });
+
+  const isDT = false; // trends uses kibana_date for non-DT; DT trends returns 0 (known limitation)
+  const body = {
+    sources,
+    filters,
+    date_range: { field: 'kibana_date', from: fromDate, to: toDate },
+    date_interval: 'day',
+  };
+
+  try {
+    const r = await fetch(BASE + 'api/trend-line-data', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    const totals = {};
+    for (const series of (d.series || [])) {
+      totals[series.name] = (series.data || []).reduce((s, v) => s + (v || 0), 0);
+    }
+    return totals;
+  } catch (e) { return {}; }
+}
+
+async function queryMap(statKey, fromDate, toDate, org, team) {
+  const params = new URLSearchParams({ statistic: statKey, date_from: fromDate, date_to: toDate });
+  if (org)  params.set('org', org);
+  if (team) params.set('team', team);
+  try {
+    const r = await fetch(BASE + `api/map-data?${params}`);
+    const d = await r.json();
+    if (!d.success) return null;
+    const countries = d.countries || [];
+    const cities    = d.cities    || [];
+    const all = [...countries, ...cities];
+    return all.reduce((s, p) => s + (p.value || 0), 0);
+  } catch (e) { return null; }
+}
+
+// ── render ───────────────────────────────────────────────────────────────────
+function setStatus(msg) { document.getElementById('status').textContent = msg; }
+
+function buildLoadingRows() {
+  const tbody = document.getElementById('debug-tbody');
+  tbody.innerHTML = '';
+  for (const s of STATS) {
+    const tr = document.createElement('tr');
+    if (s.group) {
+      tr.className = 'group-header';
+      tr.innerHTML = `<td colspan="4">${s.group}</td>`;
+    } else {
+      tr.id = 'row-' + s.label.replace(/\s+/g, '_').replace(/[()]/g, '');
+      tr.innerHTML = `
+        <td>${s.label}</td>
+        <td class="val val-load">…</td>
+        <td class="val val-load">…</td>
+        <td class="val val-load">…</td>`;
+    }
+    tbody.appendChild(tr);
+  }
+}
+
+function updateRow(label, summaryVal, trendsVal, mapsVal) {
+  const id = 'row-' + label.replace(/\s+/g, '_').replace(/[()]/g, '');
+  const tr = document.getElementById(id);
+  if (!tr) return;
+
+  const sv = fmtNum(summaryVal);
+  const tv = fmtNum(trendsVal);
+  const mv = fmtNum(mapsVal);
+
+  const numSummary = typeof summaryVal === 'number' ? summaryVal : null;
+  const numTrends  = typeof trendsVal  === 'number' ? trendsVal  : null;
+
+  const rowMismatch = mismatch(numSummary, numTrends);
+  if (rowMismatch) tr.classList.add('mismatch');
+
+  const tCell = (rowMismatch && numTrends  !== null) ? 'mismatch-cell' : '';
+  const sCell = (rowMismatch && numSummary !== null) ? 'mismatch-cell' : '';
+
+  tr.innerHTML = `
+    <td>${label}</td>
+    <td class="val ${sv.cls} ${sCell}">${sv.txt}</td>
+    <td class="val ${tv.cls} ${tCell}">${tv.txt}</td>
+    <td class="val ${mv.cls}">${mv.txt}</td>`;
+}
+
+// ── main ─────────────────────────────────────────────────────────────────────
+async function refresh() {
+  const fromDate = document.getElementById('date-from').value;
+  const toDate   = document.getElementById('date-to').value;
+  if (!fromDate || !toDate) { alert('Please set both dates.'); return; }
+
+  const org  = document.getElementById('filter-org').value.trim();
+  const team = document.getElementById('filter-team').value.trim();
+
+  const btn = document.getElementById('refresh-btn');
+  btn.disabled = true;
+  btn.textContent = 'Loading…';
+
+  buildLoadingRows();
+  setStatus(`Querying ${fromDate} → ${toDate}…`);
+
+  // Fire all summary queries + one trends call + map queries in parallel
+  const statRows = STATS.filter(s => s.label);
+
+  const summaryPromises = statRows.map(s => querySummary(s, fromDate, toDate, org, team));
+  const trendsPromise   = queryTrends(fromDate, toDate, org, team);
+  const mapPromises     = statRows.map(s =>
+    s.maps ? queryMap(s.maps, fromDate, toDate, org, team) : Promise.resolve(null)
+  );
+
+  const [summaryResults, trendsData, mapResults] = await Promise.all([
+    Promise.all(summaryPromises),
+    trendsPromise,
+    Promise.all(mapPromises),
+  ]);
+
+  statRows.forEach((s, i) => {
+    const sv = summaryResults[i];
+    const tv = s.trends ? (trendsData[s.trends] ?? null) : null;
+    const mv = mapResults[i];
+    updateRow(s.label, sv, tv, mv);
+  });
+
+  btn.disabled = false;
+  btn.textContent = 'Refresh';
+  setStatus(`Last updated: ${new Date().toLocaleTimeString()}`);
+}
+
+// ── init ─────────────────────────────────────────────────────────────────────
+(function init() {
+  const to = new Date();
+  const from = new Date(to);
+  from.setDate(from.getDate() - 30);
+  document.getElementById('date-to').value   = to.toISOString().slice(0, 10);
+  document.getElementById('date-from').value = from.toISOString().slice(0, 10);
+
+  document.getElementById('refresh-btn').addEventListener('click', refresh);
+})();
+</script>
+</body>
+</html>

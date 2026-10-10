@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}Audit Log - Password Reset{% endblock %}
+
+{% block body %}
+<div class="container admin-container">
+    <div class="header-bar">
+        <h2>Audit Log</h2>
+        <a href="{{ url_for('admin_settings') }}" class="btn btn-secondary btn-small">← Back to Settings</a>
+    </div>
+    
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="flash-messages">
+                {% for category, message in messages %}
+                    <div class="flash {{ category }}">{{ message }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+    
+    <div class="section">
+        <p style="color: #666; margin-bottom: 20px;">Showing last 100 entries (most recent first)</p>
+        
+        {% if entries %}
+            <div class="audit-log">
+                {% for entry in entries %}
+                    <div class="log-entry">{{ entry }}</div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p>No audit log entries yet.</p>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+    .audit-log {
+        background: #f5f5f5;
+        border-radius: 8px;
+        padding: 15px;
+        max-height: 600px;
+        overflow-y: auto;
+        font-family: monospace;
+        font-size: 12px;
+    }
+    
+    .log-entry {
+        padding: 8px 10px;
+        border-bottom: 1px solid #e0e0e0;
+        white-space: pre-wrap;
+        word-break: break-all;
+    }
+    
+    .log-entry:last-child {
+        border-bottom: none;
+    }
+    
+    .log-entry:hover {
+        background: #e8e8e8;
+    }
+</style>
+{% endblock %}

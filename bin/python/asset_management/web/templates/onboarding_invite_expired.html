@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invite Expired - Kavanah Analytics</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/cloudscape.css') }}">
+    <style>
+        body {
+            background: var(--cs-bg-page);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .login-topbar {
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            height: 56px;
+            background: var(--cs-nav-bg);
+            display: flex;
+            align-items: center;
+            padding: 0 24px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+            z-index: 10;
+        }
+        .login-topbar-logo { height: 24px; width: auto; margin-right: 12px; }
+        .login-topbar-title { font-size: 17px; font-weight: 700; color: #FFFFFF; }
+
+        .expiry-container { width: 100%; max-width: 480px; margin-top: 28px; }
+
+        .expiry-card {
+            background: var(--cs-bg-primary);
+            border: 1px solid var(--cs-border-default);
+            border-radius: var(--cs-radius-l);
+            box-shadow: var(--cs-shadow-m);
+            padding: 40px 36px 32px;
+        }
+
+        .expiry-header { text-align: center; margin-bottom: 20px; }
+        .expiry-icon {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: var(--cs-warning-bg, #FFF7E1);
+            color: var(--cs-warning, #B7791F);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+        .expiry-header h1 {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--cs-text-heading);
+            margin: 0 0 8px;
+        }
+        .expiry-header p {
+            font-size: var(--cs-font-size-m);
+            color: var(--cs-text-secondary);
+            margin: 0;
+            line-height: 1.5;
+        }
+
+        .notify-banner {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 12px 14px;
+            margin: 20px 0;
+            border-radius: var(--cs-radius-m);
+            border: 1px solid;
+            font-size: var(--cs-font-size-m);
+            line-height: 1.5;
+        }
+        .notify-banner-success {
+            background: var(--cs-success-bg, #EFF8F1);
+            border-color: var(--cs-success, #1D8102);
+            color: var(--cs-text-primary);
+        }
+        .notify-banner-warning {
+            background: var(--cs-warning-bg, #FFF7E1);
+            border-color: var(--cs-warning, #B7791F);
+            color: var(--cs-text-primary);
+        }
+        .notify-banner .icon { font-weight: 700; flex-shrink: 0; }
+
+        .cta-block { margin-top: 24px; }
+
+        .cta-btn {
+            display: block;
+            width: 100%;
+            height: 44px;
+            line-height: 44px;
+            text-align: center;
+            border-radius: var(--cs-radius-s);
+            font-size: var(--cs-font-size-l);
+            font-weight: 600;
+            text-decoration: none;
+            transition: background 90ms ease-out, border-color 90ms ease-out;
+            margin-bottom: 12px;
+        }
+        .cta-btn-primary {
+            background: var(--cs-btn-primary-bg);
+            color: #FFFFFF;
+            border: 1px solid var(--cs-btn-primary-bg);
+        }
+        .cta-btn-primary:hover { background: var(--cs-btn-primary-bg-hover); }
+        .cta-btn-secondary {
+            background: var(--cs-bg-primary);
+            color: var(--cs-text-primary);
+            border: 1px solid var(--cs-border-input);
+        }
+        .cta-btn-secondary:hover { border-color: var(--cs-text-secondary); }
+
+        .expiry-footer {
+            margin-top: 24px;
+            padding-top: 20px;
+            border-top: 1px solid var(--cs-border-divider);
+            text-align: center;
+        }
+        .expiry-footer p { color: var(--cs-text-secondary); font-size: var(--cs-font-size-s); margin: 6px 0; }
+        .expiry-footer a { color: var(--cs-text-link); text-decoration: none; font-weight: 500; }
+        .expiry-footer a:hover { text-decoration: underline; color: var(--cs-text-link-hover); }
+    </style>
+</head>
+<body>
+    <div class="login-topbar">
+        <img src="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}" alt="" class="login-topbar-logo">
+        <span class="login-topbar-title">Kavanah Analytics</span>
+    </div>
+
+    <div class="expiry-container">
+        <div class="expiry-card">
+            <div class="expiry-header">
+                <div class="expiry-icon" aria-hidden="true">!</div>
+                <h1>Your invite has expired</h1>
+                <p>Invite links are valid for 7 days. You can request a new one or sign up as a new account.</p>
+            </div>
+
+            {% if inviter_notified %}
+            <div class="notify-banner notify-banner-success" role="status">
+                <span class="icon" aria-hidden="true">&#10003;</span>
+                <span>
+                    {% if inviter_display %}
+                        We&rsquo;ve let <strong>{{ inviter_display }}</strong> know your invite expired. They can send a fresh one any time.
+                    {% else %}
+                        We&rsquo;ve let the person who invited you know. They can send a fresh one any time.
+                    {% endif %}
+                </span>
+            </div>
+            {% else %}
+            <div class="notify-banner notify-banner-warning" role="status">
+                <span class="icon" aria-hidden="true">&#9888;</span>
+                <span>
+                    We couldn&rsquo;t reach the person who invited you automatically.
+                    {% if inviter_display %}
+                        Try contacting <strong>{{ inviter_display }}</strong> directly for a new invite,
+                    {% else %}
+                        Contact the person who invited you for a new one,
+                    {% endif %}
+                    or sign up as a new account below.
+                </span>
+            </div>
+            {% endif %}
+
+            <div class="cta-block">
+                <a href="{{ url_for('analytics.onboarding_start_page') }}" class="cta-btn cta-btn-primary">
+                    Sign up as a new account
+                </a>
+            </div>
+
+            <div class="expiry-footer">
+                <p>Already have an account? <a href="{{ url_for('analytics.login_page') }}">Sign in</a></p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

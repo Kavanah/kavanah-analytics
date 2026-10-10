@@ -1,0 +1,403 @@
+{% extends "base_v2.html" %}
+
+{% block title %}Field Catalog - Kavanah Analytics Management Console{% endblock %}
+
+{% block extra_css %}
+<style>
+    .fc-container { max-width: 980px; }
+    .fc-card { background:var(--cs-bg-primary); border:1px solid var(--cs-border-default); border-radius:var(--cs-radius-m); box-shadow:var(--cs-shadow-xs); padding:var(--cs-space-xl); margin-bottom:var(--cs-space-m); }
+    .fc-card h2 { font-size:var(--cs-font-size-xl); font-weight:var(--cs-font-weight-bold); color:var(--cs-text-heading); margin:0 0 var(--cs-space-xs); }
+    .fc-banner { display:flex; gap:10px; align-items:flex-start; background:#f0f7ff; border:1px solid #b5d3f0; border-radius:6px; padding:12px 14px; margin-bottom:var(--cs-space-m); font-size:13px; color:#0f4c81; }
+    .fc-banner i { margin-top:2px; }
+    /* section anchor nav */
+    .fc-nav { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:var(--cs-space-m); }
+    .fc-nav a { font-size:13px; font-weight:600; color:#0972d3; text-decoration:none; padding:5px 12px; border:1px solid #b5d3f0; border-radius:16px; background:#f0f7ff; }
+    .fc-nav a:hover { background:#dbeafe; text-decoration:none; }
+    /* collapsible source sections */
+    .fc-section { margin-bottom:var(--cs-space-m); }
+    .fc-section-header { display:flex; align-items:center; gap:10px; cursor:pointer; user-select:none; }
+    .fc-section-header h2 { margin:0; flex:1; }
+    .fc-section-caret { transition:transform .15s; color:var(--cs-text-secondary); }
+    .fc-section.collapsed .fc-section-caret { transform:rotate(-90deg); }
+    .fc-section.collapsed .fc-section-body { display:none; }
+    .fc-section-body { margin-top:var(--cs-space-s); }
+    .fc-group-title { font-size:var(--cs-font-size-l); font-weight:var(--cs-font-weight-bold); color:var(--cs-text-heading); margin:18px 0 6px; }
+    .fc-row { display:flex; align-items:flex-start; gap:14px; padding:10px 6px; border-bottom:1px solid #ecf0f1; }
+    .fc-row:last-child { border-bottom:none; }
+    .fc-row-main { flex:1; min-width:0; }
+    .fc-name { font-weight:600; font-size:14px; color:var(--cs-text-heading); }
+    .fc-desc { font-size:12.5px; color:var(--cs-text-secondary); margin-top:2px; }
+    .fc-meta { font-size:11.5px; color:var(--cs-text-secondary); margin-top:3px; }
+    .fc-badge { display:inline-block; font-size:10.5px; font-weight:600; padding:1px 7px; border-radius:9px; margin-left:6px; vertical-align:1px; }
+    .fc-badge-window { background:#eef2ff; color:#3730a3; }
+    .fc-badge-core { background:#ecfdf5; color:#047857; }
+    .fc-badge-deprecated { background:#fef2f2; color:#b91c1c; }
+    .fc-badge-unmapped { background:#f3f4f6; color:#6b7280; }
+    /* rs-toggle switch (user_management.html pattern) */
+    .fc-toggle { position:relative; display:inline-block; width:38px; height:22px; flex:none; margin-top:2px; }
+    .fc-toggle input { opacity:0; width:0; height:0; }
+    .fc-toggle .slider { position:absolute; cursor:pointer; inset:0; background:#cbd5e1; border-radius:22px; transition:.15s; }
+    .fc-toggle .slider:before { content:""; position:absolute; height:16px; width:16px; left:3px; top:3px; background:#fff; border-radius:50%; transition:.15s; }
+    .fc-toggle input:checked + .slider { background:#0972d3; }
+    .fc-toggle input:checked + .slider:before { transform:translateX(16px); }
+    .fc-toggle input:disabled + .slider { opacity:.45; cursor:not-allowed; }
+    .fc-error { color:#b91c1c; font-size:12.5px; margin:8px 0; display:none; }
+    /* team source-toggle picker */
+    .fc-ts-label { display:block; font-size:12px; font-weight:600; color:var(--cs-text-heading); margin-bottom:4px; }
+    .fc-ts-select { width:100%; max-width:420px; padding:8px 10px; font-size:14px; border:1px solid var(--cs-border-default); border-radius:6px; background:var(--cs-bg-primary); color:var(--cs-text-heading); }
+    .fc-ts-toggles { margin-top:14px; }
+    .fc-ts-toggles .fc-row { padding:12px 6px; }
+    /* in-app confirm modal (replaces window.confirm; reuses the
+       global cs-modal shell + a danger button variant this page lacks). */
+    .fc-confirm-body { padding:var(--cs-space-l); font-size:14px; color:var(--cs-text-heading); white-space:pre-line; }
+    .cs-btn.fc-btn-danger { background:#d91515; border-color:#d91515; color:#fff; }
+    .cs-btn.fc-btn-danger:hover { background:#b91c1c; border-color:#b91c1c; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="fc-container">
+    <div class="fc-card">
+        <h2>Field Catalog</h2>
+        <div class="fc-banner">
+            <i class="fas fa-info-circle"></i>
+            <div>
+                <strong>Changes apply going forward only.</strong>
+                Data for a field is collected from the date it is enabled — history before that
+                date stays blank until a backfill runs. Use the Report Scheduler to backfill.
+                Disabling a field stops future collection; data
+                already imported is kept. Changes take effect on the next import run.
+            </div>
+        </div>
+        <div class="fc-error" id="fc-error"></div>
+{% if sources|length > 1 %}
+        <nav class="fc-nav" id="fc-nav">
+{% for s in sources %}
+            <a href="#{{ s.source }}" data-source="{{ s.source }}">{{ s.label }}</a>
+{% endfor %}
+        </nav>
+{% endif %}
+    </div>
+
+    <!-- per-team import-source toggles (no data-source: not a catalog section) -->
+    <div class="fc-card fc-section" id="team-sources">
+        <div class="fc-section-header" role="button" tabindex="0" aria-expanded="true">
+            <h2>Import Sources by Team</h2>
+            <i class="fas fa-chevron-down fc-section-caret"></i>
+        </div>
+        <div class="fc-section-body">
+            <div class="fc-banner">
+                <i class="fas fa-info-circle"></i>
+                <div>
+                    Turn a source off for a team that doesn't use it — its data stops being collected
+                    for that team and imports run faster. Data already imported is kept, and turning
+                    a source back on resumes collection from that date.
+                </div>
+            </div>
+            <div class="fc-ts-loading">Loading teams…</div>
+            <div class="fc-ts-picker" style="display:none">
+                <label class="fc-ts-label" for="fc-ts-team">Team</label>
+                <select id="fc-ts-team" class="fc-ts-select"></select>
+                <div class="fc-ts-toggles" id="fc-ts-toggles"></div>
+            </div>
+            <div class="fc-ts-empty" style="display:none">No teams available in your workspace.</div>
+        </div>
+    </div>
+
+{% for s in sources %}
+    <div class="fc-card fc-section" id="{{ s.source }}" data-source="{{ s.source }}">
+        <div class="fc-section-header" role="button" tabindex="0" aria-expanded="true">
+            <h2>{{ s.label }}</h2>
+            <i class="fas fa-chevron-down fc-section-caret"></i>
+        </div>
+        <div class="fc-section-body">
+            <div class="fc-section-loading">Loading catalog…</div>
+            <div class="fc-section-groups"></div>
+        </div>
+    </div>
+{% endfor %}
+</div>
+
+<!-- in-app confirm modal (replaces window.confirm for the fb_ads-off
+     warning; promise-based, mirrors data_connectors' dialog). -->
+<div class="cs-modal-overlay cs-hidden" id="fc-confirm-overlay" role="dialog" aria-modal="true" aria-labelledby="fc-confirm-title">
+    <div class="cs-modal" style="width:480px">
+        <div class="cs-modal-header">
+            <h3 id="fc-confirm-title">Confirm</h3>
+            <button type="button" class="cs-modal-close" id="fc-confirm-close" aria-label="Close">&times;</button>
+        </div>
+        <div class="fc-confirm-body" id="fc-confirm-body"></div>
+        <div class="cs-modal-footer">
+            <button type="button" class="cs-btn cs-btn-normal" id="fc-confirm-cancel">Cancel</button>
+            <button type="button" class="cs-btn fc-btn-danger" id="fc-confirm-ok">Confirm</button>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    const API_BASE = "{{ url_for('field_catalog.index') }}api/";
+    const errorBox = document.getElementById("fc-error");
+
+    // promise-based in-app confirm (replaces window.confirm so the
+    // fb_ads-off warning stays on-brand). Resolves true on Confirm, false on
+    // Cancel / X / Escape; Enter confirms. One dialog reused; per-open
+    // listeners detach on close so repeated opens don't leak.
+    const confirmOverlay = document.getElementById("fc-confirm-overlay");
+    const confirmTitle = document.getElementById("fc-confirm-title");
+    const confirmBody = document.getElementById("fc-confirm-body");
+    const confirmOk = document.getElementById("fc-confirm-ok");
+    const confirmCancel = document.getElementById("fc-confirm-cancel");
+    const confirmClose = document.getElementById("fc-confirm-close");
+
+    function appConfirm(opts) {
+        opts = opts || {};
+        confirmTitle.textContent = opts.title || "Confirm";
+        confirmBody.textContent = opts.message || "";  // textContent — never injects markup; CSS keeps line breaks
+        confirmOk.textContent = opts.confirmLabel || "Confirm";
+        confirmOverlay.classList.remove("cs-hidden");
+        confirmOk.focus();
+        return new Promise((resolve) => {
+            function cleanup(result) {
+                confirmOverlay.classList.add("cs-hidden");
+                confirmOk.removeEventListener("click", onOk);
+                confirmCancel.removeEventListener("click", onCancel);
+                confirmClose.removeEventListener("click", onCancel);
+                document.removeEventListener("keydown", onKey, true);
+                resolve(result);
+            }
+            function onOk() { cleanup(true); }
+            function onCancel() { cleanup(false); }
+            function onKey(ev) {
+                if (ev.key === "Escape") { ev.stopPropagation(); cleanup(false); }
+                else if (ev.key === "Enter") { ev.stopPropagation(); cleanup(true); }
+            }
+            confirmOk.addEventListener("click", onOk);
+            confirmCancel.addEventListener("click", onCancel);
+            confirmClose.addEventListener("click", onCancel);
+            document.addEventListener("keydown", onKey, true);
+        });
+    }
+    // Group labels per catalog `kind`; unknown kinds get a prettified fallback
+    // so future catalogs (pages / IG / breakdowns) render without a template edit.
+    const KIND_LABELS = {
+        metric: "Metrics",
+        action_metric: "Action Metrics",
+        breakdown: "Breakdowns",
+    };
+    const KIND_NOTES = {
+        action_metric:
+            "Action metrics are delivered together by Meta; disabling one stops it from " +
+            "being <em>stored</em> for this workspace from the next import onward.",
+    };
+
+    function showError(msg) {
+        errorBox.textContent = msg;
+        errorBox.style.display = "block";
+        setTimeout(() => { errorBox.style.display = "none"; }, 6000);
+    }
+
+    function badge(cls, text) {
+        return `<span class="fc-badge ${cls}">${text}</span>`;
+    }
+
+    function kindLabel(kind) {
+        if (KIND_LABELS[kind]) return KIND_LABELS[kind];
+        return (kind || "Fields").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) + "s";
+    }
+
+    function renderRow(source, f) {
+        const badges = [
+            f.core ? badge("fc-badge-core", "Always on") : "",
+            f.window_only ? badge("fc-badge-window", "Window dataset only") : "",
+            f.deprecated ? badge("fc-badge-deprecated", "Deprecated") : "",
+            !f.mapped ? badge("fc-badge-unmapped", "Not yet available") : "",
+        ].join("");
+        const disabled = f.core || (!f.mapped && !f.enabled) || (f.deprecated && !f.enabled);
+        const meta = f.changed_at
+            ? `<div class="fc-meta">Changed ${f.changed_at.slice(0, 10)}${f.changed_by ? " by " + f.changed_by : ""}</div>`
+            : "";
+        const row = document.createElement("div");
+        row.className = "fc-row";
+        row.innerHTML = `
+            <label class="fc-toggle">
+                <input type="checkbox" data-field="${f.field_id}" ${f.enabled ? "checked" : ""} ${disabled ? "disabled" : ""}>
+                <span class="slider"></span>
+            </label>
+            <div class="fc-row-main">
+                <div class="fc-name">${f.display_name}${badges}</div>
+                <div class="fc-desc">${f.description || ""}</div>
+                ${meta}
+            </div>`;
+        const cb = row.querySelector("input");
+        cb.addEventListener("change", () => toggle(source, cb, f));
+        return row;
+    }
+
+    function toggle(source, cb, f) {
+        cb.disabled = true;
+        fetch(`${API_BASE}${source}/${encodeURIComponent(f.field_id)}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ enabled: cb.checked }),
+        })
+            .then((r) => r.json().then((j) => ({ ok: r.ok, j })))
+            .then(({ ok, j }) => {
+                if (!ok || !j.success) {
+                    cb.checked = !cb.checked;
+                    showError(j.error || "Could not save the change.");
+                }
+            })
+            .catch(() => {
+                cb.checked = !cb.checked;
+                showError("Could not save the change. Check your connection.");
+            })
+            .finally(() => { cb.disabled = f.core; });
+    }
+
+    function renderSection(sectionEl, data) {
+        const host = sectionEl.querySelector(".fc-section-groups");
+        const source = sectionEl.dataset.source;
+        // Group by kind, preserving the API's (kind, display_name) ordering.
+        const groups = new Map();
+        for (const f of data.fields) {
+            if (!groups.has(f.kind)) groups.set(f.kind, []);
+            groups.get(f.kind).push(f);
+        }
+        for (const [kind, fields] of groups) {
+            const title = document.createElement("div");
+            title.className = "fc-group-title";
+            title.textContent = kindLabel(kind);
+            host.appendChild(title);
+            if (KIND_NOTES[kind]) {
+                const note = document.createElement("div");
+                note.className = "fc-banner";
+                note.style.marginTop = "4px";
+                note.innerHTML = `<i class="fas fa-layer-group"></i><div>${KIND_NOTES[kind]}</div>`;
+                host.appendChild(note);
+            }
+            for (const f of fields) host.appendChild(renderRow(source, f));
+        }
+    }
+
+    function setCollapsed(sectionEl, collapsed) {
+        sectionEl.classList.toggle("collapsed", collapsed);
+        sectionEl.querySelector(".fc-section-header").setAttribute("aria-expanded", String(!collapsed));
+    }
+
+    function openAndScrollTo(source) {
+        const sectionEl = document.getElementById(source);
+        if (!sectionEl) return;
+        setCollapsed(sectionEl, false);
+        sectionEl.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    document.querySelectorAll(".fc-section").forEach((sectionEl) => {
+        const source = sectionEl.dataset.source;
+        const header = sectionEl.querySelector(".fc-section-header");
+        header.addEventListener("click", () => setCollapsed(sectionEl, !sectionEl.classList.contains("collapsed")));
+        header.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" || e.key === " ") { e.preventDefault(); header.click(); }
+        });
+        if (!source) return; // team-sources card: collapsible, not a catalog section
+        fetch(API_BASE + source)
+            .then((r) => r.json())
+            .then((data) => {
+                sectionEl.querySelector(".fc-section-loading").style.display = "none";
+                renderSection(sectionEl, data);
+            })
+            .catch(() => {
+                sectionEl.querySelector(".fc-section-loading").textContent = "Failed to load this catalog section.";
+            });
+    });
+
+    // ── per-team import-source toggles (team dropdown) ──────────────
+    (function teamSources() {
+        const loading = document.querySelector(".fc-ts-loading");
+        const picker = document.querySelector(".fc-ts-picker");
+        const empty = document.querySelector(".fc-ts-empty");
+        const teamSelect = document.getElementById("fc-ts-team");
+        const togglesHost = document.getElementById("fc-ts-toggles");
+        let sources = [];
+
+        function renderToggles(teamEsid, states) {
+            togglesHost.innerHTML = "";
+            for (const s of sources) {
+                const on = states[s.source] !== false;
+                const row = document.createElement("div");
+                row.className = "fc-row";
+                row.innerHTML = `
+                    <label class="fc-toggle">
+                        <input type="checkbox" ${on ? "checked" : ""}>
+                        <span class="slider"></span>
+                    </label>
+                    <div class="fc-row-main"><div class="fc-name">${s.label}</div></div>`;
+                const cb = row.querySelector("input");
+                cb.addEventListener("change", async () => {
+                    const enabled = cb.checked;
+                    if (s.source === "fb_ads" && !enabled) {
+                        const ok = await appConfirm({
+                            title: "Turn off Ad Insights?",
+                            message:
+                                "Ad Insights will be turned off for this team.\n\n" +
+                                "The team's ad performance dashboards will stop updating from the next " +
+                                "import onward. Data already imported is kept, and you can turn it back on later.",
+                            confirmLabel: "Turn off",
+                        });
+                        if (!ok) { cb.checked = true; return; }
+                    }
+                    cb.disabled = true;
+                    fetch(`${API_BASE}team-sources/${encodeURIComponent(teamEsid)}/${s.source}`, {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ enabled }),
+                    })
+                        .then((r) => r.json().then((j) => ({ ok: r.ok, j })))
+                        .then(({ ok, j }) => {
+                            if (!ok || !j.success) { cb.checked = !enabled; showError(j.error || "Could not save the change."); }
+                        })
+                        .catch(() => { cb.checked = !enabled; showError("Could not save the change. Check your connection."); })
+                        .finally(() => { cb.disabled = false; });
+                });
+                togglesHost.appendChild(row);
+            }
+        }
+
+        function loadTeam(teamEsid) {
+            togglesHost.innerHTML = '<div class="fc-ts-loading">Loading…</div>';
+            fetch(`${API_BASE}team-sources/${encodeURIComponent(teamEsid)}`)
+                .then((r) => r.json())
+                .then((d) => renderToggles(teamEsid, d.states || {}))
+                .catch(() => { togglesHost.innerHTML = '<div class="fc-error" style="display:block">Failed to load this team.</div>'; });
+        }
+
+        fetch(`${API_BASE}team-sources`)
+            .then((r) => r.json())
+            .then((d) => {
+                loading.style.display = "none";
+                sources = d.sources || [];
+                if (!d.teams || !d.teams.length) { empty.style.display = "block"; return; }
+                picker.style.display = "block";
+                for (const t of d.teams) {
+                    const opt = document.createElement("option");
+                    opt.value = t.team_esid;
+                    opt.textContent = t.team_title;
+                    teamSelect.appendChild(opt);
+                }
+                teamSelect.addEventListener("change", () => loadTeam(teamSelect.value));
+                loadTeam(teamSelect.value);
+            })
+            .catch(() => { loading.textContent = "Failed to load teams."; });
+    })();
+
+    // Deep-link: #<source> opens + scrolls to that section (on load and on
+    // nav clicks — the nav's default anchor jump is kept; we add the expand).
+    function handleHash() {
+        const source = (location.hash || "").slice(1);
+        if (source) openAndScrollTo(source);
+    }
+    window.addEventListener("hashchange", handleHash);
+    if (location.hash) setTimeout(handleHash, 50);
+})();
+</script>
+{% endblock %}

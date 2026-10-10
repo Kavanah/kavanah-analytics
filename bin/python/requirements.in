@@ -1,0 +1,140 @@
+# Direct dependencies of the imports_container image.
+#
+# This is the file humans edit. Do not `pip install -r` it — install
+# requirements.txt, the hashed lockfile compiled from it:
+#
+#   cd bin/python
+#   uv pip compile requirements.in --output-file requirements.txt \
+#       --generate-hashes --python-version 3.13 --python-platform linux
+#
+# Commit both files together. Dependabot (package-ecosystem: uv) re-runs the
+# same compile for its bumps and regenerates the hashes. Python 3.13 is the
+# Dockerfile's base image; CI runs the same interpreter so the lock resolves
+# to the same tree in both places. Floors (>=) here are the minimum we
+# accept; the lock is what actually installs.
+
+# Core dependencies for imports
+facebook-business
+elasticsearch
+# cryptography pinned to the security floor — GHSA-537c-gmf6-5ccf: the
+# statically-linked OpenSSL in pre-48.0.1 PyPI wheels is vulnerable (OpenSSL
+# 2026-06-09 advisory). Bumped 2026-06-15 after pip-audit started flagging
+# 46.0.7 (broke dev CI's Audit-Python-dependencies step).
+# CVE-2026-69247 (Bleichenbacher oracle in pkcs7_decrypt_der/_pem/_smime:
+# the RSA-decrypt outcome was distinguishable by error message and by
+# timing), introduced in 44.0.0, fixed in 50.0.0 — bumped 2026-08-04, same
+# Audit-step breakage on unrelated commits. We do not call pkcs7_decrypt_*
+# anywhere, so this was not exploitable here; the floor moves to keep the
+# audit gate meaningful rather than to fix a live exposure.
+cryptography>=50.0.2
+PyYAML
+requests
+python-dateutil
+google-analytics-data
+google-analytics-admin
+google-api-python-client
+google-auth
+google-auth-oauthlib
+google-ads
+
+# Flask and web server
+Flask>=2.0.0
+gunicorn>=20.0.0
+# PYSEC-2026-2132: click.edit() command injection from an unprivileged
+# account, fixed in 8.3.3. Bumped 2026-07-13 after pip-audit started
+# flagging 8.3.2 (broke dev CI's Audit-Python-dependencies step).
+click>=8.3.3
+blinker
+itsdangerous
+Jinja2
+MarkupSafe
+# Werkzeug>=3.1.9 — CVE-2026-102598 (safe_join + Windows device names; Windows-only,
+# but pip-audit fails every run on 3.1.8).
+Werkzeug>=3.1.9
+packaging
+pandas
+openpyxl
+# urllib3>=2.8.0 — CVE-2026-97687/97688/97689 (2.7.0: CVE-2026-44431/44432). Transitive (requests/botocore/ES
+# client); the floor lived in pytest.yml as an ad-hoc install.
+urllib3>=2.8.0
+# multidict>=6.9.1 — CVE-2026-104874 (items-view reference leak). Transitive (aiohttp/yarl).
+multidict>=6.9.1
+
+# Security and authentication
+bcrypt>=4.0.0
+pyotp
+qrcode[pil]
+PyJWT>=2.15.1  # PYSEC-2026-175/177/178/179: HMAC key confusion, jku SSRF, unbounded JWKS fetch, detached-JWS DoS
+# aiohttp is transitive (elasticsearch / google-* / locust / anthropic) — pin
+# the security floor explicitly. CVE-2026-34993 (CookieJar.load code-exec on
+# untrusted input) + CVE-2026-47265 (cookies leak across cross-origin
+# redirects), both fixed in 3.14.0. CVE-2026-54280 (payload resource not
+# closed on mid-write client disconnect → resource starvation), fixed in
+# 3.14.1 — bumped 2026-06-15 after pip-audit started flagging it (broke
+# dev CI's Audit-Python-dependencies step across unrelated commits).
+# Three more, all fixed by 3.14.3 — bumped 2026-08-04, same Audit-step
+# breakage: CVE-2026-59881 (client decompresses RSV1 frames even when
+# permessage-deflate was not negotiated), CVE-2026-69243 (request smuggling
+# via an edge case in the WebSocket upgrade), CVE-2026-69244 (out-of-bounds
+# heap read in the C response parser while building a malformed-response
+# error). We use aiohttp transitively as an HTTP client, not a server, so
+# the smuggling issue does not apply; the parser read is client-side and is
+# the one that mattered here.
+aiohttp>=3.14.3
+# msgpack is transitive (CacheControl, via the google-auth / API client
+# stack) — pin the security floor explicitly. GHSA-6v7p-g79w-8964
+# (out-of-bounds read / crash on malformed input), fixed in 1.2.1. Added
+# 2026-07-30 after the nightly container scan on main went red on a
+# newly-published advisory: 1.1.2 was clean the day before, so this failed
+# with no code change on main (runs 07-27/28/29 all passed). CacheControl
+# allows msgpack<2.0.0, so this floor does not conflict.
+msgpack>=1.2.1
+# setuptools ships in the python:3.13-slim base image at 70.3.0, which is
+# below the CVE-2025-47273 (path traversal) fix in 78.1.1. Nothing here
+# imports it directly, but Trivy scans the installed image. Same posture
+# as the Dockerfile's explicit pip upgrade — drop this once the base image
+# ships setuptools >= 78.1.1.
+# setuptools>=83.0.0 — PYSEC-2026-3447 (NFD filename bypasses MANIFEST
+# exclude); raised from the 78.1.1 CVE-2025-47273 floor when the lock was
+# introduced, previously a pytest.yml ad-hoc install.
+setuptools>=83.0.0
+pip-audit
+
+# Geocoding
+geopy
+
+# Timezone database fallback — Python's zoneinfo prefers system tzdata
+# on Linux, but Windows ships none. Pinning the pip package as a hard
+# dep guarantees ZoneInfo("America/New_York") resolves identically
+# across local dev (Windows / macOS) and the imports_container (Linux).
+# sanitiser depends on this for IANA-zone validation.
+tzdata
+
+# AI / NLQ
+anthropic>=1.11.0
+
+# Report generation
+fpdf2>=2.8.9
+
+# AWS S3 access (backup listing)
+boto3>=1.43.102
+
+# Billing — Stripe subscriptions + webhook. Imported
+# lazily inside the live payment/webhook paths (guarded ImportError), so
+# the package is only required when STRIPE_LIVE_PAYMENTS is enabled.
+stripe>=9.0.0
+
+# Load testing — >=2.2 for ProbeUser.fixed_count
+locust>=2.46.6
+
+# ---------------------------------------------------------------------------
+# Transitive-dependency security floors. Nothing here is imported
+# directly; the lines exist so the lockfile can never resolve a version with
+# a known advisory. Before the lockfile these were `pip install 'pkg>=x'`
+# lines in pytest.yml, so CI tested a newer tree than the image shipped.
+# Drop a line when the parent package's own floor catches up.
+pygments>=2.20.0  # regex-DoS advisory fixed in 2.20.0; via rich / pip-audit
+idna>=3.20        # CVE-2026-45409; via requests
+httplib2>=0.32.0  # PYSEC-2026-3444 (unbounded gzip/deflate decompress); via google-api-python-client
+pyasn1>=0.6.4     # PYSEC-2026-3455/3456/3457 (ASN.1 parser DoS); via google-auth -> rsa / pyasn1-modules
+oauthlib>=4.0.0   # CVE-2026-49264/49265 (provider-side JSONP revocation, PKCE timing); via google-auth-oauthlib -> requests-oauthlib

@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Step 6 — Connect a source · Kavanah Analytics</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/cloudscape.css') }}">
+    <style>
+        body {
+            background: var(--cs-bg-page);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 84px 20px 40px;
+        }
+        .login-topbar {
+            position: fixed; top: 0; left: 0; right: 0;
+            height: 56px;
+            background: var(--cs-nav-bg);
+            display: flex; align-items: center;
+            padding: 0 24px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+            z-index: 10;
+        }
+        .login-topbar-logo { height: 24px; width: auto; margin-right: 12px; }
+        .login-topbar-title { font-size: 17px; font-weight: 700; color: #FFFFFF; }
+
+        .wizard-shell { width: 100%; max-width: 720px; }
+
+        .card {
+            background: var(--cs-bg-primary);
+            border: 1px solid var(--cs-border-default);
+            border-radius: var(--cs-radius-l);
+            box-shadow: var(--cs-shadow-m);
+            padding: 36px 36px 28px;
+        }
+
+        .eyebrow {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 11px; font-weight: 600;
+            letter-spacing: 0.08em; text-transform: uppercase;
+            color: var(--cs-text-secondary);
+            margin-bottom: 8px;
+        }
+        .wizard-title {
+            font-size: 24px; font-weight: 700;
+            color: var(--cs-text-heading);
+            margin: 0 0 6px;
+        }
+        .wizard-sub {
+            font-size: var(--cs-font-size-m);
+            color: var(--cs-text-secondary);
+            line-height: 1.5;
+            margin: 0 0 22px;
+        }
+
+        /* follow-up (2026-05-21):.section-label rule and the
+           [data-section="popular"] 3-col override removed. The two
+           sections ("Most popular" + "All connectors") were merged
+           into a single grid at the team's request, so the dead rules
+           had no markup to apply against. The remaining .connector-grid
+           rule is the single rule used by the merged grid. */
+        .connector-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+        }
+        @media (max-width: 560px) {
+            .connector-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+        .connector-tile {
+            position: relative;
+            padding: 14px 12px;
+            background: var(--cs-bg-primary);
+            border: 1px solid var(--cs-border-default);
+            border-radius: var(--cs-radius-m);
+            cursor: pointer;
+            text-align: left;
+            font: inherit;
+            color: inherit;
+            transition: border-color 90ms ease-out, transform 90ms ease-out,
+                        box-shadow 90ms ease-out;
+        }
+        .connector-tile:hover {
+            border-color: var(--cs-btn-primary-bg);
+            transform: translateY(-1px);
+            box-shadow: var(--cs-shadow-s);
+        }
+        .connector-tile.selected {
+            border-color: var(--cs-btn-primary-bg);
+            box-shadow: 0 0 0 2px rgba(9, 114, 211, 0.18);
+        }
+        /* coming-soon tiles render visually distinct but
+           are non-interactive in the wizard. Selection / hover lift
+           are suppressed so the user understands the tile isn't a
+           working source. Pointer-events: none on the tile itself
+           short-circuits clicks; the wrapping flexbox keeps the grid
+           visually intact. */
+        .connector-tile.coming-soon {
+            opacity: 0.55;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+        .connector-tile:focus-visible {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(9, 114, 211, 0.35);
+        }
+
+        .connector-logo {
+            width: 36px; height: 36px;
+            border-radius: 8px;
+            color: #FFFFFF;
+            font-weight: 700;
+            font-size: 16px;
+            display: flex; align-items: center; justify-content: center;
+            margin-bottom: 8px;
+        }
+        /* follow-up (2026-05-20) — SVG icon path. When a tile
+           has icon_file set, the connector-logo div uses a white
+           background and renders the SVG centered. The legacy
+           gradient+glyph rendering is retained as a fallback. */
+        .connector-logo.with-icon {
+            background: #FFFFFF !important;
+            border: 1px solid var(--cs-border-default);
+        }
+        .connector-logo.with-icon img {
+            width: 24px;
+            height: 24px;
+            object-fit: contain;
+        }
+        .connector-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--cs-text-heading);
+            margin-bottom: 2px;
+        }
+        .connector-meta {
+            font-size: 11px;
+            color: var(--cs-text-secondary);
+        }
+        .connector-badge {
+            position: absolute;
+            top: 8px; right: 8px;
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            padding: 2px 6px;
+            border-radius: 999px;
+        }
+        .connector-badge.top {
+            background: var(--cs-btn-primary-bg);
+            color: #FFFFFF;
+        }
+        .connector-badge.soon {
+            background: var(--cs-bg-page);
+            color: var(--cs-text-secondary);
+            border: 1px solid var(--cs-border-default);
+        }
+
+        .btn-row {
+            display: flex; align-items: center; justify-content: space-between;
+            padding-top: 18px;
+            margin-top: 22px;
+            border-top: 1px solid var(--cs-border-divider);
+        }
+        .btn {
+            height: 40px; padding: 0 18px;
+            border-radius: var(--cs-radius-s);
+            font-size: var(--cs-font-size-m);
+            font-weight: 600;
+            font-family: var(--cs-font);
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition: background 90ms ease-out, border-color 90ms ease-out;
+            text-decoration: none;
+            display: inline-flex; align-items: center;
+        }
+        .btn-primary {
+            background: var(--cs-btn-primary-bg);
+            color: #FFFFFF;
+            font-weight: 700;
+        }
+        .btn-primary:hover { background: var(--cs-btn-primary-bg-hover); }
+        /* visible disabled state (matches step-5 +
+           #ws-delete-btn:disabled). */
+        .btn-primary:disabled,
+        .btn-primary:disabled:hover {
+            background: var(--cs-btn-primary-bg);
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .btn-primary:focus-visible {
+            outline: none;
+            box-shadow: 0 0 0 2px #FFFFFF, 0 0 0 4px var(--cs-btn-primary-bg);
+        }
+        .btn-primary[disabled] {
+            background: var(--cs-border-default);
+            color: var(--cs-text-secondary);
+            cursor: not-allowed;
+        }
+        .btn-ghost {
+            background: transparent;
+            color: var(--cs-text-link);
+            border-color: transparent;
+        }
+        .btn-ghost:hover { background: var(--cs-bg-page); }
+
+        .alert {
+            padding: 12px 14px;
+            margin-bottom: 18px;
+            border-radius: var(--cs-radius-s);
+            background: #FDECEC;
+            border: 1px solid #F5B5B5;
+            color: #8A1A1A;
+            font-size: 13px;
+        }
+
+        /* .placeholder-banner,
+           banner-body copy split,.locked tile +
+           .upgrade-banner styles all removed. The wizard's
+           single-source rule means every wired tile is
+           selectable regardless of tier; the notify-me affordance
+           had no surface closed the last
+           placeholder=True tile. */
+    </style>
+</head>
+<body>
+    <a href="#wizard-main" class="cs-skip-link" data-testid="wizard-skip-link">Skip to main content</a>
+    <div class="login-topbar">
+        <img src="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5" alt="" class="login-topbar-logo">
+        <span class="login-topbar-title">Kavanah Analytics</span>
+    </div>
+
+    <main class="wizard-shell" id="wizard-main">
+        {% include "_onboarding_progress.html" %}
+
+        <div class="card">
+            <div class="eyebrow">Connect a source</div>
+            <h1 class="wizard-title">Where do you run ads?</h1>
+            <p class="wizard-sub">Pick one to start. You can add more from the dashboard checklist after this — most teams add Google Ads + GA4 next.</p>
+
+            {% if error %}
+            <div class="alert" role="alert">{{ error }}</div>
+            {% endif %}
+
+            {# (2026-05-26) — removed the upgrade-banner
+               and the placeholder-banner. The wizard's
+               single-source rule makes every wired tile
+               selectable regardless of tier, closed the
+               last placeholder=True tile so the notify-me affordance
+               had no surface. Coming-soon tiles still render visually
+               distinct (.coming-soon) but are non-interactive — see
+               the CSS pointer-events override above. #}
+
+            <form method="POST" action="{{ url_for('analytics.onboarding_step6_post') }}" id="step4Form" novalidate>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="selected_connector_id" id="selectedConnectorId" value="{{ selected_connector_id }}">
+
+                <div id="connectorTiles">
+                    {# follow-up (2026-05-21): Most-popular / All
+                       section split removed at the team's request — one
+                       merged grid with no section labels. Render order
+                       is preserved (popular tiles first, then the rest)
+                       so Meta Ads keeps its "Top" badge in the lead
+                       position; only the visible "Most popular" /
+                       "All connectors" headings + the two separate
+                       grids are gone. data-section attribute kept on
+                       the single grid for any future re-introduction
+                       of section-aware behavior in the search JS. #}
+                    {% set _merged_tiles = (popular_tiles or []) + (all_tiles or []) %}
+                    {% if _merged_tiles %}
+                    <div class="connector-grid" data-section="all"
+                         role="group" aria-label="Connectors">
+                        {% for tile in _merged_tiles %}
+                        {# data-placeholder + data-locked removed
+                           (no surfaces use them on this template after
+                           the notify-me + upgrade-lock paths were ripped
+                           out). coming-soon tiles still carry data-coming-soon
+                           so the JS click-delegate skips them — the CSS
+                           pointer-events: none above is the primary gate,
+                           the data attribute is belt-and-suspenders for
+                           keyboard space/enter activation. #}
+                        <button type="button"
+                                class="connector-tile{% if tile.connector_id == selected_connector_id %} selected{% endif %}{% if tile.coming_soon %} coming-soon{% endif %}"
+                                data-connector-id="{{ tile.connector_id }}"
+                                data-connector-name="{{ tile.name }}"
+                                data-coming-soon="{% if tile.coming_soon %}1{% else %}0{% endif %}"
+                                data-search-text="{{ (tile.name ~ ' ' ~ tile.sub_label)|lower }}"
+                                {% if tile.coming_soon %}aria-disabled="true" tabindex="-1"{% endif %}
+                                aria-pressed="{% if tile.connector_id == selected_connector_id %}true{% else %}false{% endif %}">
+                            {% if tile.badge == 'top' %}<span class="connector-badge top">Top</span>{% endif %}
+                            {% if tile.badge == 'soon' %}<span class="connector-badge soon">Soon</span>{% endif %}
+                            {% if tile.icon_file %}
+                            <div class="connector-logo with-icon">
+                                <img src="{{ url_for('static', filename='dashboard_builder/icons/' ~ tile.icon_file) }}" alt="{{ tile.name }}">
+                            </div>
+                            {% else %}
+                            <div class="connector-logo" style="background: {{ tile.logo_gradient }};{% if tile.connector_id == 'snapchat_ads' %} color: #000;{% endif %}">{{ tile.logo_glyph }}</div>
+                            {% endif %}
+                            <div class="connector-name">{{ tile.name }}</div>
+                            <div class="connector-meta">{{ tile.sub_label }}</div>
+                        </button>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+
+                </div>
+
+                {# follow-up (2026-05-21): "Skip — connect later"
+                   restored at the team's request. Posts skip=1 to the
+                   same form; the route handler's skip_requested branch
+                   short-circuits before selected_connector_id is read,
+                   so submitting with an empty selection is fine. Wizard
+                   is marked `skipped` and the user
+                   lands on /dashboard. follow-up also retargets
+                   the dashboard checklist's connect-first-source row
+                   from /onboarding/step-6 to /assets/data-connectors/,
+                   so a skipped user's add-a-connector-after-all path
+                   no longer needs to re-enter the wizard — which is
+                   required because the wizard URLs are now blocked
+                   for completed/skipped users (see the wizard-URL
+                   guard in the route handlers). #}
+                <div class="btn-row">
+                    <a class="btn btn-ghost" href="{{ url_for('analytics.onboarding_step5_page') }}">← Back</a>
+                    <div style="display: flex; gap: 12px; align-items: center;">
+                        <button type="submit"
+                                name="skip"
+                                value="1"
+                                class="btn btn-ghost"
+                                id="skipBtn"
+                                data-testid="step6-skip-btn">Skip — connect later</button>
+                        <button type="submit"
+                                class="btn btn-primary"
+                                id="continueBtn"
+                                {% if not selected_connector_id %}disabled{% endif %}>
+                            Continue with <span id="selectedConnectorName" style="margin: 0 4px;">{{ selected_connector_name }}</span> →
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </main>
+
+    <script nonce="{{ csp_nonce }}">
+    (function () {
+        const tilesContainer = document.getElementById('connectorTiles');
+        const hiddenInput = document.getElementById('selectedConnectorId');
+        const nameSpan = document.getElementById('selectedConnectorName');
+        const continueBtn = document.getElementById('continueBtn');
+
+        function selectTile(tile) {
+            // coming-soon tiles are non-interactive; the CSS
+            // pointer-events: none gate above already swallows pointer
+            // clicks, but keep the JS check for keyboard activation.
+            if (tile.classList.contains('coming-soon')) return;
+            tilesContainer.querySelectorAll('.connector-tile.selected').forEach(function (el) {
+                el.classList.remove('selected');
+                el.setAttribute('aria-pressed', 'false');
+            });
+            tile.classList.add('selected');
+            tile.setAttribute('aria-pressed', 'true');
+            hiddenInput.value = tile.dataset.connectorId || '';
+            nameSpan.textContent = tile.dataset.connectorName || '';
+            continueBtn.disabled = !hiddenInput.value;
+        }
+
+        tilesContainer.addEventListener('click', function (e) {
+            const tile = e.target.closest('.connector-tile');
+            if (!tile) return;
+            // coming-soon tiles render visually distinct but
+            // never advance the wizard. All other (wired) tiles are
+            // selectable regardless of tier.
+            if (tile.dataset.comingSoon === '1') return;
+            selectTile(tile);
+        });
+    })();
+    </script>
+</body>
+</html>

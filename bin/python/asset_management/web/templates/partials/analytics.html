@@ -1,0 +1,16 @@
+{# Analytics tracking scripts — include in <head> of any page.
+   Controlled by environment variables:
+     ANALYTICS_PLAUSIBLE_DOMAIN  (e.g. "analytics.example.com")
+     ANALYTICS_FATHOM_SITE_ID   (e.g. "ABCDEFGH")
+     ANALYTICS_GA4_ID           (e.g. "G-XXXXXXXXXX")
+   Multiple providers can be active simultaneously. #}
+{% if analytics.plausible_domain %}
+<script defer data-domain="{{ analytics.plausible_domain }}" src="https://plausible.io/js/script.js"></script>
+{% endif %}
+{% if analytics.fathom_site_id %}
+<script src="https://cdn.usefathom.com/script.js" data-site="{{ analytics.fathom_site_id }}" defer></script>
+{% endif %}
+{% if analytics.ga4_id %}
+<script async src="https://www.googletagmanager.com/gtag/js?id={{ analytics.ga4_id }}"></script>
+<script nonce="{{ csp_nonce }}">window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','{{ analytics.ga4_id }}');</script>
+{% endif %}

@@ -1,0 +1,524 @@
+{% extends "base_v2.html" %}
+
+{% block title %}{{ filename }} - Import Logs{% endblock %}
+
+{% block extra_css %}
+<style>
+.log-viewer-container {
+    background: #1e1e1e;
+    border-radius: 8px;
+    padding: 0;
+    margin-top: 20px;
+}
+
+.log-controls {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.log-filename {
+    font-family: monospace;
+    background: #f8f9fa;
+    padding: 8px 12px;
+    border-radius: 5px;
+    color: var(--cs-text-heading, #000716);
+    font-size: 14px;
+    flex: 1;
+    min-width: 200px;
+}
+
+.log-search-container {
+    display: flex;
+    gap: 10px;
+    flex: 1;
+    min-width: 300px;
+}
+
+#log-content-search {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    font-size: 14px;
+}
+
+.search-stats {
+    padding: 8px 12px;
+    background: #f8f9fa;
+    border-radius: 5px;
+    color: var(--cs-text-secondary, #5F6B7A);
+    font-size: 13px;
+    white-space: nowrap;
+}
+.search-stats:empty { display: none; }
+
+.jump-to-line {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    font-size: 14px;
+    width: 100px;
+}
+
+/* Virtual scrolling viewport */
+.virtual-scroll-viewport {
+    height: 70vh;
+    overflow-y: auto;
+    overflow-x: auto;
+    background: #1e1e1e;
+    border-radius: 5px;
+    position: relative;
+}
+
+.virtual-scroll-content {
+    position: relative;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 18px;
+    min-width: max-content;
+}
+
+.virtual-scroll-items {
+    position: absolute;
+    top: 0;
+    left: 0;
+    min-width: 100%;
+}
+
+.log-line {
+    display: flex;
+    white-space: pre;
+    padding: 0 15px;
+    height: 18px;
+}
+
+.line-number {
+    display: inline-block;
+    width: 60px;
+    text-align: right;
+    margin-right: 15px;
+    color: #6e7681;
+    user-select: none;
+    flex-shrink: 0;
+}
+
+.line-content {
+    flex: 1;
+    overflow: visible;
+    white-space: nowrap;
+}
+
+/* Syntax highlighting colors */
+.log-error .line-content {
+    color: #f48771;
+}
+
+.log-success .line-content {
+    color: #a9dc76;
+}
+
+.log-info .line-content {
+    color: #78dce8;
+}
+
+.log-default .line-content {
+    color: #d4d4d4;
+}
+
+/* Search match highlighting */
+.search-match {
+    background-color: #ffd700;
+    color: #000;
+}
+
+.search-match.current {
+    background-color: #ff6b6b;
+    color: #fff;
+}
+
+/* Scrollbar styling */
+.virtual-scroll-viewport::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+}
+
+.virtual-scroll-viewport::-webkit-scrollbar-track {
+    background: #2d2d2d;
+}
+
+.virtual-scroll-viewport::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 6px;
+}
+
+.virtual-scroll-viewport::-webkit-scrollbar-thumb:hover {
+    background: #666;
+}
+
+.loading-indicator {
+    color: #78dce8;
+    padding: 20px;
+    text-align: center;
+}
+
+/* Cloudscape overrides */
+.card { background:var(--cs-bg-primary); border:1px solid var(--cs-border-default); border-radius:var(--cs-radius-m); box-shadow:var(--cs-shadow-xs); padding:var(--cs-space-xl); }
+.card h2 { font-size:var(--cs-font-size-xl); font-weight:var(--cs-font-weight-bold); color:var(--cs-text-heading); margin:0 0 var(--cs-space-m); }
+.btn { display:inline-flex; align-items:center; height:32px; padding:0 14px; font-family:var(--cs-font); font-size:var(--cs-font-size-m); font-weight:var(--cs-font-weight-medium); border-radius:var(--cs-radius-s); border:1px solid var(--cs-btn-normal-border); background:var(--cs-btn-normal-bg); color:var(--cs-btn-normal-text); cursor:pointer; text-decoration:none; transition:all var(--cs-transition-fast); }
+.btn:hover { background:var(--cs-btn-normal-hover-bg); border-color:var(--cs-text-secondary); text-decoration:none; }
+.btn-sm { height:28px; padding:0 10px; font-size:var(--cs-font-size-xs); }
+.btn-secondary { background:var(--cs-btn-normal-bg); color:var(--cs-btn-normal-text); border-color:var(--cs-btn-normal-border); }
+.btn-danger { border-color:var(--cs-error); color:var(--cs-error); background:var(--cs-bg-primary); }
+.btn-danger:hover { background:var(--cs-error-bg); }
+
+#log-content-search {
+    border:1px solid var(--cs-border-input);
+    border-radius:var(--cs-radius-s);
+    font-family:var(--cs-font);
+    font-size:var(--cs-font-size-m);
+    color:var(--cs-text-primary);
+    transition:border-color var(--cs-transition-fast), box-shadow var(--cs-transition-fast);
+}
+#log-content-search:hover { border-color:var(--cs-text-secondary); }
+#log-content-search:focus { outline:none; border-color:var(--cs-border-input-focus); box-shadow:0 0 0 2px rgba(9,114,211,0.25); }
+#log-content-search::placeholder { color:var(--cs-text-disabled); }
+
+.jump-to-line {
+    border:1px solid var(--cs-border-input) !important;
+    border-radius:var(--cs-radius-s) !important;
+    font-family:var(--cs-font) !important;
+    font-size:var(--cs-font-size-m) !important;
+}
+.jump-to-line:focus { outline:none; border-color:var(--cs-border-input-focus) !important; box-shadow:0 0 0 2px rgba(9,114,211,0.25); }
+
+.log-filename {
+    background:var(--cs-bg-page) !important;
+    border:1px solid var(--cs-border-divider);
+    color:var(--cs-text-primary) !important;
+}
+
+.search-stats {
+    background:var(--cs-bg-page) !important;
+    border:1px solid var(--cs-border-divider);
+    color:var(--cs-text-secondary) !important;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Import Log Viewer</h2>
+
+    <div class="log-controls">
+        <div class="log-filename">
+            <strong>File:</strong> {{ filename }} (<span id="line-count">{{ total_lines }}</span> lines)
+        </div>
+
+        <div class="log-search-container">
+            <input type="text"
+                   id="log-content-search"
+                   placeholder="Search... (Ctrl+F)"
+                   autocomplete="off">
+            <button onclick="viewer.searchNext()" class="btn btn-sm">Next</button>
+            <button onclick="viewer.searchPrev()" class="btn btn-sm">Prev</button>
+        </div>
+
+        <input type="number"
+               id="jump-to-line"
+               class="jump-to-line"
+               placeholder="Jump to..."
+               min="1"
+               max="{{ total_lines }}">
+
+        <div class="search-stats" id="search-stats"></div>
+
+        <button onclick="deleteCurrentLog()" class="btn btn-sm btn-danger">Delete</button>
+        <a href="{{ url_for('list_logs') }}" class="btn btn-sm btn-secondary">Back to List</a>
+    </div>
+
+    <div class="log-viewer-container">
+        <div class="virtual-scroll-viewport" id="viewport">
+            <div class="virtual-scroll-content" id="content">
+                <div class="virtual-scroll-items" id="items"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script nonce="{{ csp_nonce }}">
+// Log data passed from server
+const logData = {{ lines|tojson }};
+const totalLines = {{ total_lines }};
+
+// Virtual Scroll Log Viewer
+class VirtualLogViewer {
+    constructor(data) {
+        this.lines = data;
+        this.totalLines = this.lines.length;
+        this.lineHeight = 18;
+        this.overscan = 10;
+
+        this.viewport = document.getElementById('viewport');
+        this.content = document.getElementById('content');
+        this.items = document.getElementById('items');
+
+        // Search state
+        this.searchTerm = '';
+        this.searchMatches = [];
+        this.currentMatch = -1;
+        this.searchWorker = null;
+
+        // Throttle scroll events
+        this.scrollTimeout = null;
+        this.rafPending = false;
+
+        this.init();
+    }
+
+    init() {
+        // Set content height to enable scrolling
+        this.content.style.height = `${this.totalLines * this.lineHeight}px`;
+
+        // Render initial view
+        this.render();
+
+        // Set up scroll listener with RAF
+        this.viewport.addEventListener('scroll', () => {
+            if (!this.rafPending) {
+                this.rafPending = true;
+                requestAnimationFrame(() => {
+                    this.render();
+                    this.rafPending = false;
+                });
+            }
+        });
+
+        // Search input
+        const searchInput = document.getElementById('log-content-search');
+        let searchDebounce;
+        searchInput.addEventListener('input', (e) => {
+            clearTimeout(searchDebounce);
+            searchDebounce = setTimeout(() => this.performSearch(e.target.value), 300);
+        });
+
+        // Jump to line
+        const jumpInput = document.getElementById('jump-to-line');
+        jumpInput.addEventListener('change', (e) => {
+            const lineNum = parseInt(e.target.value);
+            if (lineNum >= 1 && lineNum <= this.totalLines) {
+                this.scrollToLine(lineNum - 1);
+            }
+        });
+    }
+
+    render() {
+        const scrollTop = this.viewport.scrollTop;
+        const viewportHeight = this.viewport.clientHeight;
+
+        // Calculate visible range with overscan
+        let startIndex = Math.floor(scrollTop / this.lineHeight) - this.overscan;
+        let endIndex = Math.ceil((scrollTop + viewportHeight) / this.lineHeight) + this.overscan;
+
+        startIndex = Math.max(0, startIndex);
+        endIndex = Math.min(this.totalLines, endIndex);
+
+        // Build HTML for visible lines
+        let html = '';
+        for (let i = startIndex; i < endIndex; i++) {
+            const line = this.lines[i];
+            const top = i * this.lineHeight;
+            const lineNum = i + 1;
+
+            let content = this.escapeHtml(line.text);
+
+            // Apply search highlighting if active
+            if (this.searchTerm && this.searchMatches.length > 0) {
+                content = this.highlightSearchInLine(content, i);
+            }
+
+            html += `<div class="log-line ${line.class}" style="position: absolute; top: ${top}px; left: 0;">
+                <span class="line-number">${lineNum}</span>
+                <span class="line-content">${content}</span>
+            </div>`;
+        }
+
+        this.items.innerHTML = html;
+    }
+
+    performSearch(term) {
+        this.searchTerm = term.toLowerCase();
+        this.searchMatches = [];
+        this.currentMatch = -1;
+
+        if (!this.searchTerm) {
+            this.updateSearchStats();
+            this.render();
+            return;
+        }
+
+        // Build search index
+        for (let i = 0; i < this.lines.length; i++) {
+            const text = this.lines[i].text.toLowerCase();
+            let pos = 0;
+            while ((pos = text.indexOf(this.searchTerm, pos)) !== -1) {
+                this.searchMatches.push({ line: i, pos });
+                pos += this.searchTerm.length;
+            }
+        }
+
+        if (this.searchMatches.length > 0) {
+            this.currentMatch = 0;
+            this.scrollToMatch(0);
+        }
+
+        this.updateSearchStats();
+        this.render();
+    }
+
+    highlightSearchInLine(content, lineIndex) {
+        if (!this.searchTerm) return content;
+
+        const regex = new RegExp(`(${this.escapeRegex(this.searchTerm)})`, 'gi');
+        let matchIndex = 0;
+
+        // Find which search match index we're at for this line
+        let globalMatchIndex = -1;
+        for (let i = 0; i < this.searchMatches.length; i++) {
+            if (this.searchMatches[i].line === lineIndex) {
+                if (globalMatchIndex === -1) globalMatchIndex = i;
+            }
+        }
+
+        return content.replace(regex, (match) => {
+            const isCurrent = (globalMatchIndex !== -1 && globalMatchIndex === this.currentMatch);
+            const className = isCurrent ? 'search-match current' : 'search-match';
+            globalMatchIndex++;
+            return `<span class="${className}">${match}</span>`;
+        });
+    }
+
+    searchNext() {
+        if (this.searchMatches.length === 0) return;
+        this.currentMatch = (this.currentMatch + 1) % this.searchMatches.length;
+        this.scrollToMatch(this.currentMatch);
+    }
+
+    searchPrev() {
+        if (this.searchMatches.length === 0) return;
+        this.currentMatch = (this.currentMatch - 1 + this.searchMatches.length) % this.searchMatches.length;
+        this.scrollToMatch(this.currentMatch);
+    }
+
+    scrollToMatch(matchIndex) {
+        const match = this.searchMatches[matchIndex];
+        this.scrollToLine(match.line);
+        this.updateSearchStats();
+        this.render();
+    }
+
+    scrollToLine(lineIndex) {
+        const targetScroll = lineIndex * this.lineHeight - (this.viewport.clientHeight / 2);
+        this.viewport.scrollTop = Math.max(0, targetScroll);
+    }
+
+    updateSearchStats() {
+        const statsEl = document.getElementById('search-stats');
+        if (this.searchMatches.length > 0) {
+            statsEl.textContent = `${this.currentMatch + 1} of ${this.searchMatches.length}`;
+        } else if (this.searchTerm) {
+            statsEl.textContent = 'No matches';
+        } else {
+            statsEl.textContent = '';
+        }
+    }
+
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    escapeRegex(string) {
+        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+}
+
+// Initialize viewer
+let viewer;
+document.addEventListener('DOMContentLoaded', () => {
+    viewer = new VirtualLogViewer(logData);
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', function(e) {
+    // Ctrl+F for search
+    if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault();
+        document.getElementById('log-content-search').focus();
+    }
+
+    // Ctrl+G or F3 for next match
+    if (((e.ctrlKey || e.metaKey) && e.key === 'g') || e.key === 'F3') {
+        e.preventDefault();
+        if (e.shiftKey) {
+            viewer.searchPrev();
+        } else {
+            viewer.searchNext();
+        }
+    }
+
+    // Enter in search box
+    if (e.key === 'Enter' && e.target.id === 'log-content-search') {
+        e.preventDefault();
+        if (e.shiftKey) {
+            viewer.searchPrev();
+        } else {
+            viewer.searchNext();
+        }
+    }
+
+    // Page Up/Down
+    if (e.key === 'PageDown' && e.target.id !== 'log-content-search') {
+        e.preventDefault();
+        viewer.viewport.scrollBy(0, viewer.viewport.clientHeight * 0.8);
+    }
+    if (e.key === 'PageUp' && e.target.id !== 'log-content-search') {
+        e.preventDefault();
+        viewer.viewport.scrollBy(0, -viewer.viewport.clientHeight * 0.8);
+    }
+
+    // Home/End
+    if (e.key === 'Home' && e.target.id !== 'log-content-search') {
+        e.preventDefault();
+        viewer.viewport.scrollTop = 0;
+    }
+    if (e.key === 'End' && e.target.id !== 'log-content-search') {
+        e.preventDefault();
+        viewer.viewport.scrollTop = viewer.content.clientHeight;
+    }
+});
+
+function deleteCurrentLog() {
+    if (!confirm('Are you sure you want to delete this log file?')) return;
+
+    fetch('{{ url_for("delete_log", filename=filename) }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            window.location.href = '{{ url_for("list_logs") }}';
+        } else {
+            alert('Failed to delete log file: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        alert('Failed to delete log file: ' + error);
+    });
+}
+</script>
+{% endblock %}

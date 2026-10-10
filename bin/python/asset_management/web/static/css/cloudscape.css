@@ -1,0 +1,287 @@
+/* ============================================================
+   Cloudscape Design Tokens
+   AWS-inspired design system for the Digital Engagement Dashboard
+   ============================================================ */
+
+:root {
+    /* ── Navigation ── */
+    --cs-nav-bg:              #232F3E;
+    --cs-nav-bg-hover:        #37475A;
+    --cs-nav-text:            #D1D5DB;
+    --cs-nav-text-hover:      #FFFFFF;
+    --cs-nav-accent:          #EC7211;
+    --cs-nav-border:          #37475A;
+    --cs-nav-shadow:          0 1px 3px rgba(0, 0, 0, 0.25);
+
+    /* ── Surfaces ── */
+    --cs-bg-primary:          #FFFFFF;
+    --cs-bg-secondary:        #FAFAFA;
+    --cs-bg-page:             #F1F3F3;
+    --cs-bg-hover:            #F4F4F4;
+    --cs-bg-active:           #E8F4FD;
+    --cs-bg-active-hover:     #D3ECFC;
+
+    /* ── Borders ── */
+    --cs-border-default:      #D5DBDB;
+    --cs-border-divider:      #E9EBED;
+    --cs-border-input:        #7D8998;
+    --cs-border-input-focus:  #0972D3;
+    --cs-border-container:    #B6BEC9;
+
+    /* ── Text ── */
+    --cs-text-primary:        #000716;
+    --cs-text-secondary:      #5F6B7A;
+    --cs-text-tertiary:       #7D8998;
+    --cs-text-disabled:       #9BA7B6;
+    --cs-text-inverse:        #FFFFFF;
+    --cs-text-link:           #0972D3;
+    --cs-text-link-hover:     #033160;
+    --cs-text-heading:        #000716;
+    --cs-text-label:          #000716;
+
+    /* ── Interactive ── */
+    --cs-btn-primary-bg:      #0972D3;
+    --cs-btn-primary-bg-hover:#033160;
+    --cs-btn-primary-text:    #FFFFFF;
+    --cs-btn-normal-bg:       #FFFFFF;
+    --cs-btn-normal-border:   #7D8998;
+    --cs-btn-normal-text:     #000716;
+    --cs-btn-normal-hover-bg: #F4F4F4;
+    --cs-focus-ring:          0 0 0 2px #0972D3;
+
+    /* ── Status ── */
+    --cs-success:             #037F0C;
+    --cs-success-bg:          #F2F8F0;
+    --cs-warning:             #8D6605;
+    --cs-warning-bg:          #FEF8E7;
+    --cs-error:               #D91515;
+    --cs-error-bg:            #FDF3F1;
+    --cs-info:                #0972D3;
+    --cs-info-bg:             #F0F5FC;
+
+    /* Notice — warmer amber for friendly prompts (first-login, sync reminders,
+       "action required" callouts). Use instead of --cs-warning when the
+       message is a guidance nudge rather than a system warning. */
+    --cs-notice-bg:           #FFF8E1;
+    --cs-notice-border:       #F59E0B;
+    --cs-notice-text:         #6D4C00;
+
+    /* ── Spacing scale (4px base) ── */
+    --cs-space-xxxs:          2px;
+    --cs-space-xxs:           4px;
+    --cs-space-xs:            8px;
+    --cs-space-s:             12px;
+    --cs-space-m:             16px;
+    --cs-space-l:             20px;
+    --cs-space-xl:            24px;
+    --cs-space-xxl:           32px;
+    --cs-space-xxxl:          40px;
+
+    /* ── Typography ── */
+    --cs-font:                'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    --cs-font-size-xs:        12px;
+    --cs-font-size-s:         13px;
+    --cs-font-size-m:         14px;
+    --cs-font-size-l:         16px;
+    --cs-font-size-xl:        20px;
+    --cs-font-size-xxl:       24px;
+    --cs-font-size-heading-l: 28px;
+    --cs-line-height:         1.5;
+    --cs-line-height-heading: 1.25;
+    --cs-font-weight-normal:  400;
+    --cs-font-weight-medium:  500;
+    --cs-font-weight-bold:    700;
+    --cs-letter-spacing-caps: 0.04em;
+
+    /* ── Border radius ── */
+    --cs-radius-s:            4px;
+    --cs-radius-m:            8px;
+    --cs-radius-l:            12px;
+    --cs-radius-pill:         9999px;
+    --cs-radius-button:       20px;
+
+    /* ── Shadows ── */
+    --cs-shadow-xs:           0 1px 1px 0 rgba(0, 7, 22, 0.05);
+    --cs-shadow-s:            0 1px 2px 0 rgba(0, 7, 22, 0.12);
+    --cs-shadow-m:            0 2px 4px -1px rgba(0, 7, 22, 0.1), 0 4px 8px 0 rgba(0, 7, 22, 0.08);
+    --cs-shadow-l:            0 4px 8px -2px rgba(0, 7, 22, 0.08), 0 8px 24px 0 rgba(0, 7, 22, 0.12);
+    --cs-shadow-modal:        0 4px 8px -2px rgba(0, 7, 22, 0.08), 0 16px 36px 0 rgba(0, 7, 22, 0.16);
+    --cs-shadow-dropdown:     0 4px 8px -2px rgba(0, 7, 22, 0.08), 0 8px 20px 0 rgba(0, 7, 22, 0.15);
+    --cs-shadow-sticky:       0 2px 4px 0 rgba(0, 7, 22, 0.15);
+    --cs-shadow-panel:        -1px 0 3px 0 rgba(0, 7, 22, 0.08);
+
+    /* ── Layout ── */
+    --cs-header-height:       56px;
+    --cs-sidebar-width:       280px;
+    --cs-sidebar-collapsed:   0px;
+    --cs-content-max-width:   1440px;
+
+    /* ── Transitions ── */
+    --cs-transition-fast:     90ms ease-out;
+    --cs-transition-normal:   135ms ease-out;
+    --cs-transition-slow:     270ms ease-out;
+}
+
+
+/* ============================================================
+   Reset & Base
+   ============================================================ */
+
+*,
+*::before,
+*::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: var(--cs-font);
+    font-size: var(--cs-font-size-m);
+    line-height: var(--cs-line-height);
+    color: var(--cs-text-primary);
+    background: var(--cs-bg-page);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+    color: var(--cs-text-link);
+    text-decoration: none;
+}
+
+a:hover {
+    color: var(--cs-text-link-hover);
+    text-decoration: underline;
+}
+
+img {
+    max-width: 100%;
+    height: auto;
+}
+
+
+/* ============================================================
+   Typography
+   ============================================================ */
+
+h1, h2, h3, h4, h5, h6 {
+    font-weight: var(--cs-font-weight-bold);
+    line-height: var(--cs-line-height-heading);
+    color: var(--cs-text-primary);
+}
+
+h1 { font-size: var(--cs-font-size-heading-l); }
+h2 { font-size: var(--cs-font-size-xxl); }
+h3 { font-size: var(--cs-font-size-xl); }
+h4 { font-size: var(--cs-font-size-l); }
+
+.cs-text-secondary { color: var(--cs-text-secondary); }
+.cs-text-tertiary  { color: var(--cs-text-tertiary); }
+.cs-text-small     { font-size: var(--cs-font-size-xs); }
+.cs-text-medium    { font-size: var(--cs-font-size-m); }
+
+
+/* ============================================================
+   Custom scrollbars (Cloudscape-style)
+   ============================================================ */
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(0, 7, 22, 0.2);
+    border-radius: 4px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 7, 22, 0.35);
+    background-clip: content-box;
+}
+
+/* Firefox */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 7, 22, 0.2) transparent;
+}
+
+
+/* ============================================================
+   Selection
+   ============================================================ */
+
+::selection {
+    background: rgba(9, 114, 211, 0.2);
+    color: var(--cs-text-primary);
+}
+
+
+/* ============================================================
+   Utility classes
+   ============================================================ */
+
+.cs-hidden { display: none !important; }
+.cs-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* skip-to-content link. Invisible until keyboard-focused,
+   then pinned to the top of the viewport above the fixed topbar so a
+   keyboard user can bypass the topbar/progress rail and land directly
+   on the wizard card. Templates render this as the first child of
+   <body> with href targeting an id on the <main> wizard container. */
+.cs-skip-link {
+    position: absolute;
+    top: -40px;
+    left: 8px;
+    z-index: 100;
+    height: 36px;
+    padding: 0 14px;
+    display: inline-flex;
+    align-items: center;
+    background: var(--cs-btn-primary-bg);
+    color: #FFFFFF;
+    font: 600 13px var(--cs-font);
+    border-radius: var(--cs-radius-s);
+    text-decoration: none;
+    transition: top 90ms ease-out;
+}
+.cs-skip-link:focus,
+.cs-skip-link:focus-visible {
+    top: 8px;
+    outline: 2px solid #FFFFFF;
+    outline-offset: 2px;
+}
+
+/* focus-visible baseline. Every interactive element that
+   doesn't already paint its own :focus-visible state gets a 2px ring
+   in the primary brand color. Per-component overrides (btn-primary,
+   connector-tile) still win because they ship their own selector at
+   the same specificity later in the document. */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible,
+[tabindex]:not([tabindex="-1"]):focus-visible {
+    outline: 2px solid var(--cs-btn-primary-bg);
+    outline-offset: 2px;
+    border-radius: var(--cs-radius-s);
+}

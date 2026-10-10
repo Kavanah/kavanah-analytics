@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ error_code }} — {{ error_title }}</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/cloudscape.css') }}">
+    <style nonce="{{ csp_nonce }}">
+        body { background: var(--cs-bg-page); display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; }
+        .login-topbar { position: fixed; top: 0; left: 0; right: 0; height: 56px; background: var(--cs-nav-bg); display: flex; align-items: center; padding: 0 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.25); z-index: 10; }
+        .login-topbar-logo { height: 24px; width: auto; margin-right: 12px; }
+        .login-topbar-title { font-size: 17px; font-weight: 700; color: #FFFFFF; }
+        /* error-page content (migrated from inline style attributes). */
+        .error-content { text-align: center; padding: 50px; max-width: 600px; }
+        .error-code { font-size: 64px; color: var(--cs-error); margin-bottom: 16px; }
+        .error-title { color: var(--cs-text-heading); margin-bottom: 16px; font-size: 24px; }
+        .error-text { color: var(--cs-text-secondary); font-size: 16px; line-height: 1.6; margin-bottom: 28px; }
+        .error-action { display: inline-flex; align-items: center; height: 40px; padding: 0 20px; background: var(--cs-btn-primary-bg); color: #fff; text-decoration: none; border-radius: var(--cs-radius-s); font-weight: 700; font-size: 16px; }
+    </style>
+</head>
+<body>
+    <div class="login-topbar">
+        <img src="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5" alt="" class="login-topbar-logo">
+        <span class="login-topbar-title">Kavanah Analytics</span>
+    </div>
+    <div class="error-content">
+        <h1 class="error-code">{{ error_code }}</h1>
+        <h2 class="error-title">{{ error_title }}</h2>
+        <p class="error-text">{{ error_message }}</p>
+        <a href="/dashboard" class="error-action">
+            Return to Dashboard
+        </a>
+    </div>
+</body>
+</html>

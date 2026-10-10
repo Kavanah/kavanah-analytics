@@ -1,0 +1,33 @@
+{
+  "dynamic_templates": [
+    {
+      "strings_as_keyword": {
+        "match_mapping_type": "string",
+        "mapping": {
+          "type": "keyword",
+          "ignore_above": 8191
+        }
+      }
+    }
+  ],
+  "properties": {
+    "workspace_title": {
+      "type": "keyword"
+    },
+    "workspace_esid": {
+      "type": "keyword"
+    },
+    "echo_tenant_title": {
+      "type": "keyword"
+    },
+    "echo_tenant_api_key": {
+      "type": "keyword"
+    },
+    "echo_tenant_subdomain": {
+      "type": "keyword"
+    },
+    "echo_tenant_description": {
+      "type": "text"
+    }
+  }
+}

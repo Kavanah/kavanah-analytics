@@ -1,0 +1,78 @@
+{# visible wizard progress indicator.
+
+   Rendered above the wizard card on every onboarding step (2-6 plus
+   the invite-team-picker variant). Markup and CSS live here so a copy
+   tweak or visual change is a one-file edit; the step templates {%
+   include %} this block at the top of the .wizard-shell / .picker-
+   container.
+
+   Consumed kwargs (all required if {% if progress %} fires):
+     progress.step_number   1-based step number (2-6)
+     progress.total_steps   6 (constant)
+     progress.step_label    "Account type", "Workspace", etc.
+     progress.minutes_left  remaining-time estimate in minutes
+     progress.dots          tuple of "done"/"current"/"pending" per dot
+
+   data-testid hooks are stable contract for the release-plan tests
+   test_wizard_progress.py — don't rename without updating tests.
+#}
+{% if progress %}
+<style>
+    .wizard-progress {
+        margin-bottom: 16px;
+        font-family: var(--cs-font);
+    }
+    .wizard-progress__rail {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        font-size: 13px;
+        color: var(--cs-text-secondary);
+        margin-bottom: 8px;
+    }
+    .wizard-progress__rail strong {
+        color: var(--cs-text-heading);
+        font-weight: 600;
+    }
+    .wizard-progress__dots {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .wizard-progress__dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--cs-border-default);
+        transition: background 120ms ease-out, transform 120ms ease-out;
+    }
+    .wizard-progress__dot--done {
+        background: var(--cs-btn-primary-bg);
+    }
+    .wizard-progress__dot--current {
+        background: var(--cs-btn-primary-bg);
+        transform: scale(1.4);
+    }
+</style>
+<div class="wizard-progress" data-testid="wizard-progress">
+    <div class="wizard-progress__rail">
+        <span data-testid="wizard-progress-label">
+            <strong>Step {{ progress.step_number }} of {{ progress.total_steps }}</strong>
+            {% if progress.step_label %} &middot; {{ progress.step_label }}{% endif %}
+        </span>
+    </div>
+    <div class="wizard-progress__dots"
+         data-testid="wizard-progress-dots"
+         role="progressbar"
+         aria-valuemin="1"
+         aria-valuemax="{{ progress.total_steps }}"
+         aria-valuenow="{{ progress.step_number }}"
+         aria-label="Step {{ progress.step_number }} of {{ progress.total_steps }}">
+        {% for state in progress.dots %}
+        <span class="wizard-progress__dot wizard-progress__dot--{{ state }}"
+              data-state="{{ state }}"></span>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}

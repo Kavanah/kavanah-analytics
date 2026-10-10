@@ -1,0 +1,51 @@
+{
+  "properties": {
+    "@timestamp": {"type": "date"},
+    "kibana_date": {"type": "date"},
+    "date": {"type": "date", "format": "yyyy-MM-dd"},
+    "record_type": {"type": "keyword"},
+    "tiktok_connection_esid": {"type": "keyword"},
+    "tiktok_open_id": {"type": "keyword"},
+    "tiktok_username": {"type": "keyword"},
+    "tiktok_display_name": {
+      "type": "text",
+      "fields": {"keyword": {"type": "keyword"}}
+    },
+    "follower_count": {"type": "long"},
+    "following_count": {"type": "long"},
+    "likes_count": {"type": "long"},
+    "video_count": {"type": "long"},
+    "followers_gained": {"type": "long"},
+    "likes_gained": {"type": "long"},
+    "videos_gained": {"type": "long"},
+    "video_views_gained": {"type": "long"},
+    "video_comments_gained": {"type": "long"},
+    "video_shares_gained": {"type": "long"},
+    "video_id": {"type": "keyword"},
+    "video_title": {
+      "type": "text",
+      "fields": {"keyword": {"type": "keyword"}}
+    },
+    "video_description": {"type": "text"},
+    "video_create_date": {"type": "date", "format": "yyyy-MM-dd"},
+    "video_duration_seconds": {"type": "long"},
+    "video_share_url": {"type": "keyword"},
+    "view_count": {"type": "long"},
+    "like_count": {"type": "long"},
+    "comment_count": {"type": "long"},
+    "share_count": {"type": "long"},
+    "views_gained": {"type": "long"},
+    "video_likes_gained": {"type": "long"},
+    "comments_gained": {"type": "long"},
+    "shares_gained": {"type": "long"},
+    "team_esid": {"type": "keyword"},
+    "team_title": {"type": "keyword"},
+    "team_url": {"type": "keyword"},
+    "team_country": {"type": "keyword"},
+    "team_city": {"type": "keyword"},
+    "organization_title": {
+      "type": "text",
+      "fields": {"keyword": {"type": "keyword"}}
+    }
+  }
+}

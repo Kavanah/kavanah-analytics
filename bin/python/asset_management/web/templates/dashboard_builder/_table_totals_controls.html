@@ -1,0 +1,19 @@
+<!-- shared partial (see _table_field_section.html for why). -->
+<!-- optional bottom totals row for `table` charts only. Shown
+     directly under the Type dropdown by populateConfigPanel's table
+     branch (the broader posts_table / grouped_table types never reveal
+     it). Unchecked by default; checking it reveals the Sum/Avg selector
+     below and appends a `Totals` row in renderTable. -->
+<div class="db-form-group db-form-group--checkbox" data-mode="properties" id="cfg-include-totals-group" style="display:none;">
+  <label>
+    <input type="checkbox" id="cfg-include-totals-row" onchange="onIncludeTotalsRowChange(this.checked)">
+    Include totals row
+  </label>
+</div>
+<div class="db-form-group" data-mode="properties" id="cfg-totals-aggregation-group" style="display:none;">
+  <label>Totals</label>
+  <select id="cfg-totals-aggregation" onchange="updateChartConfig('totals_aggregation', this.value); requeryChart()">
+    <option value="sum">Sum</option>
+    <option value="avg">Average</option>
+  </select>
+</div>

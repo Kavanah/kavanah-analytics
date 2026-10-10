@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ item_title }} — Kavanah Analytics</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/cloudscape.css') }}">
+    <style>
+        body {
+            background: var(--cs-bg-page);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            margin: 0;
+        }
+        .cs-topbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 56px;
+            background: var(--cs-nav-bg);
+            display: flex;
+            align-items: center;
+            padding: 0 24px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+            z-index: 10;
+        }
+        .cs-topbar-logo { height: 24px; width: auto; margin-right: 12px; }
+        .cs-topbar-title { font-size: 17px; font-weight: 700; color: #FFFFFF; }
+
+        .cs-coming-soon-container { width: 100%; max-width: 480px; margin-top: 28px; }
+        .cs-coming-soon-card {
+            background: var(--cs-bg-primary);
+            border: 1px solid var(--cs-border-default);
+            border-radius: var(--cs-radius-l);
+            box-shadow: var(--cs-shadow-m);
+            padding: 40px 36px 32px;
+            text-align: center;
+        }
+        .cs-coming-soon-badge {
+            display: inline-block;
+            background: #FFF8E1;
+            color: #8A5A00;
+            border: 1px solid #F2D77B;
+            border-radius: 999px;
+            padding: 4px 12px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 16px;
+        }
+        .cs-coming-soon-card h1 {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--cs-text-heading);
+            margin: 0 0 12px;
+        }
+        .cs-coming-soon-card p {
+            font-size: var(--cs-font-size-m);
+            color: var(--cs-text-secondary);
+            line-height: 1.45;
+            margin: 0 0 24px;
+        }
+        .cs-coming-soon-back {
+            display: inline-block;
+            height: 40px;
+            line-height: 40px;
+            padding: 0 20px;
+            background: var(--cs-btn-primary-bg);
+            color: #FFFFFF;
+            border-radius: var(--cs-radius-s);
+            font-size: var(--cs-font-size-l);
+            font-weight: 600;
+            text-decoration: none;
+            transition: background 90ms ease-out;
+        }
+        .cs-coming-soon-back:hover { background: var(--cs-btn-primary-bg-hover); }
+    </style>
+</head>
+<body>
+    <div class="cs-topbar">
+        <img src="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5" alt="" class="cs-topbar-logo">
+        <span class="cs-topbar-title">Kavanah Analytics</span>
+    </div>
+    <div class="cs-coming-soon-container">
+        <div class="cs-coming-soon-card" data-testid="checklist-coming-soon">
+            <div class="cs-coming-soon-badge">Coming soon</div>
+            <h1>{{ item_title }}</h1>
+            <p>{{ item_body }}</p>
+            <a href="/assets/dashboard" class="cs-coming-soon-back">Back to dashboard</a>
+        </div>
+    </div>
+</body>
+</html>

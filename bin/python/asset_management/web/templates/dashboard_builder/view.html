@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- mark the document as iframe-embedded BEFORE CSS applies so the
+       inner-scrollbar-suppression rule (html.embedded) only kicks in when a
+       parent frame is resizing us. Top-level (email link) → no class → scrolls. -->
+  <script nonce="{{ csp_nonce }}">if (window.parent !== window) { document.documentElement.classList.add('embedded'); }</script>
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <!-- server idle window (seconds) read by session-timeout.js. -->
+  <meta name="session-idle-timeout" content="{{ session_idle_timeout|default(0) }}">
+  <title>Dashboard Viewer</title>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  <!-- fetch guard so an expired-session AJAX call redirects the
+       top tab to /login instead of parse-erroring on the login HTML. -->
+  <script src="{{ url_for('static', filename='js/session-timeout.js') }}?v=20260615b"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js" integrity="sha384-pPi0zxBAoDu6+JXW/C68UZLvBUUtU+7zonhif43rqj7pxsGyqyqzcian2Rj37Rss" crossorigin="anonymous"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/cloudscape.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='dashboard_builder/builder.css') }}?v=20260630a">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    /* No height: 100% — body grows with content so parent can resize the iframe */
+    html, body { background: #f0f2f5; overflow-x: hidden; }
+    /* suppress the inner scrollbar ONLY when embedded in an iframe —
+       the parent dashboards page resizes the iframe to fit content, so an inner
+       scrollbar would be wrong there. When this page is opened TOP-LEVEL (e.g. a
+       report-schedule email's login-gated "View the full report" link), there is
+       no parent to resize it, so it must scroll itself. The `embedded` class is
+       set on <html> by the inline script below only when window.parent !== window. */
+    html.embedded { overflow-y: hidden; scrollbar-width: none; }
+    html.embedded::-webkit-scrollbar { display: none; }
+    body { display: flex; flex-direction: column; }
+    .view-topbar {
+      padding: 10px 16px;
+      background: #232F3E;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+    .view-canvas {
+      flex: 1;
+      padding: 16px;
+    }
+    /* when a dashboard contains exactly one chart and that chart
+       is a table, stretch the table slot to fill the parent-posted
+       viewport height so the table presents as many rows as the page
+       allows. Other chart types are unaffected. The CSS variable is set
+       by view.html's deam-viewport-height postMessage handler. */
+    .view-canvas .db-chart-grid > .chart-slot.chart-type-table:only-child {
+      min-height: var(--deam-viewport-height, 0);
+    }
+    /* Tables always span full width in the viewer */
+    .chart-slot.chart-type-table,
+    .chart-slot.chart-type-grouped_table,
+    .chart-slot.chart-type-canva,
+    .chart-slot.chart-type-report {
+      width: 100% !important;
+    }
+    /* Trend line takes full width; sidebar handles layout so no padding on render area */
+    .chart-slot.chart-type-trend_line { width: 100% !important; }
+    .chart-slot.chart-type-trend_line .chart-render-area { padding: 0; }
+    /* first-look "syncing" banner shown on dashboards
+       materialised from a connector template at the end of onboarding,
+       while the initial backfill is still running. Removed by JS once
+       any chart reports non-empty data, or after the TTL elapses. */
+    .first-look-syncing-banner {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      margin-bottom: 12px;
+      background: #FFF8E1;
+      border: 1px solid #F0D58C;
+      border-radius: 8px;
+      color: #5F4A00;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .first-look-syncing-banner .fl-spinner {
+      width: 14px;
+      height: 14px;
+      border: 2px solid #C9A93A;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: fl-spin 0.9s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes fl-spin { to { transform: rotate(360deg); } }
+    /* first-look sync pill. A small fixed pill in the top-
+       right corner of the dashboard view, present only on first-look
+       dashboards while the initial import backfill is in progress.
+       Shows the connector name + a live percentage that polls the
+       /onboarding/api/backfill-progress endpoint. Hidden when status
+       == 'succeeded' / 'failed' / no_progress, or by the same
+       chart-rendered listener that hides the banner. */
+    .first-look-sync-pill {
+      position: fixed;
+      top: 68px;
+      right: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      background: #FFF8E1;
+      border: 1px solid #F0D58C;
+      border-radius: 999px;
+      color: #5F4A00;
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 1.2;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+      z-index: 100;
+      font-variant-numeric: tabular-nums;
+    }
+    .first-look-sync-pill[hidden] { display: none; }
+    .first-look-sync-pill .fl-spinner {
+      width: 11px;
+      height: 11px;
+      border: 2px solid #C9A93A;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: fl-spin 0.9s linear infinite;
+      flex-shrink: 0;
+    }
+    .first-look-sync-pill.is-failed {
+      background: #FDECEA;
+      border-color: #E5A8A0;
+      color: #7A2622;
+    }
+    .first-look-sync-pill.is-failed .fl-spinner {
+      display: none;
+    }
+    /* ── Print / PDF layout ───────────────────────────────────── */
+    @media print {
+      /* Preserve all colors — browsers strip them by default */
+      *, *::before, *::after {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+
+      /* Let body/canvas shrink to content height so flex expansion
+         doesn't create a gray void below the last chart */
+      html, body { height: auto !important; }
+      .view-canvas { flex: none !important; height: auto !important; padding: 6px !important; }
+
+      /* Compact spacing — fit more charts per page */
+      .view-topbar { padding: 4px 12px !important; font-size: 13px !important; }
+      .db-chart-grid { gap: 6px !important; }
+      .chart-slot { min-height: 0 !important; }
+      .chart-slot-header { padding: 4px 10px !important; }
+      .chart-render-area { min-height: 100px !important; padding: 4px !important; }
+      #print-org-header { padding: 6px 12px !important; }
+
+      /* Tighter grouped tables for print */
+      .chart-slot.chart-type-grouped_table .chart-render-area { padding: 0 !important; }
+      .gt-table th, .gt-table td { padding: 5px 10px !important; }
+      .gt-table { font-size: 13px !important; }
+      .gt-title-cell { font-size: 13px !important; }
+      .gt-col-cell { font-size: 13px !important; }
+
+      /* Hide dashboard title bar — not needed in PDF exports */
+      .view-topbar { display: none !important; }
+
+      /* Don't split charts across page breaks */
+      .chart-slot {
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+      /* Report/template slots span multiple pages — allow breaks within.
+         table / grouped_table get the same treatment so a tall
+         table prints every row (flowing across pages) instead of being
+         clipped to the on-screen viewport height. */
+      .chart-slot.chart-type-report,
+      .chart-slot.chart-type-google_report,
+      .chart-slot.chart-type-combined_report,
+      .chart-slot.chart-type-canva,
+      .chart-slot.chart-type-table,
+      .chart-slot.chart-type-grouped_table {
+        break-inside: auto;
+        page-break-inside: auto;
+        overflow: visible !important;
+        height: auto !important;
+      }
+      .chart-slot.chart-type-report .chart-render-area,
+      .chart-slot.chart-type-google_report .chart-render-area,
+      .chart-slot.chart-type-combined_report .chart-render-area,
+      .chart-slot.chart-type-canva .chart-render-area,
+      .chart-slot.chart-type-table .chart-render-area,
+      .chart-slot.chart-type-grouped_table .chart-render-area {
+        overflow: visible !important;
+        height: auto !important;
+      }
+      /* the on-screen.chart-type-table:only-child min-height
+         (viewport height) would pad a short table with whitespace in the PDF. */
+      .chart-slot.chart-type-table { min-height: 0 !important; }
+      /* Keep the org branding header on the same page as the first chart */
+      #print-org-header {
+        break-after: avoid;
+        page-break-after: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Org/team branding header: hidden by default, shown during PDF print when a filter is active -->
+  <div id="print-org-header" style="display:none; padding: 14px 16px; background: #fff; border-bottom: 1px solid #D5DBDB; align-items: center; gap: 14px; flex-shrink: 0;">
+    <img id="print-org-logo" src="" alt="" style="max-height: 64px; max-width: 180px; object-fit: contain; flex-shrink: 0; display: none;">
+    <div style="min-width: 0;">
+      <div id="print-org-desc" style="font-size: 13px; color: #5F6B7A;"></div>
+      <div id="print-team-name" style="font-size: 13px; color: #7D8998; margin-top: 2px; display: none;"></div>
+    </div>
+  </div>
+  <div class="view-topbar" id="view-dash-title">Loading…</div>
+  <div class="view-canvas">
+    <!-- dashboard-level filter strip. Populated from
+         DASHBOARD_STATE.filters by renderDashboardFilterStrip() after the
+         dashboard config loads. Hidden via display:none until at least
+         one filter is hydrated; the read-only flag suppresses the
+         "+ Filters" entry button. -->
+    <div class="db-filter-strip" id="dashboard-filter-strip" style="display:none;"></div>
+    <div class="db-chart-grid" id="chart-grid"></div>
+  </div>
+
+  <script nonce="{{ csp_nonce }}">
+    // read-only viewer carries the same DASHBOARD_STATE shape as the
+    // builder so dashboard_filters.js can render the strip without code forks.
+    // DASHBOARD_FILTERS_READONLY suppresses the editor entry button and any
+    // mutation-only UI (e.g. + Add Filter) on the strip.
+    const DASHBOARD_STATE = { id: null, charts: {}, global_date_range: null, filters: [] };
+    window.DASHBOARD_FILTERS_READONLY = true;
+    // Derive base URL from current page URL: strip /view/<id> → e.g. /assets/dashboard-builder/
+    const DASHBOARD_BASE = window.location.pathname.replace(/\/view\/[^/]+\/?$/, '/').replace(/\/?$/, '/');
+
+    // Read org/team filter params passed by the parent dashboards page.
+    // These are appended by buildEchartsViewerUrl() when a filter is selected.
+    // Used by charts.js to inject extra ES filters into every query.
+    (function() {
+      const params = new URLSearchParams(window.location.search);
+      const orgFilter   = params.get('org_filter') || '';
+      const teamFilters = params.getAll('team_filter');   // supports multiple values (OR filter)
+      const extra = [];
+      // When team filters are present, they already scope the data correctly —
+      // skip the org filter because some data views (e.g. Disciple Tools) don't
+      // have an organization_title field, and adding it as an AND clause would
+      // return 0 hits even though the team filter alone would match.
+      if (orgFilter && teamFilters.length === 0) {
+        extra.push({ field: 'organization_title', op: 'match_phrase', value: orgFilter });
+      }
+      if (teamFilters.length === 1) {
+        extra.push({ field: 'team_title', op: 'match_phrase', value: teamFilters[0] });
+      } else if (teamFilters.length > 1) {
+        // Use match_phrase with should (OR) instead of terms — terms requires
+        // keyword mapping which DT's team_title (text) doesn't have.
+        extra.push({ field: 'team_title', op: 'match_phrase_any', value: teamFilters });
+      }
+      // GA4 property-first selector. When the parent page passes
+      // ?property_filter=<ga_property_id>, scope every chart to that ONE property
+      // so a GA4 dedup field (activeUsers/totalUsers) collapses to a single grain
+      // and shows a real deduplicated number. property_id is a bare
+      // keyword on both *_ga_metrics and *_ga_metrics_window (verified staging),
+      // so an eq filter narrows the actual query SCOPE — not a display-only row
+      // hide (the load-bearing requirement).
+      //
+      // NOTE: build_query ANDs this filter into EVERY chart's query, so the
+      // param is only ever set on a GA4 dashboard (the selector renders only when
+      // the open dashboard's charts are all on *_ga_metrics*). A non-GA4 index
+      // has no property_id field, where an AND eq would match zero docs — so this
+      // must NOT be set on a mixed dashboard. The selector's GA4-only gate (in
+      // dashboards.html) is what enforces that; this branch trusts it.
+      const propertyFilter = params.get('property_filter') || '';
+      if (propertyFilter) {
+        extra.push({ field: 'property_id', op: 'eq', value: propertyFilter });
+      }
+      window.DASHBOARD_EXTRA_FILTERS = extra;
+
+      // Read time range params for 'query date' aggregation
+      const timeFrom = params.get('time_from') || '';
+      const timeTo   = params.get('time_to') || '';
+      window.DASHBOARD_TIME_RANGE = { from: timeFrom, to: timeTo };
+
+      // viewer-selected date basis. The parent page's "Date basis"
+      // dropdown (populated from the dashboard's time_field_choices) sets this
+      // param; charts.js _withExtraFilters scopes the global time range on it,
+      // overriding each chart's builder-time time_range_field. Absent -> no
+      // override (charts use their configured field / kibana_date).
+      window.DASHBOARD_TIME_FIELD = params.get('time_field') || '';
+
+      // Read statistic override for map dashboards (set by dashboards.html statistics filter)
+      window.DASHBOARD_MAP_STATISTIC = params.get('statistic') || '';
+
+      // Read show_labels override for map dashboards (show_labels=0 hides permanent country labels)
+      const showLabelsParam = params.get('show_labels');
+      window.DASHBOARD_MAP_SHOW_LABELS = (showLabelsParam === null) ? null : (showLabelsParam !== '0');
+
+      // Read initial chart visibility (URL param takes priority — used by PDF export)
+      // Fall back to sessionStorage so state survives time-range reloads even if the
+      // parent page cannot read cross-frame state via contentWindow.
+      const cvParam = params.get('chart_visibility');
+      const _dashIdForVis = {{ dashboard_id | tojson }};
+      const _storedVis = sessionStorage.getItem('chart-visibility-' + _dashIdForVis);
+      window.INITIAL_CHART_VISIBILITY = cvParam ? JSON.parse(cvParam)
+                                      : (_storedVis ? JSON.parse(_storedVis) : {});
+      console.log('[visibility] view.html cvParam:', cvParam ? cvParam.substring(0, 200) : 'none', 'stored:', _storedVis ? _storedVis.substring(0, 200) : 'none', 'used:', JSON.stringify(window.INITIAL_CHART_VISIBILITY).substring(0, 200));
+    })();
+
+    function escHtml(s) {
+      if (!s) return '';
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // Stub builder-only functions that charts.js may call
+    function populateDisplayToggles() {}
+    function populateTableToggles()   {}
+
+    // ── Print compaction helpers ─────────────────────────────────
+    // Shrink chart containers for a tighter PDF layout, then resize
+    // ECharts instances so they re-render at the smaller size.
+    // Returns saved state so _restoreChartsAfterPrint can undo it.
+    var PRINT_MAX_CHART_H = 280;   // px — cap for chart render areas
+    var PRINT_MAX_SLOT_H  = 320;   // px — cap for chart slots with saved height
+
+    function _resizeAllCharts() {
+      if (typeof CHART_INSTANCES === 'undefined') return;
+      Object.keys(CHART_INSTANCES).forEach(function(id) {
+        var inst = CHART_INSTANCES[id];
+        if (Array.isArray(inst)) {
+          inst.forEach(function(c) { try { c.resize(); } catch(e) {} });
+        } else if (inst) {
+          try { inst.resize(); } catch(e) {}
+        }
+      });
+    }
+
+    function _compactChartsForPrint() {
+      var saved = [];
+      var slots = document.querySelectorAll('.chart-slot');
+      for (var i = 0; i < slots.length; i++) {
+        var slot = slots[i];
+        var area = slot.querySelector('.chart-render-area');
+        var origSlotH = slot.style.height;
+        var origAreaH = area ? area.style.height : '';
+        var record = { slot: slot, slotH: origSlotH, area: area, areaH: origAreaH };
+
+        if (slot.classList.contains('chart-type-trend_line')) {
+          // Trend line charts nest a scrollable sidebar (series list) and, in
+          // stacked mode, a scrollable chart area inside the render area.
+          // Default print clamps + internal overflow hide content in the PDF,
+          // so let the containers grow to fit all series and stacked charts.
+          var sidebar    = slot.querySelector('.tl-sidebar');
+          var seriesList = slot.querySelector('.tl-series-list');
+          var chartArea  = slot.querySelector('.tl-chart-area');
+
+          record.trendLine = {
+            sidebar:           sidebar,
+            seriesList:        seriesList,
+            chartArea:         chartArea,
+            sidebarOverflow:   sidebar    ? sidebar.style.overflow    : '',
+            seriesOverflowY:   seriesList ? seriesList.style.overflowY : '',
+            seriesOverflowX:   seriesList ? seriesList.style.overflowX : '',
+            seriesFlex:        seriesList ? seriesList.style.flex      : '',
+            chartAreaHeight:   chartArea  ? chartArea.style.height    : '',
+            chartAreaOverflow: chartArea  ? chartArea.style.overflowY : '',
+            slotOverflow:      slot.style.overflow,
+            areaOverflow:      area ? area.style.overflow : '',
+          };
+
+          slot.style.height   = 'auto';
+          slot.style.overflow = 'visible';
+          if (area) { area.style.height = 'auto'; area.style.overflow = 'visible'; }
+          if (sidebar) sidebar.style.overflow = 'visible';
+          if (seriesList) {
+            seriesList.style.overflowY = 'visible';
+            seriesList.style.overflowX = 'visible';
+            seriesList.style.flex      = 'none';
+          }
+          if (chartArea) {
+            chartArea.style.overflowY = 'visible';
+            // In stacked mode chartArea has a fixed height smaller than its
+            // scrollHeight — grow it so every mini chart is visible in the PDF.
+            var needed = chartArea.scrollHeight;
+            var current = parseInt(chartArea.style.height) || 0;
+            if (needed && needed > current) {
+              chartArea.style.height = needed + 'px';
+            }
+          }
+        } else if (slot.classList.contains('chart-type-table') || slot.classList.contains('chart-type-grouped_table')) {
+          // tables render a plain <table> into the render area; the
+          // default print height clamp + the render area's overflow hide every
+          // row past the on-screen viewport. Release height/overflow so the
+          // full table flows across pages (mirrors the report/canva print CSS).
+          record.tableRelease = {
+            slotOverflow: slot.style.overflow,
+            areaOverflow: area ? area.style.overflow : '',
+          };
+          slot.style.height = 'auto';
+          slot.style.overflow = 'visible';
+          if (area) { area.style.height = 'auto'; area.style.overflow = 'visible'; }
+        } else {
+          if (origSlotH && parseInt(origSlotH) > PRINT_MAX_SLOT_H) {
+            slot.style.height = PRINT_MAX_SLOT_H + 'px';
+          }
+          if (area && origAreaH && parseInt(origAreaH) > PRINT_MAX_CHART_H) {
+            area.style.height = PRINT_MAX_CHART_H + 'px';
+          }
+        }
+
+        saved.push(record);
+      }
+      _resizeAllCharts();
+      return saved;
+    }
+
+    function _restoreChartsAfterPrint(saved) {
+      for (var i = 0; i < saved.length; i++) {
+        var s = saved[i];
+        s.slot.style.height = s.slotH;
+        if (s.area) s.area.style.height = s.areaH;
+        if (s.trendLine) {
+          var t = s.trendLine;
+          s.slot.style.overflow = t.slotOverflow;
+          if (s.area) s.area.style.overflow = t.areaOverflow;
+          if (t.sidebar)    t.sidebar.style.overflow    = t.sidebarOverflow;
+          if (t.seriesList) {
+            t.seriesList.style.overflowY = t.seriesOverflowY;
+            t.seriesList.style.overflowX = t.seriesOverflowX;
+            t.seriesList.style.flex      = t.seriesFlex;
+          }
+          if (t.chartArea) {
+            t.chartArea.style.overflowY = t.chartAreaOverflow;
+            t.chartArea.style.height    = t.chartAreaHeight;
+          }
+        }
+        if (s.tableRelease) {
+          // restore the table slot/area overflow released for print.
+          s.slot.style.overflow = s.tableRelease.slotOverflow;
+          if (s.area) s.area.style.overflow = s.tableRelease.areaOverflow;
+        }
+      }
+      _resizeAllCharts();
+    }
+
+    // Listen for messages from the parent dashboards page
+    window.addEventListener('message', function(e) {
+      if (!e.data) return;
+
+      // parent posts the available viewport height so a single
+      // table chart can stretch to fill it. Stored as a CSS variable on
+      // the documentElement; the .chart-type-table:only-child rule reads it.
+      if (e.data.type === 'deam-viewport-height') {
+        var h = parseInt(e.data.height, 10);
+        if (!isNaN(h) && h > 0) {
+          document.documentElement.style.setProperty('--deam-viewport-height', h + 'px');
+        }
+        return;
+      }
+
+      if (e.data.type === 'set-map-show-labels') {
+        const showLabels = !!e.data.value;
+        Object.keys(DASHBOARD_STATE.charts).forEach(function(chartId) {
+          const cfg = DASHBOARD_STATE.charts[chartId];
+          if (cfg && cfg.chart_type === 'leaflet_map') {
+            cfg.show_labels = showLabels;
+            requeryLeafletMap(chartId);
+          }
+        });
+        return;
+      }
+
+      if (e.data.type === 'print-now') {
+        // Show org/team branding header if provided.
+        // Must be done BEFORE page-size calculation so the header height is included.
+        var _orgHdr  = document.getElementById('print-org-header');
+        var _logoEl  = document.getElementById('print-org-logo');
+        var _descEl  = document.getElementById('print-org-desc');
+        var _teamEl  = document.getElementById('print-team-name');
+        var _branding = e.data.branding;
+        if (_branding && _orgHdr) {
+          if (_branding.logo && _logoEl) {
+            _logoEl.src = '/static/' + _branding.logo;
+            _logoEl.style.display = '';
+          }
+          if (_descEl) _descEl.textContent = _branding.description || '';
+          if (_teamEl && _branding.type === 'org' && _branding.teamTitle) {
+            _teamEl.textContent = 'Team: ' + _branding.teamTitle;
+            _teamEl.style.display = '';
+          }
+          _orgHdr.style.display = 'flex';
+        }
+
+        // Compact charts for print — shrink chart areas and resize ECharts instances
+        var _savedHeights = _compactChartsForPrint();
+
+        // Print the live iframe exactly as it appears — all interactive state preserved.
+        // Requires allow-modals on the parent's sandbox attribute.
+        var _grid = document.getElementById('chart-grid');
+        document.documentElement.style.overflowY = 'visible';
+        document.body.style.overflowY = 'visible';
+        try {
+          var cw = Math.max(_grid.scrollWidth, document.documentElement.scrollWidth);
+          var ch = Math.max(_grid.scrollHeight, document.documentElement.scrollHeight);
+          var _ps = document.createElement('style');
+          _ps.textContent = '@page { size: ' + cw + 'px ' + ch + 'px; margin: 0.3cm; }';
+          document.head.appendChild(_ps);
+        } catch(ex) {}
+        if (window.parent !== window) {
+          window.parent.postMessage({ type: 'echarts-print-ready' }, '*');
+        }
+        window.print();
+        if (window.parent !== window) {
+          window.parent.postMessage({ type: 'echarts-afterprint' }, '*');
+        }
+        document.documentElement.style.overflowY = '';
+        document.body.style.overflowY = '';
+
+        // Restore chart heights to pre-print dimensions
+        _restoreChartsAfterPrint(_savedHeights);
+
+        // Hide branding header after print to restore live view state
+        if (_orgHdr) { _orgHdr.style.display = 'none'; }
+        if (_logoEl) { _logoEl.style.display = 'none'; }
+        if (_teamEl) { _teamEl.style.display = 'none'; }
+      }
+    });
+
+    // Report content height to parent so it can resize the iframe (no inner scrollbar)
+    if (window.parent !== window) {
+      function _reportHeight() {
+        window.parent.postMessage(
+          { type: 'echarts-height', height: document.body.scrollHeight },
+          '*'
+        );
+      }
+      // Fire whenever the chart grid grows (charts load asynchronously)
+      new ResizeObserver(_reportHeight).observe(document.getElementById('chart-grid'));
+    }
+
+    // ── print=1: auto-trigger print dialog after charts load (used by Export → PDF)
+    (function() {
+      var params = new URLSearchParams(window.location.search);
+      if (params.get('print') !== '1') return;
+      // Restore normal overflow so all chart content is visible when printing
+      document.documentElement.style.overflowY = 'visible';
+      document.body.style.overflowY = 'visible';
+      // Wait for charts to render before triggering print
+      var _grid = document.getElementById('chart-grid');
+      var _printed = false;
+      function _doPrint() {
+        if (_printed) return;
+        _printed = true;
+
+        // Compact charts for a tighter PDF layout
+        _compactChartsForPrint();
+
+        // Size the @page to exactly the rendered content so there is no gray
+        // space below and no clipping. Charts like Leaflet maps are initialised
+        // at screen dimensions and won't auto-resize, so we fit the page to the
+        // content rather than the content to the page.
+        var _pageStyle = null;
+        try {
+          var cw = Math.max(_grid.scrollWidth,  document.documentElement.scrollWidth);
+          var ch = Math.max(_grid.scrollHeight, document.documentElement.scrollHeight);
+          _pageStyle = document.createElement('style');
+          _pageStyle.textContent = '@page { size: ' + cw + 'px ' + ch + 'px; margin: 0.3cm; }';
+          document.head.appendChild(_pageStyle);
+        } catch(e) {}
+
+        // Notify parent that print is about to happen
+        if (window.parent !== window) {
+          window.parent.postMessage({ type: 'echarts-print-ready' }, '*');
+        }
+        window.print();
+        // Notify parent that the print dialog has closed so it can clean up
+        if (window.parent !== window) {
+          window.parent.postMessage({ type: 'echarts-afterprint' }, '*');
+        }
+
+        // Remove the injected page-size rule after print
+        if (_pageStyle && _pageStyle.parentNode) {
+          _pageStyle.parentNode.removeChild(_pageStyle);
+        }
+      }
+      // Fire after ResizeObserver settles (charts have rendered) — give an extra 1.5s buffer
+      var _timer = null;
+      new ResizeObserver(function() {
+        clearTimeout(_timer);
+        _timer = setTimeout(_doPrint, 1500);
+      }).observe(_grid);
+      // Hard fallback: print after 8s regardless
+      setTimeout(_doPrint, 8000);
+    })();
+
+    // ── test_mode: capture console errors and report to parent via postMessage
+    (function() {
+      var params = new URLSearchParams(window.location.search);
+      if (params.get('test_mode') !== '1') return;
+      if (window.parent === window) return;
+
+      var _errors = [];
+
+      window.onerror = function(msg, src, line, col, err) {
+        var entry = { type: 'error', message: String(msg), source: (src || '') + ':' + (line || '') };
+        _errors.push(entry);
+        window.parent.postMessage({ type: 'echarts-error', message: entry.message, source: entry.source }, '*');
+      };
+
+      window.addEventListener('unhandledrejection', function(e) {
+        var msg = e.reason ? String(e.reason) : 'Unhandled promise rejection';
+        _errors.push({ type: 'rejection', message: msg });
+        window.parent.postMessage({ type: 'echarts-error', message: msg, source: 'unhandledrejection' }, '*');
+      });
+
+      var _origConsoleError = console.error;
+      console.error = function() {
+        var msg = Array.from(arguments).map(String).join(' ');
+        _errors.push({ type: 'console.error', message: msg });
+        window.parent.postMessage({ type: 'echarts-console-error', message: msg }, '*');
+        _origConsoleError.apply(console, arguments);
+      };
+
+      // After charts have had time to render, signal completion
+      window.addEventListener('load', function() {
+        setTimeout(function() {
+          window.parent.postMessage({
+            type:        'echarts-test-done',
+            error_count: _errors.length,
+            errors:      _errors
+          }, '*');
+        }, 3000);
+      });
+    })();
+  </script>
+  <script src="{{ url_for('static', filename='dashboard_builder/charts.js') }}?v=20261007a"></script>
+  <!-- dashboard-level filter controls. Loaded after charts.js so
+       queryAndRender / DASHBOARD_BASE / DASHBOARD_STATE are defined. -->
+  <script src="{{ url_for('static', filename='dashboard_builder/dashboard_filters.js') }}?v=20260713a"></script>
+  <script nonce="{{ csp_nonce }}">
+    document.addEventListener('DOMContentLoaded', async () => {
+      const dashboardId = {{ dashboard_id | tojson }};
+      const titleEl = document.getElementById('view-dash-title');
+      const grid    = document.getElementById('chart-grid');
+
+      try {
+        const res  = await fetch(DASHBOARD_BASE + 'api/dashboards/' + encodeURIComponent(dashboardId));
+        const data = await res.json();
+
+        if (data.error) {
+          titleEl.textContent = 'Error: ' + data.error;
+          return;
+        }
+
+        titleEl.textContent = data.title || 'Dashboard';
+        DASHBOARD_STATE.id                = data.id;
+        DASHBOARD_STATE.title             = data.title;
+        DASHBOARD_STATE.global_date_range = data.global_date_range || null;
+        // hydrate dashboard-level filters. Both DASHBOARD_STATE.filters
+        // (read by dashboard_filters.js for strip rendering + popovers) and
+        // window.DASHBOARD_FILTERS (read by _withExtraFilters / trends caller
+        // when DASHBOARD_STATE isn't shaped like a builder state) point at the
+        // same array so per-DV-match re-query and query-body injection both
+        // work in the viewer.
+        DASHBOARD_STATE.filters = Array.isArray(data.filters) ? data.filters : [];
+        window.DASHBOARD_FILTERS = DASHBOARD_STATE.filters;
+        // restore this device's saved filter selections over the
+        // author's defaults, before any chart query runs. Viewer-only; no-op in
+        // the builder. Safe if the function isn't defined (older cached JS).
+        if (typeof hydrateViewerFilterSelections === 'function') hydrateViewerFilterSelections();
+
+        // first-look "syncing" banner. Rendered above the chart
+        // grid for dashboards materialised from a per-connector template
+        // during onboarding step 7, while the initial import backfill is
+        // still in flight. The banner is removed as soon as any chart
+        // reports non-empty data (see chart-rendered listener below), and
+        // as a hard fallback also auto-hides after 60 minutes from
+        // first_look_created_at so a connection whose import never
+        // produces data doesn't leave a permanent banner.
+        if (data.first_look === true) {
+          // flag read by charts.js to render the "Syncing…"
+          // placeholder in metric tiles on their first empty render.
+          // Set before any chart starts rendering.
+          window.__FIRST_LOOK_DASHBOARD = true;
+          const banner = document.createElement('div');
+          banner.className = 'first-look-syncing-banner';
+          banner.id = 'first-look-syncing-banner';
+          banner.innerHTML = `
+            <span class="fl-spinner" aria-hidden="true"></span>
+            <span>
+              Data is still syncing — your charts will populate as the first
+              import completes. This usually finishes within a few minutes.
+            </span>
+          `;
+          grid.parentNode.insertBefore(banner, grid);
+          window.__FIRST_LOOK_BANNER = banner;
+          // TTL fallback: 60 minutes from first_look_created_at.
+          const createdAt = data.first_look_created_at
+            ? Date.parse(data.first_look_created_at)
+            : NaN;
+          if (!isNaN(createdAt)) {
+            const elapsed = Date.now() - createdAt;
+            const ttlMs = 60 * 60 * 1000;
+            const remaining = ttlMs - elapsed;
+            if (remaining <= 0) {
+              banner.remove();
+              window.__FIRST_LOOK_BANNER = null;
+            } else {
+              setTimeout(() => {
+                if (window.__FIRST_LOOK_BANNER) {
+                  window.__FIRST_LOOK_BANNER.remove();
+                  window.__FIRST_LOOK_BANNER = null;
+                }
+              }, remaining);
+            }
+          }
+          // Auto-dismiss when any chart reports non-empty data. charts.js
+          // dispatches a 'chart-rendered' event on document with detail
+          // ``{chartId, hasData}`` after each successful render.
+          document.addEventListener('chart-rendered', (ev) => {
+            if (!window.__FIRST_LOOK_BANNER) return;
+            if (ev && ev.detail && ev.detail.hasData) {
+              window.__FIRST_LOOK_BANNER.remove();
+              window.__FIRST_LOOK_BANNER = null;
+            }
+          });
+
+          // top-right sync pill. Polls the backfill-progress
+          // endpoint every 5s, shows the connector name + live %, and
+          // hides on succeeded / chart-rendered hasData / 60-min TTL.
+          // The pill is purely informational; chart data lands via the
+          // existing per-chart queries (the pill does not push data).
+          const pill = document.createElement('div');
+          pill.className = 'first-look-sync-pill';
+          pill.id = 'first-look-sync-pill';
+          pill.setAttribute('role', 'status');
+          pill.setAttribute('aria-live', 'polite');
+          pill.dataset.pollUrl = '/onboarding/api/backfill-progress';
+          pill.dataset.pollInterval = '5000';
+          pill.tabIndex = 0;
+          pill.innerHTML = `
+            <span class="fl-spinner" aria-hidden="true"></span>
+            <span id="first-look-sync-pill-label">Syncing…</span>
+          `;
+          document.body.appendChild(pill);
+          window.__FIRST_LOOK_PILL = pill;
+
+          let pillTimer = null;
+          // follow-up — ceiling on 404 (no_progress) responses
+          // so the pill doesn't spin forever when the kickoff bailed
+          // (e.g. cluster lock held, importer Popen failed, ES outage).
+          // Counts consecutive 404s; resets on any 200. ~12 polls at
+          // 5s each = 60s — enough headroom for a slow Popen start
+          // but well under the user's patience for a stuck spinner.
+          let consecutive404 = 0;
+          const MAX_404_BEFORE_HIDE = 12;
+          const hidePill = (cls) => {
+            if (!window.__FIRST_LOOK_PILL) return;
+            if (cls) {
+              window.__FIRST_LOOK_PILL.classList.add(cls);
+              // Leave the failed pill visible briefly so the user sees
+              // the error before it disappears.
+              setTimeout(() => {
+                if (window.__FIRST_LOOK_PILL) {
+                  window.__FIRST_LOOK_PILL.hidden = true;
+                  window.__FIRST_LOOK_PILL.remove();
+                  window.__FIRST_LOOK_PILL = null;
+                }
+              }, 5000);
+              return;
+            }
+            window.__FIRST_LOOK_PILL.hidden = true;
+            window.__FIRST_LOOK_PILL.remove();
+            window.__FIRST_LOOK_PILL = null;
+            if (pillTimer) {
+              clearInterval(pillTimer);
+              pillTimer = null;
+            }
+          };
+
+          const updatePill = (progress) => {
+            if (!window.__FIRST_LOOK_PILL) return;
+            const labelEl = document.getElementById('first-look-sync-pill-label');
+            if (!labelEl) return;
+            const name = progress.connector_name || 'Backfill';
+            const totalDays = progress.days_total || 0;
+            const pct = (typeof progress.percent === 'number') ? progress.percent : 0;
+            labelEl.textContent = totalDays > 0
+              ? (name + ' · ' + totalDays + 'd backfill ' + pct + '%')
+              : (name + ' · Syncing…');
+          };
+
+          const pollPill = () => {
+            if (!window.__FIRST_LOOK_PILL) return;
+            fetch(pill.dataset.pollUrl, {
+              credentials: 'same-origin',
+              cache: 'no-store',
+            })
+              .then((r) => {
+                if (r.status === 200) {
+                  consecutive404 = 0;
+                  return r.json().then((p) => {
+                    updatePill(p);
+                    if (p.status === 'succeeded') {
+                      hidePill();
+                    } else if (p.status === 'failed' || p.status === 'stale') {
+                      // follow-up STALE-001: 'stale' is a
+                      // synthetic status from the API when a pending
+                      // doc's importer has gone dark. Treat it the
+                      // same as 'failed' so the user sees an error
+                      // pill instead of a frozen percentage.
+                      const labelEl = document.getElementById('first-look-sync-pill-label');
+                      if (labelEl) labelEl.textContent = (p.connector_name || 'Backfill') + ' · Sync failed';
+                      hidePill('is-failed');
+                    }
+                  });
+                }
+                // 404 (no progress doc) — usually means the user
+                // landed before the importer wrote its first doc, so
+                // we keep polling. follow-up: after
+                // MAX_404_BEFORE_HIDE consecutive 404s (~60s) the
+                // kickoff almost certainly bailed before Popen and
+                // no doc is ever coming; hide the pill so the user
+                // isn't watching a frozen spinner forever.
+                if (r.status === 404) {
+                  consecutive404 += 1;
+                  if (consecutive404 >= MAX_404_BEFORE_HIDE) {
+                    hidePill();
+                  }
+                }
+              })
+              .catch(() => { /* keep polling on transient errors */ });
+          };
+
+          pollPill();
+          pillTimer = setInterval(pollPill, parseInt(pill.dataset.pollInterval, 10));
+
+          // The pill also disappears the moment any chart reports
+          // non-empty data — same trigger as the banner, since at
+          // that point the dashboard is no longer "empty + syncing"
+          // from the user's perspective.
+          document.addEventListener('chart-rendered', (ev) => {
+            if (!window.__FIRST_LOOK_PILL) return;
+            if (ev && ev.detail && ev.detail.hasData) {
+              hidePill();
+            }
+          });
+        }
+
+        const charts = Array.isArray(data.charts)
+          ? data.charts
+          : Object.values(data.charts || {});
+
+        charts.forEach(cfg => {
+          // Apply statistic override from the DEAM dashboard statistics filter
+          if (cfg.chart_type === 'leaflet_map' && window.DASHBOARD_MAP_STATISTIC) {
+            cfg.map_statistic = window.DASHBOARD_MAP_STATISTIC;
+          }
+          // Apply show_labels override from the DEAM dashboard toolbar toggle
+          if (cfg.chart_type === 'leaflet_map' && window.DASHBOARD_MAP_SHOW_LABELS !== null) {
+            cfg.show_labels = window.DASHBOARD_MAP_SHOW_LABELS;
+          }
+          DASHBOARD_STATE.charts[cfg.chart_id] = cfg;
+          // Apply initial visibility override from URL param (used by PDF print iframe)
+          const _initVis = window.INITIAL_CHART_VISIBILITY && window.INITIAL_CHART_VISIBILITY[cfg.chart_id];
+          console.log('[visibility] chart_id:', cfg.chart_id, 'initVis:', JSON.stringify(_initVis));
+          if (_initVis) {
+            cfg.display_toggles = Object.assign({}, _initVis);
+          }
+          const slot = document.createElement('div');
+          slot.className = `chart-slot chart-type-${cfg.chart_type}`;
+          slot.id = `slot-${cfg.chart_id}`;
+
+          if (cfg.width)  slot.style.width  = cfg.width;
+          if (cfg.height && cfg.chart_type !== 'grouped_table' && cfg.chart_type !== 'canva' && cfg.chart_type !== 'report') slot.style.height = cfg.height;
+
+          if (cfg.chart_type === 'report') {
+            slot.innerHTML = `
+              <div class="chart-render-area" id="chart-${escHtml(cfg.chart_id)}" style="padding:0;"></div>
+            `;
+          } else if (cfg.chart_type === 'canva') {
+            slot.innerHTML = `
+              <div class="chart-render-area" id="chart-${escHtml(cfg.chart_id)}" style="padding:0;"></div>
+            `;
+          } else if (cfg.chart_type === 'grouped_table') {
+            slot.innerHTML = `
+              <div class="chart-render-area" id="chart-${escHtml(cfg.chart_id)}" style="padding:0;"></div>
+            `;
+          } else {
+            const showLegend = cfg.chart_type !== 'metric' && cfg.chart_type !== 'trend_line';
+            slot.innerHTML = `
+              <div class="chart-slot-header">
+                <span class="chart-title">${escHtml(cfg.title)}</span>
+              </div>
+              <div class="chart-render-area" id="chart-${escHtml(cfg.chart_id)}"></div>
+              ${showLegend ? `<div id="legend-${escHtml(cfg.chart_id)}" class="chart-legend"></div>` : ''}
+            `;
+          }
+
+          grid.appendChild(slot);
+          // hide chart title bar by default. Legacy charts saved
+          // before this field default to hidden too — `cfg.hide_title !== false`
+          // treats undefined as true. Builders explicitly opt-in to a visible
+          // title via the Properties checkbox.
+          if (cfg.hide_title !== false) {
+            const hdr = slot.querySelector('.chart-slot-header');
+            if (hdr) hdr.style.display = 'none';
+          }
+          queryAndRender(cfg.chart_id);
+        });
+
+        // render the dashboard filter strip (read-only — no
+        // editor entry button). Each filter button's value-picker
+        // popover is interactive; selection changes call queryAndRender
+        // for matching-DV charts, same as in the builder.
+        if (typeof renderDashboardFilterStrip === 'function') {
+          renderDashboardFilterStrip();
+        }
+
+        // tell the parent the new dashboard has painted real
+        // content, so it can reveal the iframe + drop its loading overlay
+        // exactly when the new view is visible — instead of on a blind
+        // timer that let the OLD dashboard flash through. Fire once, on the
+        // first chart-rendered; for a chartless dashboard, fire on the next
+        // frame so the parent never waits forever.
+        if (window.parent !== window) {
+          let _contentReadySent = false;
+          const _signalContentReady = () => {
+            if (_contentReadySent) return;
+            _contentReadySent = true;
+            window.parent.postMessage({ type: 'echarts-content-ready' }, '*');
+          };
+          document.addEventListener('chart-rendered', _signalContentReady);
+          if (!charts.length) {
+            requestAnimationFrame(_signalContentReady);
+          } else {
+            // Fallback: if no chart ever dispatches chart-rendered (all
+            // empty / errored), still release the overlay so it can't hang.
+            setTimeout(_signalContentReady, 4000);
+          }
+        }
+
+      } catch (e) {
+        titleEl.textContent = 'Failed to load dashboard';
+        console.error('Dashboard viewer error:', e);
+        // release the parent overlay even on a hard failure.
+        if (window.parent !== window) {
+          window.parent.postMessage({ type: 'echarts-content-ready' }, '*');
+        }
+      }
+    });
+
+    // Expose current chart visibility state so the parent export modal can read it.
+    // Returns { chartId: { seriesName: true/false, ... }, ... }
+    window.getChartVisibilityState = function() {
+      const state = {};
+
+      // Primary: read DASHBOARD_STATE.display_toggles (updated by legendselectchanged events)
+      if (typeof DASHBOARD_STATE !== 'undefined') {
+        Object.entries(DASHBOARD_STATE.charts || {}).forEach(function([chartId, cfg]) {
+          const toggles = cfg.display_toggles;
+          if (toggles && Object.keys(toggles).length > 0) {
+            state[chartId] = Object.assign({}, toggles);
+          }
+        });
+      }
+
+      // Secondary: read custom HTML legend checkboxes directly — these are the boxes
+      // the user actually sees, so they are always authoritative.
+      document.querySelectorAll('[id^="legend-"] .chart-legend-item').forEach(function(item) {
+        const legEl = item.closest('[id^="legend-"]');
+        if (!legEl) return;
+        const chartId = legEl.id.replace(/^legend-/, '');
+        const name = item.dataset.name;
+        const cb   = item.querySelector('input[type="checkbox"]');
+        if (!name || !cb) return;
+        if (!state[chartId]) state[chartId] = {};
+        state[chartId][name] = cb.checked;
+      });
+
+      // Tertiary fallback: ECharts internal legend.selected (trend_line sidebar uses this)
+      if (typeof CHART_INSTANCES !== 'undefined') {
+        Object.entries(CHART_INSTANCES).forEach(function([chartId, chart]) {
+          if (state[chartId]) return; // already captured above
+          try {
+            const option = chart.getOption();
+            const legend = Array.isArray(option.legend) ? option.legend[0] : option.legend;
+            if (legend && legend.selected && Object.keys(legend.selected).length > 0) {
+              state[chartId] = Object.assign({}, legend.selected);
+            }
+          } catch(e) {}
+        });
+      }
+
+      return state;
+    };
+
+    // Save checkbox state to sessionStorage whenever the page navigates away (time-range reload).
+    // This is the most reliable mechanism: it fires before the iframe unloads, so the new page
+    // can read it from sessionStorage without needing cross-frame contentWindow access.
+    window.addEventListener('pagehide', function() {
+      try {
+        const state = window.getChartVisibilityState();
+        if (DASHBOARD_STATE.id && Object.keys(state).length > 0) {
+          sessionStorage.setItem('chart-visibility-' + DASHBOARD_STATE.id, JSON.stringify(state));
+          console.log('[visibility] pagehide saved state for', DASHBOARD_STATE.id, JSON.stringify(state).substring(0, 200));
+        }
+      } catch(e) {}
+    });
+  </script>
+</body>
+</html>

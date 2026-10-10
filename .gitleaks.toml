@@ -1,0 +1,37 @@
+# Gitleaks configuration
+# https://github.com/gitleaks/gitleaks
+
+title = "digital-engagement-dashboard gitleaks config"
+
+[extend]
+# Use the default ruleset as a base
+useDefault = true
+
+[[allowlists]]
+description = "Documentation placeholder examples"
+paths = [
+  "bin/python/password_reset/README.md",
+  "bin/python/import_scripts/google_ads/QUICKSTART-SERVICE-ACCOUNT.md",
+  "docs/youtube-ads-import-implementation.md",
+]
+
+[[allowlists]]
+description = "Test fixtures with realistic-looking but fake values"
+paths = [
+  "tests/services/test_connector_wizard_service.py",
+]
+
+[[allowlists]]
+description = "Known placeholder values used in documentation examples and test fixtures"
+regexes = [
+  "elastic:PASSWORD",
+  "abcd1234EFGH5678",
+  "GOCSPX-abc123xyz",
+  "TempPass123xyz45",
+]
+
+[[allowlists]]
+description = "Non-secret identifiers whose name contains 'key' (Elasticsearch runtime-field name for the  dedup measure)"
+regexes = [
+  "dedup_key_2",
+]

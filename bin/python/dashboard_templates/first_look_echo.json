@@ -1,0 +1,180 @@
+{
+  "connector_id": "echo",
+  "created_at": "2026-06-12T14:52:20.686339+00:00",
+  "description": "First-look Echo dashboard.",
+  "echarts_config": {
+    "charts": [
+      {
+        "aggregation": "value_count",
+        "chart_id": "fl_echo_conversations_total",
+        "chart_type": "metric",
+        "data_view": "*_echo_conversations",
+        "filters": [
+          {
+            "field": "team_esid",
+            "op": "match_phrase_any",
+            "value": [
+              "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+            ]
+          }
+        ],
+        "hide_title": false,
+        "position": {
+          "col": 0,
+          "h": 2,
+          "row": 0,
+          "w": 3
+        },
+        "title": "Conversations (last 30d)",
+        "y_fields": [
+          "spiritual_conversation"
+        ]
+      },
+      {
+        "aggregation": "sum",
+        "chart_id": "fl_echo_spiritual_total",
+        "chart_type": "metric",
+        "data_view": "*_echo_conversations",
+        "filters": [
+          {
+            "field": "team_esid",
+            "op": "match_phrase_any",
+            "value": [
+              "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+            ]
+          }
+        ],
+        "hide_title": false,
+        "position": {
+          "col": 3,
+          "h": 2,
+          "row": 0,
+          "w": 3
+        },
+        "title": "Spiritual conversations",
+        "y_fields": [
+          "spiritual_conversation"
+        ]
+      },
+      {
+        "aggregation": "sum",
+        "chart_id": "fl_echo_multiplier_total",
+        "chart_type": "metric",
+        "data_view": "*_echo_conversations",
+        "filters": [
+          {
+            "field": "team_esid",
+            "op": "match_phrase_any",
+            "value": [
+              "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+            ]
+          }
+        ],
+        "hide_title": false,
+        "position": {
+          "col": 6,
+          "h": 2,
+          "row": 0,
+          "w": 3
+        },
+        "title": "Connected with multiplier",
+        "y_fields": [
+          "multiplier"
+        ]
+      },
+      {
+        "aggregation": "sum",
+        "chart_id": "fl_echo_no_response_total",
+        "chart_type": "metric",
+        "data_view": "*_echo_conversations",
+        "filters": [
+          {
+            "field": "team_esid",
+            "op": "match_phrase_any",
+            "value": [
+              "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+            ]
+          }
+        ],
+        "hide_title": false,
+        "position": {
+          "col": 9,
+          "h": 2,
+          "row": 0,
+          "w": 3
+        },
+        "title": "No response",
+        "y_fields": [
+          "no_response"
+        ]
+      },
+      {
+        "aggregation": "sum",
+        "chart_id": "fl_echo_outcomes_daily",
+        "chart_type": "bar",
+        "data_view": "*_echo_conversations",
+        "filters": [
+          {
+            "field": "team_esid",
+            "op": "match_phrase_any",
+            "value": [
+              "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+            ]
+          }
+        ],
+        "hide_title": false,
+        "position": {
+          "col": 0,
+          "h": 4,
+          "row": 2,
+          "w": 6
+        },
+        "title": "Daily spiritual conversations",
+        "x_field": "kibana_date",
+        "y_fields": [
+          "spiritual_conversation"
+        ]
+      },
+      {
+        "aggregation": "sum",
+        "chart_id": "fl_echo_multiplier_daily",
+        "chart_type": "bar",
+        "data_view": "*_echo_conversations",
+        "filters": [
+          {
+            "field": "team_esid",
+            "op": "match_phrase_any",
+            "value": [
+              "__FIRST_LOOK_ASSET_PLACEHOLDER__"
+            ]
+          }
+        ],
+        "hide_title": false,
+        "position": {
+          "col": 6,
+          "h": 4,
+          "row": 2,
+          "w": 6
+        },
+        "title": "Daily multiplier connections",
+        "x_field": "kibana_date",
+        "y_fields": [
+          "multiplier"
+        ]
+      }
+    ],
+    "filters": [],
+    "global_date_range": null
+  },
+  "frozen_from_dashboard_id": null,
+  "menu_position": 0,
+  "menu_title": "Echo",
+  "name": "Echo — Conversations & outcomes, last 30d",
+  "pack_id": "echo",
+  "placeholder_field": "team_esid",
+  "required_sources": [
+    "echo"
+  ],
+  "template_id": "first_look_echo",
+  "updated_at": "2026-06-12T14:52:20.686339+00:00"
+}

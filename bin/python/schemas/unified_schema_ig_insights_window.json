@@ -1,0 +1,19 @@
+{
+  "_comment": "windowed deduplicated Instagram reach. One doc per (profile, window): reach is IG's own range-deduplicated 'Accounts reached' total (metric_type=total_value), NOT a sum of daily rows. insight_window_start/end mirror the FB window contract that dedup_routing.available_windows reads. IG's API caps since..until at 30 days, so no window here ever spans more.",
+  "properties": {
+    "@timestamp": { "type": "date" },
+    "insight_window_start": { "type": "keyword" },
+    "insight_window_end": { "type": "keyword" },
+    "grain": { "type": "keyword" },
+    "reach": { "type": "long" },
+    "ig_user_id": { "type": "keyword" },
+    "ig_user_username": { "type": "keyword" },
+    "ig_user_name": { "type": "text" },
+    "team_title": { "type": "keyword" },
+    "team_esid": { "type": "keyword" },
+    "team_site_url": { "type": "keyword" },
+    "team_country": { "type": "keyword" },
+    "team_city": { "type": "keyword" },
+    "organization_title": { "type": "keyword" }
+  }
+}
