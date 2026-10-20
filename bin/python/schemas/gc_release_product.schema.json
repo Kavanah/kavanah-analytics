@@ -1,0 +1,207 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data.global.church/schema/digital-engagement-release-product/0.1.0",
+  "title": "Digital engagement release product",
+  "description": "A partner-published release of aggregate digital-engagement counts at country x month grain, with its manifest. One file per publish. Produced by the partner's own export job (reference implementation: Kavanah Analytics, bin/python/asset_management/jobs/export_release_product.py); validated and loaded by gc-kavanah-bridge into <https://data.global.church/kavanah/digital-engagement/>. Nothing below country grain is representable in this schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["manifest", "rows"],
+  "properties": {
+    "manifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "grain",
+        "suppression",
+        "sources",
+        "countriesIncluded",
+        "organization",
+        "displayName",
+        "period",
+        "agreement",
+        "generatedAt",
+        "generatedBy"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "const": "0.1.0",
+          "description": "Version of this schema the file was written against."
+        },
+        "grain": {
+          "type": "string",
+          "const": "country x month",
+          "description": "The grain in words. Country is the only geography; month is the only period. A consumer that finds any other value refuses the file."
+        },
+        "suppression": {
+          "type": "string",
+          "const": "none",
+          "description": "No small-cell suppression and no restricted-country list at country grain (decided 2026-10-19): a country-level count of digital conversations locates no one. The partner's own choice of which teams and countries to include is the control."
+        },
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "enum": ["echo", "google_ads", "ga4", "youtube", "facebook_ads"] },
+          "description": "The partner sources the counts were computed from. Chatwoot is never listed: its conversations carry no seeker country. Touchpoints and active come from Echo only."
+        },
+        "countriesIncluded": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/iso2" },
+          "description": "The ISO 3166-1 alpha-2 codes the workspace owner chose to publish. Every row's countryIso2 is in this list. A country present in the partner's data but not in this list was left out by the owner and is simply absent; consumers render it as 'no contribution reported', never as 'withheld'."
+        },
+        "organization": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["orgUri", "partnerOrgId"],
+          "properties": {
+            "orgUri": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https://data\\.global\\.church/org/[a-z0-9][a-z0-9-]*$",
+              "description": "The Global.Church directory URI of the contributing organisation (https://data.global.church/org/<slug>). Every cell is attributed to it."
+            },
+            "partnerOrgId": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The partner system's own identifier for the organisation (Kavanah: the de_asset_organization document id). Carried for the partner's reconciliation; never rendered."
+            }
+          }
+        },
+        "displayName": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["named"],
+          "properties": {
+            "named": {
+              "type": "boolean",
+              "description": "Whether the organisation chose to be named on the map. false renders as 'a contributing ministry'."
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "description": "The name to show when named is true. Required when named is true; must be absent when named is false."
+            }
+          },
+          "if": { "properties": { "named": { "const": true } } },
+          "then": { "required": ["name"] },
+          "else": { "not": { "required": ["name"] } }
+        },
+        "period": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["firstMonth", "lastMonth"],
+          "properties": {
+            "firstMonth": { "$ref": "#/$defs/month", "description": "Earliest month covered by the release (inclusive)." },
+            "lastMonth": { "$ref": "#/$defs/month", "description": "Latest month covered by the release (inclusive)." }
+          }
+        },
+        "agreement": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "version", "sha256", "acceptedAt", "acceptedByRole"],
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]*$",
+              "description": "Stable identifier of the data-sharing agreement text (e.g. digital-aggregates)."
+            },
+            "version": {
+              "type": "string",
+              "pattern": "^[0-9]+\\.[0-9]+(\\.[0-9]+)?$",
+              "description": "Version of the agreement text that was accepted."
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$",
+              "description": "SHA-256 (hex, lower-case) of the agreement text as accepted, so the receiver can prove which words were agreed to."
+            },
+            "acceptedAt": {
+              "type": "string",
+              "format": "date-time",
+              "description": "When the workspace owner accepted the agreement (ISO 8601, UTC)."
+            },
+            "acceptedByRole": {
+              "type": "string",
+              "const": "workspace-owner",
+              "description": "The role in the partner system that accepted. No person is named in the release."
+            }
+          }
+        },
+        "unattributed": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["exposed", "interactions"],
+          "properties": {
+            "exposed": { "type": "integer", "minimum": 0, "description": "Impressions that could not be placed in a country: Facebook ad sets targeting more than one country (the importer holds no per-country delivery breakdown). Never split across countries." },
+            "interactions": { "type": "integer", "minimum": 0, "description": "Clicks that could not be placed in a country, same rule." }
+          },
+          "description": "Counts the exporter could not assign to a single country. Reported so the owner and the receiver know what is missing from the rows; never distributed."
+        },
+        "generatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the export job produced the file (ISO 8601, UTC)."
+        },
+        "generatedBy": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The producing software and version, e.g. 'kavanah-analytics export_release_product 0.1.0'."
+        },
+        "testData": {
+          "type": "boolean",
+          "description": "true when the release is synthetic (a demo or test workspace). Consumers label such releases as test data everywhere they appear."
+        }
+      }
+    },
+    "rows": {
+      "type": "array",
+      "description": "One row per team label x country x month. Rows for the same team, country and month must not repeat.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["team", "countryIso2", "countryIso3", "month", "exposed", "interactions", "touchpoints", "active"],
+        "properties": {
+          "team": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The partner's team label under the organisation. Carried for provenance; confidential, never rendered."
+          },
+          "countryIso2": { "$ref": "#/$defs/iso2", "description": "ISO 3166-1 alpha-2 of the seeker's or audience's country (Echo contact_country_iso2; Google Ads geo_country_code; GA4 country; YouTube country; Facebook single-country ad-set targeting). Never the team's own country." },
+          "countryIso3": { "$ref": "#/$defs/iso3", "description": "ISO 3166-1 alpha-3 of the same country, written beside alpha-2 because the receiver's country registry (HIS ROG) is keyed differently from ISO-2 and resolves on alpha-3." },
+          "month": { "$ref": "#/$defs/month" },
+          "exposed": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "People exposed: Google Ads impressions (google_ads.impressions by geo_country_code) + YouTube views (youtube_analytics country_breakdown.views) + Facebook impressions from ad sets targeting exactly this one country (fb_insights.insight_impressions). Ad-platform figures with cross-account overlap; not de-duplicated across sources."
+          },
+          "interactions": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Interactions: Google Ads clicks (google_ads.clicks) + GA4 sessions (ga_metrics geo_device.sessions) + Facebook clicks from single-country ad sets (fb_insights.insight_clicks)."
+          },
+          "touchpoints": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Conversations started: Echo conversations counted by the seeker's contact_country_iso2 and the month of the conversation (kibana_date, the ISO day the importer derives from Echo's created_at; @timestamp is the import instant in every importer and is never used). Echo only; Chatwoot carries no seeker country."
+          },
+          "active": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Echo conversations in the same cell flagged spiritual_conversation or multiplier (connected with a multiplier). Echo only. Always <= touchpoints."
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "iso2": { "type": "string", "pattern": "^[A-Z]{2}$" },
+    "iso3": { "type": "string", "pattern": "^[A-Z]{3}$" },
+    "month": { "type": "string", "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$", "description": "Calendar month, YYYY-MM, UTC." }
+  }
+}

@@ -28,6 +28,33 @@
     },
     "auto_join_email_domains": {
       "type": "keyword"
+    },
+    "gc_gateway_url": {
+      "type": "keyword"
+    },
+    "gc_partner_api_key": {
+      "type": "keyword"
+    },
+    "gc_org_uri": {
+      "type": "keyword"
+    },
+    "gc_display_named": {
+      "type": "boolean"
+    },
+    "gc_display_name": {
+      "type": "keyword"
+    },
+    "gc_agreement_id": {
+      "type": "keyword"
+    },
+    "gc_agreement_version": {
+      "type": "keyword"
+    },
+    "gc_agreement_sha256": {
+      "type": "keyword"
+    },
+    "gc_agreement_accepted_at": {
+      "type": "date"
     }
   }
 }
