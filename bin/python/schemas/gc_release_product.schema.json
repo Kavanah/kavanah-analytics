@@ -2,10 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://data.global.church/schema/digital-engagement-release-product/0.1.0",
   "title": "Digital engagement release product",
-  "description": "A partner-published release of aggregate digital-engagement counts at country x month grain, with its manifest. One file per publish. Produced by the partner's own export job (reference implementation: Kavanah Analytics, bin/python/asset_management/jobs/export_release_product.py); validated and loaded by gc-kavanah-bridge into <https://data.global.church/kavanah/digital-engagement/>. Nothing below country grain is representable in this schema.",
+  "description": "A partner-published release of aggregate digital-engagement counts at country x month grain, with its manifest. One file per publish. Produced by the partner's own export job (reference implementation: Kavanah Analytics); validated and loaded by gc-kavanah-bridge into <https://data.global.church/kavanah/digital-engagement/>. Row fields carry an x-gc-term annotation naming the ontology term each maps to; nothing partner-specific lives on the rows. Nothing below country grain is representable in this schema.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["manifest", "rows"],
+  "required": [
+    "manifest",
+    "rows"
+  ],
   "properties": {
     "manifest": {
       "type": "object",
@@ -27,7 +30,7 @@
         "schemaVersion": {
           "type": "string",
           "const": "0.1.0",
-          "description": "Version of this schema the file was written against."
+          "description": "Version of this schema the file was written against; the receiver accepts a named set of versions and refuses the rest."
         },
         "grain": {
           "type": "string",
@@ -43,20 +46,48 @@
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
-          "items": { "type": "string", "enum": ["echo", "google_ads", "ga4", "youtube", "facebook_ads"] },
-          "description": "The partner sources the counts were computed from. Chatwoot is never listed: its conversations carry no seeker country. Touchpoints and active come from Echo only."
+          "description": "The partner sources the counts were computed from, one descriptor per source. Source particulars live here, never on the row fields: which sources feed which count, and what each source cannot place in a country.",
+          "items": {
+            "oneOf": [
+              {
+                "const": "echo",
+                "description": "Echo conversations, keyed on the seeker's country and the conversation's activity month. The only source of touchpoints and active."
+              },
+              {
+                "const": "google_ads",
+                "description": "Google Ads geographic impressions and clicks by country (feeds exposed and interactions)."
+              },
+              {
+                "const": "ga4",
+                "description": "Google Analytics 4 sessions by country (feeds interactions)."
+              },
+              {
+                "const": "youtube",
+                "description": "YouTube Analytics views by country (feeds exposed)."
+              },
+              {
+                "const": "facebook_ads",
+                "description": "Facebook Ads impressions and clicks from ad sets targeting exactly one country (feeds exposed and interactions); ad sets targeting several countries are not split and are reported under manifest.unattributed."
+              }
+            ]
+          }
         },
         "countriesIncluded": {
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
-          "items": { "$ref": "#/$defs/iso2" },
+          "items": {
+            "$ref": "#/$defs/iso2"
+          },
           "description": "The ISO 3166-1 alpha-2 codes the workspace owner chose to publish. Every row's countryIso2 is in this list. A country present in the partner's data but not in this list was left out by the owner and is simply absent; consumers render it as 'no contribution reported', never as 'withheld'."
         },
         "organization": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["orgUri", "partnerOrgId"],
+          "required": [
+            "orgUri",
+            "partnerOrgId"
+          ],
           "properties": {
             "orgUri": {
               "type": "string",
@@ -74,7 +105,9 @@
         "displayName": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["named"],
+          "required": [
+            "named"
+          ],
           "properties": {
             "named": {
               "type": "boolean",
@@ -87,23 +120,54 @@
               "description": "The name to show when named is true. Required when named is true; must be absent when named is false."
             }
           },
-          "if": { "properties": { "named": { "const": true } } },
-          "then": { "required": ["name"] },
-          "else": { "not": { "required": ["name"] } }
+          "if": {
+            "properties": {
+              "named": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "name"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "name"
+              ]
+            }
+          }
         },
         "period": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["firstMonth", "lastMonth"],
+          "required": [
+            "firstMonth",
+            "lastMonth"
+          ],
           "properties": {
-            "firstMonth": { "$ref": "#/$defs/month", "description": "Earliest month covered by the release (inclusive)." },
-            "lastMonth": { "$ref": "#/$defs/month", "description": "Latest month covered by the release (inclusive)." }
+            "firstMonth": {
+              "$ref": "#/$defs/month",
+              "description": "Earliest month covered by the release (inclusive)."
+            },
+            "lastMonth": {
+              "$ref": "#/$defs/month",
+              "description": "Latest month covered by the release (inclusive)."
+            }
           }
         },
         "agreement": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["id", "version", "sha256", "acceptedAt", "acceptedByRole"],
+          "required": [
+            "id",
+            "version",
+            "sha256",
+            "acceptedAt",
+            "acceptedByRole"
+          ],
           "properties": {
             "id": {
               "type": "string",
@@ -135,12 +199,23 @@
         "unattributed": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["exposed", "interactions"],
+          "required": [
+            "exposed",
+            "interactions"
+          ],
           "properties": {
-            "exposed": { "type": "integer", "minimum": 0, "description": "Impressions that could not be placed in a country: Facebook ad sets targeting more than one country (the importer holds no per-country delivery breakdown). Never split across countries." },
-            "interactions": { "type": "integer", "minimum": 0, "description": "Clicks that could not be placed in a country, same rule." }
+            "exposed": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Impressions that could not be placed in a country: Facebook ad sets targeting more than one country (the importer holds no per-country delivery breakdown). Never split across countries."
+            },
+            "interactions": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Clicks that could not be placed in a country, same rule."
+            }
           },
-          "description": "Counts the exporter could not assign to a single country. Reported so the owner and the receiver know what is missing from the rows; never distributed."
+          "description": "Counts the exporter could not assign to a single country (for example an ad set targeting several countries). Reported so the owner and the receiver know what is missing from the rows; never distributed across countries."
         },
         "generatedAt": {
           "type": "string",
@@ -164,44 +239,79 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["team", "countryIso2", "countryIso3", "month", "exposed", "interactions", "touchpoints", "active"],
+        "required": [
+          "team",
+          "countryIso2",
+          "countryIso3",
+          "month",
+          "exposed",
+          "interactions",
+          "touchpoints",
+          "active"
+        ],
         "properties": {
           "team": {
             "type": "string",
             "minLength": 1,
             "maxLength": 200,
-            "description": "The partner's team label under the organisation. Carried for provenance; confidential, never rendered."
+            "description": "The partner's team label under the organisation. Carried for provenance; confidential, never rendered.",
+            "x-gc-term": "gc:partnerTeamLabel (confidential, never rendered)"
           },
-          "countryIso2": { "$ref": "#/$defs/iso2", "description": "ISO 3166-1 alpha-2 of the seeker's or audience's country (Echo contact_country_iso2; Google Ads geo_country_code; GA4 country; YouTube country; Facebook single-country ad-set targeting). Never the team's own country." },
-          "countryIso3": { "$ref": "#/$defs/iso3", "description": "ISO 3166-1 alpha-3 of the same country, written beside alpha-2 because the receiver's country registry (HIS ROG) is keyed differently from ISO-2 and resolves on alpha-3." },
-          "month": { "$ref": "#/$defs/month" },
+          "countryIso2": {
+            "$ref": "#/$defs/iso2",
+            "description": "ISO 3166-1 alpha-2 of the country the audience or seeker was in. Never the publishing team's own country.",
+            "x-gc-term": "at:countryCode (resolved to the HIS ROG code on load)"
+          },
+          "countryIso3": {
+            "$ref": "#/$defs/iso3",
+            "description": "ISO 3166-1 alpha-3 of the same country, written beside alpha-2 because the receiver's country registry (HIS ROG) is keyed differently from ISO-2 and resolves on alpha-3.",
+            "x-gc-term": "at:countryCode (the join key used to resolve the HIS ROG code)"
+          },
+          "month": {
+            "$ref": "#/$defs/month",
+            "x-gc-term": "at:validDuring → at:TimeInterval (at:intervalStart / at:intervalEnd)"
+          },
           "exposed": {
             "type": "integer",
             "minimum": 0,
-            "description": "People exposed: Google Ads impressions (google_ads.impressions by geo_country_code) + YouTube views (youtube_analytics country_breakdown.views) + Facebook impressions from ad sets targeting exactly this one country (fb_insights.insight_impressions). Ad-platform figures with cross-account overlap; not de-duplicated across sources."
+            "description": "People exposed to content in the cell: impressions and views, summed over the exposure sources listed in manifest.sources. Ad-platform figures with cross-account overlap; not de-duplicated across sources.",
+            "x-gc-term": "c153:exposedCount"
           },
           "interactions": {
             "type": "integer",
             "minimum": 0,
-            "description": "Interactions: Google Ads clicks (google_ads.clicks) + GA4 sessions (ga_metrics geo_device.sessions) + Facebook clicks from single-country ad sets (fb_insights.insight_clicks)."
+            "description": "Interactions with content in the cell: clicks and sessions, summed over the interaction sources listed in manifest.sources.",
+            "x-gc-term": "c153:interactionCount"
           },
           "touchpoints": {
             "type": "integer",
             "minimum": 0,
-            "description": "Conversations started: Echo conversations counted by the seeker's contact_country_iso2 and the month of the conversation (kibana_date, the ISO day the importer derives from Echo's created_at; @timestamp is the import instant in every importer and is never used). Echo only; Chatwoot carries no seeker country."
+            "description": "Conversations started in the cell, keyed on the seeker's country, from the conversation sources listed in manifest.sources.",
+            "x-gc-term": "c153:touchpointCount"
           },
           "active": {
             "type": "integer",
             "minimum": 0,
-            "description": "Echo conversations in the same cell flagged spiritual_conversation or multiplier (connected with a multiplier). Echo only. Always <= touchpoints."
+            "description": "Conversations in the cell with a spiritual-conversation or multiplier outcome. Always <= touchpoints.",
+            "x-gc-term": "c153:activeCount"
           }
         }
       }
     }
   },
   "$defs": {
-    "iso2": { "type": "string", "pattern": "^[A-Z]{2}$" },
-    "iso3": { "type": "string", "pattern": "^[A-Z]{3}$" },
-    "month": { "type": "string", "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$", "description": "Calendar month, YYYY-MM, UTC." }
+    "iso2": {
+      "type": "string",
+      "pattern": "^[A-Z]{2}$"
+    },
+    "iso3": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "month": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$",
+      "description": "Calendar month, YYYY-MM, UTC."
+    }
   }
 }
