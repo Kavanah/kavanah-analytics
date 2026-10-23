@@ -346,6 +346,13 @@ def test_a_key_that_is_not_stored_encrypted_or_no_longer_decrypts_is_refused_and
     assert routes._error_detail({}) == ""
 
 
+@pytest.mark.test_id("GC-PUB-013")
+def test_the_page_says_the_team_title_leaves_with_each_row(app, store, owner):
+    client, _ = owner
+    page = client.get(URL).get_data(as_text=True)
+    assert "Each row carries the team" in page and "rename the team before publishing" in page
+
+
 @pytest.mark.test_id("GC-PUB-012")
 def test_a_superuser_may_view_but_not_publish(app, store):
     """The manifest records ``acceptedByRole: workspace-owner``; a superuser who
