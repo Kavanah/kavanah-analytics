@@ -55,6 +55,15 @@
     },
     "gc_agreement_accepted_at": {
       "type": "date"
+    },
+    "gc_last_release_id": {
+      "type": "keyword"
+    },
+    "gc_last_release_hash": {
+      "type": "keyword"
+    },
+    "gc_last_published_at": {
+      "type": "date"
     }
   }
 }
