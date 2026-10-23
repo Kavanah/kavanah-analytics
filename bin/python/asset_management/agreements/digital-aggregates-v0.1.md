@@ -2,8 +2,6 @@
 
 **Agreement id:** `digital-aggregates` · **Version:** 0.1 · **Status: DRAFT — placeholder for counsel.** This text is the working draft Global.Church uses to build and test the publish flow. It is not a legal agreement until counsel has reviewed it and a signed version replaces it. Every release published under it carries the SHA-256 of these exact words, so a later version changes the hash and prior releases stay anchored to the text they accepted.
 
-Modeled on the UUPG+ data-sharing covenant (`apps/uupg-tracker/data-sharing-covenant.md`): what crosses each boundary, at what grain, to whom.
-
 ---
 
 ## 1. Parties
