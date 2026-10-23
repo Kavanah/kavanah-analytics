@@ -1,0 +1,185 @@
+{% extends "base_v2.html" %}
+
+{% block title %}Publish to Global.Church - Kavanah Analytics Management Console{% endblock %}
+
+{% block extra_css %}
+<style>
+    .pg-container { max-width: 1100px; }
+    .pg-card { background:var(--cs-bg-primary); border:1px solid var(--cs-border-default); border-radius:var(--cs-radius-m); box-shadow:var(--cs-shadow-xs); padding:var(--cs-space-xl); margin-bottom:var(--cs-space-m); }
+    .pg-card h1 { font-size:var(--cs-font-size-xl); font-weight:var(--cs-font-weight-bold); color:var(--cs-text-heading); margin:0; }
+    .pg-sub { font-size:13px; color:var(--cs-text-secondary); margin:4px 0 0; }
+    .pg-section { margin-top:22px; }
+    .pg-label { display:block; font-size:11.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--cs-text-secondary); margin-bottom:8px; }
+    .pg-label small { font-weight:500; text-transform:none; letter-spacing:0; }
+    .pg-check { display:flex; align-items:center; gap:10px; font-size:14px; color:var(--cs-text-heading); padding:4px 0; }
+    .pg-check input { width:16px; height:16px; }
+    .pg-chips { display:flex; flex-wrap:wrap; gap:8px; }
+    .pg-chip { display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:600; padding:5px 12px; border:1px solid var(--cs-border-default); border-radius:16px; background:#f7f8fa; color:var(--cs-text-secondary); cursor:pointer; user-select:none; }
+    .pg-chip input { margin:0; }
+    .pg-chip.on { border-color:#0972d3; background:#f0f7ff; color:#0f4c81; }
+    .pg-chip.off span { text-decoration:line-through; }
+    .pg-note { font-size:12.5px; color:var(--cs-text-secondary); margin-top:8px; }
+    .pg-two { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    @media (max-width: 760px) { .pg-two { grid-template-columns:1fr; } }
+    .pg-panel { border:1px solid var(--cs-border-default); border-radius:8px; padding:14px 16px; background:#fafbfc; font-size:13.5px; color:var(--cs-text-heading); }
+    .pg-panel b { display:block; margin-bottom:6px; }
+    .pg-panel ul { margin:6px 0 0 18px; padding:0; }
+    .pg-table { width:100%; border-collapse:collapse; font-size:13px; margin-top:10px; }
+    .pg-table th, .pg-table td { text-align:right; padding:4px 8px; border-bottom:1px solid #ecf0f1; }
+    .pg-table th:first-child, .pg-table td:first-child { text-align:left; }
+    .pg-radio { display:flex; align-items:center; gap:10px; font-size:14px; padding:4px 0; }
+    .pg-name { margin:6px 0 0 26px; max-width:420px; }
+    .pg-agreement { border:1px solid var(--cs-border-default); border-radius:8px; padding:12px 16px; max-height:320px; overflow:auto; background:#fff; font-size:13px; line-height:1.5; }
+    .pg-agreement h2, .pg-agreement h3 { font-size:14px; margin:14px 0 6px; }
+    .pg-agreement table { border-collapse:collapse; font-size:12.5px; }
+    .pg-agreement th, .pg-agreement td { border:1px solid #e3e6ea; padding:4px 8px; text-align:left; vertical-align:top; }
+    .pg-hash { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px; color:var(--cs-text-secondary); }
+    .pg-alert { border-radius:6px; padding:10px 14px; font-size:13.5px; margin-bottom:14px; }
+    .pg-alert-error { background:#fef2f2; border:1px solid #fecaca; color:#991b1b; }
+    .pg-alert-ok { background:#ecfdf5; border:1px solid #a7f3d0; color:#065f46; }
+    .pg-alert-warn { background:#fffbeb; border:1px solid #fde68a; color:#92400e; }
+    .pg-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:24px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pg-container">
+  <form method="post" action="{{ url_for('publish_global_church.publish', org_esid=org_esid) }}" id="pg-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="pg-card">
+      <h1>Publish to Global.Church</h1>
+      <p class="pg-sub">{{ org_title }} &middot; workspace owner</p>
+
+      {% if error %}
+      <div class="pg-alert pg-alert-error" style="margin-top:14px;" role="alert">{{ error }}</div>
+      {% endif %}
+      {% if published %}
+      <div class="pg-alert pg-alert-ok" style="margin-top:14px;" role="status">
+        Published {{ published.summary.rows }} country-month rows for {{ published.summary.countries_with_rows }} countries
+        ({{ published.summary.first_month }} to {{ published.summary.last_month }}).
+        Release <span class="pg-hash">{{ published.receipt.gc_last_release_id }}</span>
+        &middot; manifest hash <span class="pg-hash">{{ published.receipt.gc_last_release_hash }}</span>
+        &middot; {{ published.receipt.gc_last_published_at }}.
+      </div>
+      {% elif last_release.id %}
+      <p class="pg-note">Last published {{ last_release.at }} &middot; release <span class="pg-hash">{{ last_release.id }}</span>. A new release replaces its earlier cells.</p>
+      {% endif %}
+      {% if settings_problems %}
+      <div class="pg-alert pg-alert-warn" style="margin-top:14px;">
+        This organisation is not set up to publish yet: {{ settings_problems|join('; ') }}.
+        Set the Global.Church fields on <a href="{{ cancel_url }}">the organisation's settings</a> first.
+      </div>
+      {% endif %}
+
+      <div class="pg-section">
+        <span class="pg-label">Teams to include</span>
+        {% for t in teams %}
+        <label class="pg-check"><input type="checkbox" name="teams" value="{{ t.esid }}" {% if t.selected %}checked{% endif %} data-refresh> {{ t.title }}</label>
+        {% else %}
+        <p class="pg-note">No teams belong to this organisation.</p>
+        {% endfor %}
+      </div>
+
+      <div class="pg-section">
+        <span class="pg-label">Countries to include <small>&mdash; from the selected teams' data, last 24 months</small></span>
+        <div class="pg-chips">
+          {% for c in countries %}
+          <label class="pg-chip {{ 'on' if c.selected else 'off' }}"><input type="checkbox" name="countries" value="{{ c.iso2 }}" {% if c.selected %}checked{% endif %} data-refresh><span>{{ c.name }}</span></label>
+          {% else %}
+          <span class="pg-note">No country-keyed data found for the selected teams.</span>
+          {% endfor %}
+        </div>
+        <p class="pg-note">A country you leave out shows on the map as "no contribution reported", the same as a country no one reaches.</p>
+      </div>
+
+      <div class="pg-section pg-two">
+        <div>
+          <span class="pg-label">What leaves</span>
+          <div class="pg-panel">
+            <b>Per country, per month</b>
+            exposed (ad reach) &middot; interactions &middot; touchpoints (conversations started) &middot; active (spiritual conversations, multipliers)
+            &mdash; plus the manifest: sources, countries included, the name choice, the agreement accepted.<br>
+            nothing below country &middot; no names, no messages, no campaigns<br>
+            <span class="pg-note">Each row carries the team's title as it appears here. If a team's title would identify a person, rename the team before publishing.</span>
+            {% if preview %}
+            <table class="pg-table">
+              <thead><tr><th>Country</th><th>Exposed</th><th>Interactions</th><th>Touchpoints</th><th>Active</th></tr></thead>
+              <tbody>
+              {% for c in countries if c.selected %}
+              {% set t = c.totals or {'exposed': 0, 'interactions': 0, 'touchpoints': 0, 'active': 0} %}
+              <tr><td>{{ c.name }}</td><td>{{ '{:,}'.format(t.exposed) }}</td><td>{{ '{:,}'.format(t.interactions) }}</td><td>{{ '{:,}'.format(t.touchpoints) }}</td><td>{{ '{:,}'.format(t.active) }}</td></tr>
+              {% endfor %}
+              </tbody>
+            </table>
+            <p class="pg-note">{{ preview.cells }} country-month cells, {{ preview.first_month }} to {{ preview.last_month }}; sources: {{ preview.sources|join(', ') }}.</p>
+            {% if preview.unattributed_exposed or preview.unattributed_interactions %}
+            <p class="pg-note">{{ '{:,}'.format(preview.unattributed_exposed) }} Facebook impressions and {{ '{:,}'.format(preview.unattributed_interactions) }} clicks could not be placed in a country (ad sets targeting several countries or worldwide) and are reported as a total, not by country.</p>
+            {% endif %}
+            {% elif preview_error %}
+            <p class="pg-note">Preview unavailable: {{ preview_error }}</p>
+            {% else %}
+            <p class="pg-note">Select at least one team and one country to preview the counts.</p>
+            {% endif %}
+          </div>
+        </div>
+        <div>
+          <span class="pg-label">What stays in Kavanah</span>
+          <div class="pg-panel">
+            <b>Everything else</b>
+            conversations &middot; contacts and groups &middot; responder names &middot; campaigns, ad sets, creatives, spend &middot; regions and cities &middot; platform account identifiers &middot; anything below country
+          </div>
+        </div>
+      </div>
+
+      <div class="pg-section">
+        <span class="pg-label">Name shown on the map</span>
+        <label class="pg-radio"><input type="radio" name="named" value="no" {% if not named %}checked{% endif %}> "a contributing ministry"</label>
+        <label class="pg-radio"><input type="radio" name="named" value="yes" {% if named %}checked{% endif %}> Named:</label>
+        <input class="cs-input pg-name" type="text" name="display_name" value="{{ display_name }}" maxlength="120" placeholder="Name shown on the map">
+        <p class="pg-note">While few ministries contribute, an unnamed contribution is thin cover: someone who knows which ministries run digital outreach in a country could guess. Decide which countries to include with that in mind (agreement, section 5).</p>
+      </div>
+
+      <div class="pg-section">
+        <span class="pg-label">Agreement <small>&mdash; {{ agreement_id }} v{{ agreement_version }}</small></span>
+        <div class="pg-agreement">{{ agreement_html|safe }}</div>
+        <p class="pg-note">SHA-256 of this text, computed now: <span class="pg-hash" id="pg-agreement-sha">{{ agreement_sha256 }}</span></p>
+        <label class="pg-check" style="margin-top:8px;"><input type="checkbox" name="accept" value="yes"> I accept the Global.Church data-sharing agreement v{{ agreement_version }} on behalf of {{ org_title }}</label>
+        <p class="pg-note">The acceptance and its hash travel with every release. Withdraw any time by writing to the contact in the agreement.</p>
+        <label class="pg-check"><input type="checkbox" name="test_data" value="yes" {% if test_data %}checked{% endif %}> This is a demo or test workspace (the release is labelled as test data)</label>
+      </div>
+
+      <div class="pg-actions">
+        <a class="cs-btn cs-btn-normal" href="{{ cancel_url }}">Cancel</a>
+        <button class="cs-btn cs-btn-primary" type="submit" {% if settings_problems or not preview %}disabled{% endif %}>
+          {% if preview %}Publish {{ selected_countries|length }} {{ 'country' if selected_countries|length == 1 else 'countries' }} &middot; {{ preview.cells }} cells{% else %}Publish{% endif %}
+        </button>
+      </div>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  // Changing a team or country reloads the preview (a GET with the selection);
+  // the name choice and the acceptance are only ever sent with the POST.
+  (function () {
+    var form = document.getElementById("pg-form");
+    if (!form) return;
+    form.querySelectorAll("input[data-refresh]").forEach(function (box) {
+      box.addEventListener("change", function () {
+        var params = new URLSearchParams();
+        form.querySelectorAll("input[name=teams]:checked").forEach(function (b) { params.append("teams", b.value); });
+        form.querySelectorAll("input[name=countries]:checked").forEach(function (b) { params.append("countries", b.value); });
+        var named = form.querySelector("input[name=named]:checked");
+        if (named) params.append("named", named.value);
+        params.append("display_name", form.querySelector("input[name=display_name]").value);
+        // an empty list must still be sent, so the server knows the selection is "none"
+        if (!params.has("teams")) params.append("teams", "");
+        if (!params.has("countries")) params.append("countries", "");
+        window.location.search = "?" + params.toString();
+      });
+    });
+  })();
+</script>
+{% endblock %}

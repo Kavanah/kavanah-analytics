@@ -699,6 +699,44 @@ ASSET_CONFIGS = {
                     "outlook.com, etc.) are ignored even if listed."
                 ),
             },
+            # Publish to Global.Church — the three settings the publish
+            # dialog (/publish-global-church/<org_esid>) needs. The dialog
+            # writes the agreement acceptance and the last-release receipt
+            # onto the same document itself; those fields are not edited
+            # here and survive an edit through the {**existing, **data}
+            # merge on save.
+            {
+                "name": "gc_section",
+                "label": "Publish to Global.Church",
+                "type": "section_divider",
+            },
+            {
+                "name": "gc_gateway_url",
+                "label": "Global.Church gateway URL",
+                "type": "url",
+                "pattern": r"https://.*",
+                "superuser_only": True,
+                "help_text": (
+                    "https origin of the receiving gateway. The host must be on the GC_GATEWAY_HOSTS allowlist "
+                    "(default api.global.church) or the publish is refused."
+                ),
+            },
+            {
+                "name": "gc_partner_api_key",
+                "label": "Global.Church partner API key",
+                "type": "password",
+                "encrypted": True,
+                "superuser_only": True,
+                "help_text": "Issued by Global.Church to this organisation. Encrypted when saved.",
+                "help_text_edit": "Encrypted value is shown. To replace it, enter the new key.",
+            },
+            {
+                "name": "gc_org_uri",
+                "label": "Global.Church directory URI",
+                "type": "url",
+                "pattern": r"https://data\.global\.church/org/[a-z0-9][a-z0-9-]*",
+                "help_text": "The organisation's directory identifier, of the form https://data.global.church/org/<slug>.",
+            },
         ],
     },
     # ============================================
