@@ -41,6 +41,17 @@ def _get(doc: dict, path: str) -> Any:
     return cur
 
 
+def _values(doc: dict, field: str) -> set:
+    """A field's values as Elasticsearch matches them: an array field matches
+    on any element (``term`` / ``terms`` on ``organization_esid: [esid]``)."""
+    v = _get(doc, field)
+    if v is None:
+        return set()
+    if isinstance(v, list):
+        return {x for x in v if x is not None}
+    return {v}
+
+
 def matches(doc: dict, query: dict | None) -> bool:
     if not query:
         return True
@@ -65,10 +76,10 @@ def matches(doc: dict, query: dict | None) -> bool:
     if kind == "term":
         ((f, v),) = spec.items()
         v = v.get("value") if isinstance(v, dict) else v
-        return _get(doc, f) == v
+        return v in _values(doc, f)
     if kind == "terms":
         ((f, vs),) = spec.items()
-        return _get(doc, f) in set(vs)
+        return bool(_values(doc, f) & set(vs))
     if kind == "exists":
         return _get(doc, spec["field"]) is not None
     if kind == "range":
@@ -316,7 +327,8 @@ def team_doc(team_esid: str, org_esid: str = ORG_ESID) -> dict:
         "workspace_title": "Riverside Media workspace",
         "workspace_esid": "riverside-media-ws",
         "organization_title": ORG_TITLE,
-        "organization_esid": org_esid,
+        # the Teams form stores the organisation as a list (multi_select + store_esid)
+        "organization_esid": [org_esid],
         "team_country_text": "Pakistan",
         "team_country_esids": ["PK"],
         "team_language": "pashto" if team_esid == TEAM_PASHTO else "urdu",

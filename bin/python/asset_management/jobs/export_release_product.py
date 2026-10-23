@@ -489,6 +489,17 @@ def load_organization(es, org_esid: str) -> dict:
     return (doc or {}).get("_source") or {}
 
 
+def organization_refs(raw) -> list[str]:
+    """The organisation esids a team document names. The Teams form stores
+    ``organization_esid`` as a list (a multi-select with ``store_esid``); older
+    and hand-written documents carry a bare string. Both shapes are read."""
+    if isinstance(raw, str):
+        return [raw] if raw else []
+    if isinstance(raw, list):
+        return [str(v) for v in raw if v]
+    return []
+
+
 def load_teams(es, org_esid: str, team_esids: list[str]) -> list[tuple[str, str]]:
     """``[(team_esid, team_title)]`` for the selected teams; refuses any team outside the organisation."""
     teams: list[tuple[str, str]] = []
@@ -498,7 +509,7 @@ def load_teams(es, org_esid: str, team_esids: list[str]) -> list[tuple[str, str]
         except Exception as exc:  # noqa: BLE001
             raise ExportRefused(f"team {esid!r} not found in {TEAMS_INDEX} ({type(exc).__name__})") from exc
         src = (doc or {}).get("_source") or {}
-        if str(src.get("organization_esid") or "") != org_esid:
+        if org_esid not in organization_refs(src.get("organization_esid")):
             raise ExportRefused(f"team {esid!r} does not belong to organisation {org_esid!r}; refusing")
         title = str(src.get("team_title") or "").strip()
         if not title:

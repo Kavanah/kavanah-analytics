@@ -213,6 +213,23 @@ def test_only_selected_countries_and_teams_leave_and_unselected_ones_are_simply_
     )
 
 
+@pytest.mark.test_id("GC-EXP-019")
+def test_organisation_membership_is_read_from_a_list_or_a_bare_string(es):
+    """Production team documents carry ``organization_esid`` as a list (the Teams
+    form is a multi-select); older documents carry a string. Both must match,
+    and a list that names several organisations matches each of them."""
+    assert job.organization_refs([s.ORG_ESID]) == [s.ORG_ESID]
+    assert job.organization_refs(s.ORG_ESID) == [s.ORG_ESID]
+    assert job.organization_refs(["other-org", s.ORG_ESID]) == ["other-org", s.ORG_ESID]
+    assert job.organization_refs(None) == [] and job.organization_refs("") == [] and job.organization_refs([None]) == []
+    es.add(job.TEAMS_INDEX, "team-string-shape", {**s.team_doc(s.TEAM_URDU), "organization_esid": s.ORG_ESID})
+    es.add(job.TEAMS_INDEX, "team-two-orgs", {**s.team_doc(s.TEAM_URDU), "organization_esid": ["other-org", s.ORG_ESID]})
+    teams = job.load_teams(es, s.ORG_ESID, [s.TEAM_PASHTO, "team-string-shape", "team-two-orgs"])
+    assert [esid for esid, _ in teams] == [s.TEAM_PASHTO, "team-string-shape", "team-two-orgs"]
+    with pytest.raises(job.ExportRefused, match="does not belong"):
+        job.load_teams(es, "other-org", [s.TEAM_PASHTO])
+
+
 @pytest.mark.test_id("GC-EXP-008")
 def test_a_team_outside_the_organisation_is_refused(es):
     with pytest.raises(job.ExportRefused, match="does not belong"):
