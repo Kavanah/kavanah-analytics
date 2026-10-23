@@ -10,10 +10,24 @@ visualizations and exporting reports for your team.
 
 .. note::
 
-   Your data stays private. Every query and result is processed entirely
-   within your Kavanah Analytics environment — nothing is sent to external
-   servers. The AI models run within the same secure infrastructure, so your
-   data never leaves your instance.
+   **What the assistant sees.** The Data Explorer is powered by Anthropic's
+   Claude. To answer a question, Kavanah sends Claude your question, the
+   names and types of the fields in the data views you selected, and the
+   query results it needs to work out the answer (counts, aggregations and
+   the matching records at the grain of your data). Anthropic processes
+   that request under its commercial API terms and does not use it to train
+   its models.
+
+   The assistant only reads data from the organizations and teams you can
+   already see in Kavanah, and it cannot change anything. Seeker names,
+   contact details and other personal fields are never imported into
+   Kavanah in the first place, so they are never part of what the assistant
+   sees. Kavanah keeps a log of each question, the model used and the token
+   counts for usage accounting.
+
+   Self-hosted installations can point the Data Explorer at AWS Bedrock
+   instead (``nlq.provider`` in ``master-config.yaml``), in which case the
+   request stays inside your own AWS account.
 
 Access the Data Explorer
 ------------------------
