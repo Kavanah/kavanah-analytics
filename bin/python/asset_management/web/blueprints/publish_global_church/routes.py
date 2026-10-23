@@ -15,9 +15,10 @@ Publishing does four things, in order, and stops at the first that fails:
    the time, the display-name choice);
 2. builds the release with ``jobs.export_release_product.build_release``
    (the same job the CLI runs — it refuses rather than producing an invalid
-   file) and writes it to a temporary path, as ``--apply`` would;
-3. POSTs the file as JSON to ``<gc_gateway_url>/v0/partners/releases`` with
-   ``Authorization: Bearer <gc_partner_api_key>``;
+   file); nothing is written to disk;
+3. POSTs the release as JSON to ``<gc_gateway_url>/v0/partners/releases``
+   with ``Authorization: Bearer <gc_partner_api_key>``, never following a
+   redirect;
 4. on 202 records the receipt (release id, manifest hash, time) on the
    organisation record. A refusal from the gateway records nothing.
 
@@ -26,13 +27,19 @@ Entitlement: workspace-owner only. The gate is
 workspace>, WORKSPACE_DELETE)`` — the one permission ``workspace_owner``
 holds that ``workspace_admin`` does not, checked on the organisation's own
 workspace so an owner elsewhere cannot publish a foreign organisation's
-data. A superuser passes. The manifest's ``acceptedByRole`` is
-``workspace-owner`` for the same reason.
+data. A superuser may open the page but may not publish unless they are
+also the owner: the manifest records ``acceptedByRole: workspace-owner``,
+and that must be true of whoever accepted.
 
-The gateway URL is an administrator-set organisation setting; it must be
-``https`` and carry no credentials, or the publish is refused before any
-request is made. The partner key is stored encrypted by the organisation
-form and decrypted only to build the request header; it is never rendered
+The gateway URL and the partner key are superuser-only organisation
+settings. The URL must be ``https``, carry no credentials, and name a host
+on the allowlist ``GC_GATEWAY_HOSTS`` (environment, comma-separated;
+default ``api.global.church``) — otherwise the publish is refused before
+any request is made, so nobody who can edit an organisation can redirect
+the release and its bearer key elsewhere. The partner key must be stored
+encrypted (the form encrypts it); a value that is not a Fernet token, or one
+that no longer decrypts, is refused and the owner is asked to re-enter it.
+The key is decrypted only to build the request header; it is never rendered
 and never logged.
 """
 
@@ -43,13 +50,13 @@ import html
 import logging
 import os
 import re
-import shutil
-import tempfile
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
 import requests
 from flask import abort, render_template, request, session, url_for
+
+from cryptography.fernet import InvalidToken
 
 from asset_management.jobs import export_release_product as job
 from lib.encryption import decrypt, looks_like_fernet_token
@@ -69,6 +76,9 @@ except ImportError:
 
 RELEASES_PATH = "/v0/partners/releases"
 REQUEST_TIMEOUT_SECONDS = 60
+GATEWAY_HOSTS_ENV = "GC_GATEWAY_HOSTS"
+DEFAULT_GATEWAY_HOSTS = "api.global.church"
+ERROR_DETAIL_MAX = 200
 
 SETTING_GATEWAY_URL = "gc_gateway_url"
 SETTING_API_KEY = "gc_partner_api_key"
@@ -164,26 +174,30 @@ def render_agreement_html(text: str) -> str:
 
 
 def _caller_is_owner(org: dict) -> bool:
-    roles = session.get("roles") or []
-    if "superuser" in roles:
-        return True
     username = session.get("username") or ""
     workspace_esid = str(org.get("workspace_esid") or "")
     return PermissionResolver.has_permission_in_workspace(username, workspace_esid, Permission.WORKSPACE_DELETE)
 
 
-def _load_org_for_owner(org_esid: str):
-    """``(org, None)`` when the caller owns the organisation's workspace;
-    ``(None, response)`` otherwise. The 403 is returned directly (not raised)
-    so it stays a 403 instead of the page-level redirect."""
+def _caller_is_superuser() -> bool:
+    return "superuser" in (session.get("roles") or [])
+
+
+def _load_org_for_owner(org_esid: str, *, allow_superuser: bool):
+    """``(org, None)`` when the caller owns the organisation's workspace (or,
+    for the read-only page, is a superuser); ``(None, response)`` otherwise.
+    The 403 is returned directly (not raised) so it stays a 403 instead of
+    the page-level redirect."""
     if not _ESID_RE.match(org_esid or ""):
         abort(404)
     org = AssetService.get_by_id(job.ORG_INDEX, org_esid)
     if not org:
         abort(404)
-    if not _caller_is_owner(org):
+    if _caller_is_owner(org) or (allow_superuser and _caller_is_superuser()):
+        return org, None
+    if allow_superuser:
         return None, ("This page requires workspace-owner access for this organisation.", 403)
-    return org, None
+    return None, ("Publishing requires the workspace owner of this organisation; a superuser may view but not publish.", 403)
 
 
 # ── Reading the organisation's data (counts only) ────────────────────────────
@@ -287,8 +301,18 @@ def _preview(es, org_esid: str, team_esids: list[str], countries: list[str], now
 # ── Settings and the gateway ─────────────────────────────────────────────────
 
 
+def allowed_gateway_hosts() -> frozenset[str]:
+    """Hosts a release may be posted to: ``GC_GATEWAY_HOSTS`` (comma-separated),
+    default ``api.global.church``. Read at call time so a deployment can set it
+    without a restart of anything but the request."""
+    raw = os.environ.get(GATEWAY_HOSTS_ENV) or DEFAULT_GATEWAY_HOSTS
+    return frozenset(h.strip().lower() for h in raw.split(",") if h.strip())
+
+
 def gateway_url_ok(url: str) -> bool:
-    """Only an https origin with no credentials, query or fragment is accepted."""
+    """Only an https origin on an allowed host, with no credentials, query or
+    fragment, is accepted. The organisation setting cannot point the release
+    (and its bearer key) at an arbitrary server."""
     try:
         parts = urlsplit(url.strip())
     except ValueError:
@@ -296,6 +320,7 @@ def gateway_url_ok(url: str) -> bool:
     return (
         parts.scheme == "https"
         and bool(parts.hostname)
+        and parts.hostname.lower() in allowed_gateway_hosts()
         and parts.username is None
         and parts.password is None
         and not parts.query
@@ -304,12 +329,20 @@ def gateway_url_ok(url: str) -> bool:
 
 
 def _partner_key(org: dict) -> str:
+    """The decrypted partner key. A stored value that is not a Fernet token was
+    not written by the organisation form and is refused rather than sent; a
+    token that no longer decrypts (rotated or foreign key) is refused too."""
     stored = str(org.get(SETTING_API_KEY) or "").strip()
     if not stored:
-        return ""
-    if looks_like_fernet_token(stored):
+        raise PublishError("The partner API key is not set.")
+    if not looks_like_fernet_token(stored):
+        raise PublishError("The partner API key is not stored encrypted; re-enter it on the organisation's settings.")
+    try:
         return decrypt(stored)
-    return stored
+    except InvalidToken as exc:
+        raise PublishError(
+            "The stored partner API key cannot be decrypted; re-enter it on the organisation's settings."
+        ) from exc
 
 
 def check_settings(org: dict) -> list[str]:
@@ -319,7 +352,7 @@ def check_settings(org: dict) -> list[str]:
     if not url:
         problems.append("the gateway URL is not set")
     elif not gateway_url_ok(url):
-        problems.append("the gateway URL must be an https address with no credentials")
+        problems.append("the gateway URL must be an https address on an allowed gateway host, with no credentials")
     if not str(org.get(SETTING_API_KEY) or "").strip():
         problems.append("the partner API key is not set")
     if not str(org.get(job.SETTING_ORG_URI) or "").strip():
@@ -336,9 +369,12 @@ def post_release(gateway_url: str, api_key: str, release: dict) -> tuple[int, di
             json=release,
             headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json"},
             timeout=REQUEST_TIMEOUT_SECONDS,
+            allow_redirects=False,
         )
     except requests.RequestException as exc:
         raise PublishError(f"could not reach the gateway ({type(exc).__name__})") from exc
+    if 300 <= resp.status_code < 400:
+        raise PublishError(f"the gateway answered with a redirect (HTTP {resp.status_code}); refusing to follow it")
     try:
         body = resp.json()
     except ValueError:
@@ -352,6 +388,16 @@ def _write_org(org_esid: str, updates: dict) -> dict:
     if not AssetService.update(job.ORG_INDEX, org_esid, doc):
         raise PublishError("the organisation record could not be updated")
     return doc
+
+
+_CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def _error_detail(body: dict) -> str:
+    """The gateway's own message, bounded and stripped of control characters
+    before it is shown (it is third-party text)."""
+    detail = str(body.get("error") or body.get("message") or "").strip()
+    return _CONTROL_RE.sub(" ", detail)[:ERROR_DETAIL_MAX]
 
 
 def _now_iso() -> str:
@@ -388,7 +434,7 @@ def _page_state(es, org_esid: str, org: dict, args, *, default_all: bool) -> dic
     if selected_teams and selected_countries:
         try:
             preview = _preview(es, org_esid, selected_teams, selected_countries, now)
-        except job.ExportRefused as exc:
+        except (job.ExportRefused, ValueError) as exc:
             preview_error = str(exc)
     named_default = job._bool(org.get(job.SETTING_DISPLAY_NAMED))
     named = (args.get("named") == "yes") if "named" in args else named_default
@@ -434,7 +480,7 @@ def _render(state: dict, status: int = 200, **extra):
 
 @publish_global_church_bp.route("/<org_esid>", methods=["GET"])
 def dialog(org_esid: str):
-    org, denied = _load_org_for_owner(org_esid)
+    org, denied = _load_org_for_owner(org_esid, allow_superuser=True)
     if denied:
         return denied
     es = get_elasticsearch_client()
@@ -445,7 +491,7 @@ def dialog(org_esid: str):
 
 @publish_global_church_bp.route("/<org_esid>", methods=["POST"])
 def publish(org_esid: str):
-    org, denied = _load_org_for_owner(org_esid)
+    org, denied = _load_org_for_owner(org_esid, allow_superuser=False)
     if denied:
         return denied
     es = get_elasticsearch_client()
@@ -483,23 +529,17 @@ def publish(org_esid: str):
             },
         )
 
-        # 2. the release, built by the job and written as --apply would
+        # 2. the release, built by the job; nothing touches the disk
         try:
             release, counts = job.build_release(
                 es, org_esid=org_esid, team_esids=team_esids, countries=countries, test_data=state["test_data"]
             )
-        except job.ExportRefused as exc:
+        except (job.ExportRefused, ValueError) as exc:
             raise PublishError(f"The export refused: {exc}") from exc
-        tmp_dir = tempfile.mkdtemp(prefix="gc-release-")
-        try:
-            out_path = job.default_out_path(org_esid, release["manifest"]["period"]["lastMonth"], out_dir=tmp_dir)
-            job.write_release(release, out_path)
-            # 3. the one network call
-            status, body = post_release(str(org[SETTING_GATEWAY_URL]), _partner_key(org), release)
-        finally:
-            shutil.rmtree(tmp_dir, ignore_errors=True)
+        # 3. the one network call (the key is decrypted here and used only for the header)
+        status, body = post_release(str(org[SETTING_GATEWAY_URL]), _partner_key(org), release)
         if status != 202:
-            detail = str(body.get("error") or body.get("message") or "").strip()
+            detail = _error_detail(body)
             raise PublishError(f"The gateway refused the release (HTTP {status}{': ' + detail if detail else ''}).")
 
         # 4. the receipt

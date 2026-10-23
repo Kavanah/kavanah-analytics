@@ -24,7 +24,15 @@ from tests.jobs import support as s
 R = "asset_management.web.blueprints.publish_global_church.routes"
 URL = f"/publish-global-church/{s.ORG_ESID}"
 API_KEY = "kv_test_partner_key"
+# the shape of a Fernet token; ``decrypt`` is patched to return API_KEY
+API_KEY_TOKEN = "gAAAAA" + "B" * 100
 GATEWAY = "https://api.example.org"
+
+
+@pytest.fixture(autouse=True)
+def _test_gateway_host_is_allowed(monkeypatch):
+    """The fixture's gateway is on the allowlist; anything else is refused."""
+    monkeypatch.setenv(routes.GATEWAY_HOSTS_ENV, "api.example.org")
 
 
 @pytest.fixture(autouse=True)
@@ -63,11 +71,12 @@ def store(es):
                 return True
         return False
 
-    update(job.ORG_INDEX, s.ORG_ESID, {**get_by_id(job.ORG_INDEX, s.ORG_ESID), "gc_partner_api_key": API_KEY})
+    update(job.ORG_INDEX, s.ORG_ESID, {**get_by_id(job.ORG_INDEX, s.ORG_ESID), "gc_partner_api_key": API_KEY_TOKEN})
     with (
         mock.patch(f"{R}.get_elasticsearch_client", return_value=es),
         mock.patch(f"{R}.AssetService.get_by_id", side_effect=get_by_id),
         mock.patch(f"{R}.AssetService.update", side_effect=update) as upd,
+        mock.patch(f"{R}.decrypt", return_value=API_KEY),
     ):
         yield es, upd
 
@@ -269,8 +278,89 @@ def test_non_https_gateway_url_is_refused_before_any_request(app, store, owner):
     assert "gc_last_release_id" not in _org(es)
     assert routes.gateway_url_ok("https://api.example.org")
     assert routes.gateway_url_ok("https://api.example.org/")
+    assert routes.gateway_url_ok("https://API.example.org")
     for bad in ("http://api.example.org", "https://user:pw@api.example.org", "https://api.example.org/?x=1", "", "ftp://x"):
         assert not routes.gateway_url_ok(bad), bad
+
+
+@pytest.mark.test_id("GC-PUB-010")
+def test_gateway_host_must_be_on_the_allowlist_and_redirects_are_never_followed(app, store, owner, monkeypatch):
+    """Whoever can edit the organisation record must not be able to point the
+    release and its bearer key at a server of their choosing."""
+    es, _ = store
+    client, _ = owner
+    # the default allowlist is the production gateway alone
+    monkeypatch.delenv(routes.GATEWAY_HOSTS_ENV, raising=False)
+    assert routes.allowed_gateway_hosts() == frozenset({"api.global.church"})
+    assert routes.gateway_url_ok("https://api.global.church")
+    assert not routes.gateway_url_ok("https://api.example.org")
+    monkeypatch.setenv(routes.GATEWAY_HOSTS_ENV, " api.example.org , Staging.Example.org ")
+    assert routes.allowed_gateway_hosts() == frozenset({"api.example.org", "staging.example.org"})
+    # an https URL on a host outside the allowlist is refused before any request
+    es.docs[job.ORG_INDEX] = [
+        (i, {**d, "gc_gateway_url": "https://attacker.example.net"} if i == s.ORG_ESID else d)
+        for i, d in es.docs[job.ORG_INDEX]
+    ]
+    assert "allowed gateway host" in client.get(URL).get_data(as_text=True)
+    with _gateway() as post:
+        resp = client.post(URL, data=_publish_form())
+    assert resp.status_code == 400 and "allowed gateway host" in resp.get_data(as_text=True)
+    post.assert_not_called()
+    assert "gc_last_release_id" not in _org(es)
+    # a redirect from an allowed host is not followed: no receipt, the error names it
+    es.docs[job.ORG_INDEX] = [
+        (i, {**d, "gc_gateway_url": GATEWAY} if i == s.ORG_ESID else d) for i, d in es.docs[job.ORG_INDEX]
+    ]
+    with _gateway(status=302, body={}) as post:
+        resp = client.post(URL, data=_publish_form())
+    assert resp.status_code == 400 and "redirect (HTTP 302)" in resp.get_data(as_text=True)
+    assert post.call_args.kwargs["allow_redirects"] is False
+    assert "gc_last_release_id" not in _org(es)
+
+
+@pytest.mark.test_id("GC-PUB-011")
+def test_a_key_that_is_not_stored_encrypted_or_no_longer_decrypts_is_refused_and_nothing_is_sent(app, store, owner):
+    es, _ = store
+    client, _ = owner
+    es.docs[job.ORG_INDEX] = [
+        (i, {**d, "gc_partner_api_key": "plain-text-key"} if i == s.ORG_ESID else d) for i, d in es.docs[job.ORG_INDEX]
+    ]
+    with _gateway() as post:
+        resp = client.post(URL, data=_publish_form())
+    assert resp.status_code == 400
+    page = resp.get_data(as_text=True)
+    assert "not stored encrypted" in page and "plain-text-key" not in page
+    post.assert_not_called()
+    es.docs[job.ORG_INDEX] = [
+        (i, {**d, "gc_partner_api_key": API_KEY_TOKEN} if i == s.ORG_ESID else d) for i, d in es.docs[job.ORG_INDEX]
+    ]
+    with _gateway() as post, mock.patch(f"{R}.decrypt", side_effect=routes.InvalidToken()):
+        resp = client.post(URL, data=_publish_form())
+    assert resp.status_code == 400 and "cannot be decrypted" in resp.get_data(as_text=True)
+    post.assert_not_called()
+    assert "gc_last_release_id" not in _org(es)
+    # the gateway's own message is bounded and stripped of control characters before it is shown
+    long = "x" * 500 + "\x07bell"
+    assert routes._error_detail({"error": long}) == "x" * routes.ERROR_DETAIL_MAX
+    assert routes._error_detail({"message": "a\x00b\nc"}) == "a b c"
+    assert routes._error_detail({}) == ""
+
+
+@pytest.mark.test_id("GC-PUB-012")
+def test_a_superuser_may_view_but_not_publish(app, store):
+    """The manifest records ``acceptedByRole: workspace-owner``; a superuser who
+    is not the owner cannot make that true, so the POST is refused."""
+    es, upd = store
+    with mock.patch(f"{R}.PermissionResolver.has_permission_in_workspace", return_value=False):
+        c = _client(app, ["superuser"], username="rootuser")
+        assert c.get(URL).status_code == 200
+        with _gateway() as post:
+            resp = c.post(URL, data=_publish_form())
+    assert resp.status_code == 403
+    assert "a superuser may view but not publish" in resp.get_data(as_text=True)
+    post.assert_not_called()
+    upd.assert_not_called()
+    assert "gc_last_release_id" not in _org(es)
 
 
 @pytest.mark.test_id("GC-PUB-007")

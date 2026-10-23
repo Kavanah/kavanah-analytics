@@ -715,13 +715,18 @@ ASSET_CONFIGS = {
                 "label": "Global.Church gateway URL",
                 "type": "url",
                 "pattern": r"https://.*",
-                "help_text": "https origin of the receiving gateway (e.g. https://api.example.org). Must be https.",
+                "superuser_only": True,
+                "help_text": (
+                    "https origin of the receiving gateway. The host must be on the GC_GATEWAY_HOSTS allowlist "
+                    "(default api.global.church) or the publish is refused."
+                ),
             },
             {
                 "name": "gc_partner_api_key",
                 "label": "Global.Church partner API key",
                 "type": "password",
                 "encrypted": True,
+                "superuser_only": True,
                 "help_text": "Issued by Global.Church to this organisation. Encrypted when saved.",
                 "help_text_edit": "Encrypted value is shown. To replace it, enter the new key.",
             },
