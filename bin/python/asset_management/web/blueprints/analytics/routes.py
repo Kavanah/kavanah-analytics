@@ -14211,7 +14211,7 @@ def billing_set_comp():
                     "workspace_esid": workspace_esid_arg,
                     "orgs_comped": len(orgs_ok),
                     "orgs_failed": orgs_failed,
-                    "stripe_cancel": stripe_cancel,
+                    "stripe_cancel": _billing_stripe_cancel_public(stripe_cancel),
                 }
             ),
             200,
@@ -14336,7 +14336,7 @@ def billing_set_comp():
                 "action": action,
                 "target": target,
                 "org_esid": org_esid_arg,
-                "stripe_cancel": stripe_cancel,
+                "stripe_cancel": _billing_stripe_cancel_public(stripe_cancel),
             }
         ),
         200,
@@ -14430,7 +14430,7 @@ def billing_set_plan():
                 {
                     "status": "error",
                     "message": "That organization has no live Stripe subscription to move. "
-                    + (result.get("detail") or "A trial, comped or lapsed org has no plan to change."),
+                    "A trial, comped or lapsed org has no plan to change; the audit log has the detail.",
                 }
             ),
             400,
@@ -14443,7 +14443,7 @@ def billing_set_plan():
                 {
                     "status": "error",
                     "message": "Stripe refused the plan change — nothing was moved. Check the audit log.",
-                    "errors": result.get("errors") or [],
+                    "error_count": len(result.get("errors") or []),
                 }
             ),
             502,
@@ -14459,7 +14459,7 @@ def billing_set_plan():
                 "mode": mode,
                 "subscription_ids": result.get("subscription_ids") or [],
                 "unchanged": result.get("unchanged") or [],
-                "errors": result.get("errors") or [],
+                "error_count": len(result.get("errors") or []),
                 "record_ok": bool(record.get("ok")),
             }
         ),
@@ -15132,6 +15132,22 @@ def _billing_stripe_cancel_label(stripe_cancel):
     """``mode:n_canceled:n_errors`` for audit detail."""
     sc = stripe_cancel or {}
     return f"{sc.get('mode') or 'no_sub'}:{len(sc.get('subscription_ids') or [])}:{len(sc.get('errors') or [])}"
+
+
+def _billing_stripe_cancel_public(stripe_cancel):
+    """The ``stripe_cancel`` shape the billing admin page receives.
+
+    The service result carries Stripe exception text in ``errors`` and
+    ``detail``; that stays in the audit log and the app log. The page only
+    counts failures, so the response carries ``error_count`` and never a
+    message from Stripe.
+    """
+    sc = stripe_cancel or {}
+    return {
+        "mode": sc.get("mode") or "no_sub",
+        "subscription_ids": list(sc.get("subscription_ids") or []),
+        "error_count": len(sc.get("errors") or []),
+    }
 
 
 def _billing_audit_stripe_cancel(actor, scope, stripe_cancel):

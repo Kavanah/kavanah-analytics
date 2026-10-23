@@ -2570,7 +2570,7 @@
     function stripeCancelNote(action, data) {
         var sc = (data && data.stripe_cancel) || {};
         var n = (sc.subscription_ids || []).length;
-        var errs = (sc.errors || []).length;
+        var errs = sc.error_count || 0;
         var text = '';
         if (action !== 'set') { return { text: text, failed: false }; }
         if (n) { text += ' Canceled ' + n + ' Stripe subscription' + (n === 1 ? '' : 's') + ' — no further charges.'; }
@@ -2801,7 +2801,7 @@
             }).then(function (res) {
                 if (res.ok && res.data.status === 'ok') {
                     var n = (res.data.subscription_ids || []).length;
-                    var errs = (res.data.errors || []).length;
+                    var errs = res.data.error_count || 0;
                     showResult(
                         'Moved ' + orgLabel + ' to the ' + (res.data.plan_name || planSelect.value) + ' plan — '
                         + n + ' Stripe subscription' + (n === 1 ? '' : 's') + ' updated; the next invoice is at the new price.'
