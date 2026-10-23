@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://data.global.church/schema/digital-engagement-release-product/0.1.0",
   "title": "Digital engagement release product",
-  "description": "A partner-published release of aggregate digital-engagement counts at country x month grain, with its manifest. One file per publish. Produced by the partner's own export job (reference implementation: Kavanah Analytics); validated and loaded by gc-kavanah-bridge into <https://data.global.church/kavanah/digital-engagement/>. Row fields carry an x-gc-term annotation naming the ontology term each maps to; nothing partner-specific lives on the rows. Nothing below country grain is representable in this schema.",
+  "description": "A partner-published release of aggregate digital-engagement counts at country x month grain, with its manifest. One file per publish. Produced by the partner's own export job (reference implementation: Kavanah Analytics); validated and loaded by gc-kavanah-bridge into <https://data.global.church/releases/digital-engagement/>. Row fields carry an x-gc-term annotation naming the ontology term each maps to; the four counts are Kavanah Analytics' own measures (kav:), never added to another producer's. Nothing below country grain is representable in this schema.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -275,25 +275,25 @@
             "type": "integer",
             "minimum": 0,
             "description": "People exposed to content in the cell: impressions and views, summed over the exposure sources listed in manifest.sources. Ad-platform figures with cross-account overlap; not de-duplicated across sources.",
-            "x-gc-term": "c153:exposedCount"
+            "x-gc-term": "kav:exposedCount"
           },
           "interactions": {
             "type": "integer",
             "minimum": 0,
             "description": "Interactions with content in the cell: clicks and sessions, summed over the interaction sources listed in manifest.sources.",
-            "x-gc-term": "c153:interactionCount"
+            "x-gc-term": "kav:interactionCount"
           },
           "touchpoints": {
             "type": "integer",
             "minimum": 0,
             "description": "Conversations started in the cell, keyed on the seeker's country, from the conversation sources listed in manifest.sources.",
-            "x-gc-term": "c153:touchpointCount"
+            "x-gc-term": "kav:touchpointCount"
           },
           "active": {
             "type": "integer",
             "minimum": 0,
             "description": "Conversations in the cell with a spiritual-conversation or multiplier outcome. Always <= touchpoints.",
-            "x-gc-term": "c153:activeCount"
+            "x-gc-term": "kav:activeCount"
           }
         }
       }
