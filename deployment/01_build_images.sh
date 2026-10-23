@@ -106,6 +106,9 @@ build_image() {
 
 build_image "$IMPORTS_IMAGE_LOCAL" "$IMPORTS_CONTEXT" "$IMPORTS_DOCKERFILE"
 
+# Bound the build cache this run grows; a prune failure is a warning.
+bash "$REPO_DIR/deployment/prune-docker-build-cache.sh" || warn "build-cache prune failed (non-fatal)"
+
 if [[ "$LOCAL_ONLY" == true ]]; then
     success "Local-only build complete. Skipping ECR push."
     echo

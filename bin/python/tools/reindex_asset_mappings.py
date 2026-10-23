@@ -200,7 +200,7 @@ def _reindex_one(es, index_name: str, *, apply: bool, repo: str) -> str:
     # a re-run after a partial failure doesn't collide with its own snapshot.
     if src_count > 0:
         ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-        snap = f"note_2{index_name}_{ts}"
+        snap = f"note_3{index_name}_{ts}"
         try:
             es.snapshot.create(
                 repository=repo,

@@ -100,7 +100,10 @@ def _acquire_refresh_lock(connection_esid: str) -> str:
     from lib.import_lock_service import ImportLockService
 
     for attempt in range(LOCK_ATTEMPTS):
-        lock_id = ImportLockService.acquire(LOCK_CONNECTOR, scope_id=connection_esid)
+        # no global import slot here: this is a seconds-long token-refresh
+        # mutex taken per account mid-run, not a whole-run lock. Queueing it would
+        # hold the refresh lock for the wait and starve the 12 x 5 s retry above.
+        lock_id = ImportLockService.acquire(LOCK_CONNECTOR, scope_id=connection_esid, global_slot=False)
         if lock_id:
             return lock_id
         if attempt < LOCK_ATTEMPTS - 1:

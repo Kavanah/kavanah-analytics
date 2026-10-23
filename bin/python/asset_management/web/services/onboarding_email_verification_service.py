@@ -18,6 +18,19 @@ username (not a registration_id — the legacy /signup flow uses the
 pending-registration doc id; the wizard creates the ES user up-front
 so username is the natural key).
 
+a username-only token verified whatever address the account
+held when it was clicked, and stayed reusable for 24 hours — so a token
+mailed to an address the user owned could be replayed after switching
+the account to ``x@victim-domain``, verifying an address they cannot
+read (and with it the domain auto-join). The token now also
+carries ``eh`` (a SHA-256 of the normalised address it was MAILED to)
+and ``nonce`` (a per-user value stored as ``metadata.email_verify_nonce``
+that rotates on every send, is cleared on every email change, and is
+consumed when the link verifies). Redeeming requires the account's
+CURRENT address to hash to ``eh`` and the stored nonce to match, so a
+link only ever verifies the address it was sent to, once. Tokens minted
+ carry neither claim and are refused (the user resends).
+
 Send contract: SMTP via the shared ``/app/python/password_reset/config/
 settings.json`` settings file. Send runs on a background daemon thread
 so the wizard POST returns in <100ms even if SMTP is slow — the AC says
@@ -31,10 +44,12 @@ Out of scope (deferred to follow-up tickets):
 
 from __future__ import annotations
 
+import hashlib
 import html
 import json
 import logging
 import os
+import secrets
 import smtplib
 
 from lib.smtp_transport import SMTP_TIMEOUT_SECONDS, smtp_ssl_context
@@ -74,6 +89,50 @@ VERIFICATION_TOKEN_EXPIRY_SECONDS = 86400
 # account (different storage layer, different audit shape).
 TOKEN_PURPOSE = "onboarding_email_verify"
 
+# ES Security user metadata key holding the current single-use
+# verification nonce. Rotated by every send, removed by every email change
+# and by a successful redeem.
+VERIFY_NONCE_METADATA_KEY = "email_verify_nonce"
+
+# User-facing reason for a link that was valid once but has been superseded
+# (a newer email was sent, the address changed, or it was already used).
+_LINK_SUPERSEDED = "This verification link is no longer valid. Request a new verification email and use the newest link."
+
+
+def email_fingerprint(email: str | None) -> str:
+    """SHA-256 hex of the trimmed, lower-cased address.
+
+    What a verification token binds to: a token only redeems while the
+    account's current email has this fingerprint.
+    """
+    return hashlib.sha256((email or "").strip().lower().encode("utf-8")).hexdigest()
+
+
+def email_ownership_unproven(metadata: dict | None) -> bool:
+    """True when the account's email was self-asserted and is not verified.
+
+     (SSO pre-hijack): an account made through self-service signup
+    (``wizard_signup`` / ``onboarding_required``), or whose address was
+    changed through the wizard (``email_changed_at``), carries an address
+    typed by whoever made it. Until the inbox link is clicked it proves
+    nothing about who owns that mailbox, so an SSO login for that address
+    must not be handed the account. Accounts created by an administrator,
+    and grandfathered accounts that pre-date the wizard, carry none of those
+    markers: an operator set their address, and they keep signing in as
+    before.
+    """
+    meta = metadata or {}
+    if meta.get("email_verified") is True:
+        return False
+    return bool(meta.get("wizard_signup") or meta.get("onboarding_required") or meta.get("email_changed_at"))
+
+
+# Shown when an SSO login matches an account whose address is unproven.
+SSO_UNVERIFIED_ACCOUNT_MESSAGE = (
+    "An account already uses this email address, but the address has not been verified yet. "
+    "Sign in with that account's username and password and verify your email, or contact support."
+)
+
 
 def _get_smtp_settings() -> dict:
     """Env-aware shared SMTP settings: PW_RESET_SMTP_* env
@@ -106,18 +165,22 @@ class OnboardingEmailVerificationService:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def generate_verification_token(username: str, secret_key: str) -> str:
-        """Generate a 24-hour HS256 JWT for ``username``.
+    def generate_verification_token(username: str, email: str, nonce: str, secret_key: str) -> str:
+        """Generate a 24-hour HS256 JWT for ``username`` at ``email``.
 
         Encodes ``sub=username``, ``purpose=onboarding_email_verify``,
-        and ``exp`` 24h in the future. Distinct purpose from the
-        legacy /signup token so the verify route can refuse mis-typed
-        tokens cleanly.
+        ``exp`` 24h in the future, and ``eh`` — the
+        fingerprint of the address the link is mailed to — plus the
+        single-use ``nonce`` stored on the user. Distinct purpose from
+        the legacy /signup token so the verify route can refuse
+        mis-typed tokens cleanly.
         """
         now = int(time.time())
         payload = {
             "sub": username,
             "purpose": TOKEN_PURPOSE,
+            "eh": email_fingerprint(email),
+            "nonce": nonce,
             "exp": now + VERIFICATION_TOKEN_EXPIRY_SECONDS,
             "iat": now,
         }
@@ -127,10 +190,14 @@ class OnboardingEmailVerificationService:
     def verify_token(token: str, secret_key: str) -> dict:
         """Decode and validate an onboarding verification token.
 
-        Returns ``{"valid": True, "username": <str>}`` on success or
-        ``{"valid": False, "error": <reason>}`` on failure. Failure
-        reasons are user-facing so they go in the verify route's
-        flash message.
+        Returns ``{"valid": True, "username": <str>, "email_hash": <str>,
+        "nonce": <str>}`` on success or ``{"valid": False, "error":
+        <reason>}`` on failure. Failure reasons are user-facing so they
+        go in the verify route's flash message.
+
+        Only checks the token itself. Whether it may still verify the
+        account is decided by :meth:`redeem_verification`, against the
+        account's current address and stored nonce.
         """
         try:
             payload = jwt.decode(token, secret_key, algorithms=["HS256"])
@@ -145,7 +212,15 @@ class OnboardingEmailVerificationService:
         username = payload.get("sub")
         if not isinstance(username, str) or not username:
             return {"valid": False, "error": "Verification link is invalid."}
-        return {"valid": True, "username": username}
+
+        # a token without the address binding and the nonce was
+        # minted before the fix and could verify whatever address the
+        # account holds now. Refuse it; the user requests a fresh email.
+        email_hash = payload.get("eh")
+        nonce = payload.get("nonce")
+        if not isinstance(email_hash, str) or not email_hash or not isinstance(nonce, str) or not nonce:
+            return {"valid": False, "error": _LINK_SUPERSEDED}
+        return {"valid": True, "username": username, "email_hash": email_hash, "nonce": nonce}
 
     # ------------------------------------------------------------------
     # Metadata stamp
@@ -213,6 +288,152 @@ class OnboardingEmailVerificationService:
             username,
         )
         return {"success": True, "already_verified": False}
+
+    @staticmethod
+    def redeem_verification(username: str, email_hash: str, nonce: str) -> dict:
+        """Verify ``username``'s email from a decoded inbox link.
+
+        The link verifies the account only when:
+
+        * the account's CURRENT email hashes to ``email_hash`` — the link
+          was mailed to exactly this address, so clicking it proves control
+          of this mailbox and no other; and
+        * ``nonce`` equals the stored ``metadata.email_verify_nonce`` — the
+          link is the newest one sent since the last address change and has
+          not been used. The nonce is removed in the same write that sets
+          ``email_verified``, so a link redeems once.
+
+        An account that is already verified at the link's own address gets
+        ``already_verified=True`` with no write, so the second click after a
+        mail scanner has prefetched the link still sees a friendly page.
+
+        Returns ``{"success": bool, "already_verified": bool, "error": str,
+        "invalid": bool}``. ``invalid=True`` marks a link that can never
+        verify this account (wrong address, superseded, or used) — the
+        route renders it like a bad token, not like a server error.
+        """
+        es = get_elasticsearch_client()
+        if es is None:
+            return {"success": False, "error": "Elasticsearch unavailable"}
+
+        try:
+            current = dict(es.security.get_user(username=username)).get(username)
+        except Exception as e:  # noqa: BLE001 — top-level boundary
+            logging.error(
+                "OnboardingEmailVerificationService.redeem_verification: get_user('%s') failed: %s",
+                username,
+                e,
+            )
+            return {"success": False, "error": "User lookup failed"}
+
+        if not current:
+            return {"success": False, "invalid": True, "error": "Verification link is invalid."}
+
+        if not secrets.compare_digest(email_fingerprint(current.get("email")), email_hash):
+            logging.warning(
+                "AUDIT: action=onboarding_email_verify_refused reason=address_mismatch username=%s",
+                username,
+            )
+            return {"success": False, "invalid": True, "error": _LINK_SUPERSEDED}
+
+        metadata = dict(current.get("metadata") or {})
+        if metadata.get("email_verified") is True:
+            return {"success": True, "already_verified": True}
+
+        stored_nonce = metadata.get(VERIFY_NONCE_METADATA_KEY)
+        if not isinstance(stored_nonce, str) or not stored_nonce or not secrets.compare_digest(stored_nonce, nonce):
+            logging.warning(
+                "AUDIT: action=onboarding_email_verify_refused reason=nonce_mismatch username=%s",
+                username,
+            )
+            return {"success": False, "invalid": True, "error": _LINK_SUPERSEDED}
+
+        metadata["email_verified"] = True
+        metadata["email_verified_at"] = datetime.now(timezone.utc).isoformat()
+        metadata.pop(VERIFY_NONCE_METADATA_KEY, None)
+
+        try:
+            get_es_admin_client(es).security.put_user(
+                username=username,
+                body={
+                    "roles": current.get("roles", []),
+                    "full_name": current.get("full_name", ""),
+                    "email": current.get("email", ""),
+                    # ES writes enabled=true when it is omitted.
+                    "enabled": current.get("enabled", True),
+                    "metadata": metadata,
+                },
+            )
+        except Exception as e:  # noqa: BLE001 — top-level boundary
+            logging.error(
+                "OnboardingEmailVerificationService.redeem_verification: put_user('%s') failed: %s",
+                username,
+                e,
+            )
+            return {"success": False, "error": "Could not persist verification"}
+
+        logging.info(
+            "AUDIT: action=onboarding_email_verified username=%s",
+            username,
+        )
+        return {"success": True, "already_verified": False}
+
+    @staticmethod
+    def _rotate_verification_nonce(username: str, email: str) -> str | None:
+        """Store a fresh single-use nonce on ``username`` and return it.
+
+        Called once per verification email. Rotating it invalidates every
+        link sent before, so only the newest email's link can verify. The
+        address being mailed must still be the account's address — a send
+        to any other address is refused here so a link can never be minted
+        for an address the account does not hold. ``None`` on any failure;
+        the caller then sends nothing (a link that cannot redeem is worse
+        than none — the user can press Resend).
+        """
+        es = get_elasticsearch_client()
+        if es is None:
+            return None
+        try:
+            current = dict(es.security.get_user(username=username)).get(username)
+        except Exception as e:  # noqa: BLE001 — top-level boundary
+            logging.error(
+                "OnboardingEmailVerificationService._rotate_verification_nonce: get_user('%s') failed: %s",
+                username,
+                e,
+            )
+            return None
+        if not current:
+            return None
+        if email_fingerprint(current.get("email")) != email_fingerprint(email):
+            logging.warning(
+                "AUDIT: action=onboarding_email_verify_send_refused reason=address_mismatch username=%s",
+                username,
+            )
+            return None
+
+        nonce = secrets.token_urlsafe(24)
+        metadata = dict(current.get("metadata") or {})
+        metadata[VERIFY_NONCE_METADATA_KEY] = nonce
+        try:
+            get_es_admin_client(es).security.put_user(
+                username=username,
+                body={
+                    "roles": current.get("roles", []),
+                    "full_name": current.get("full_name", ""),
+                    "email": current.get("email", ""),
+                    # ES writes enabled=true when it is omitted.
+                    "enabled": current.get("enabled", True),
+                    "metadata": metadata,
+                },
+            )
+        except Exception as e:  # noqa: BLE001 — top-level boundary
+            logging.error(
+                "OnboardingEmailVerificationService._rotate_verification_nonce: put_user('%s') failed: %s",
+                username,
+                e,
+            )
+            return None
+        return nonce
 
     @staticmethod
     def update_email(username: str, new_email: str) -> dict:
@@ -300,6 +521,9 @@ class OnboardingEmailVerificationService:
         # inbox below.
         metadata.pop("email_verified", None)
         metadata.pop("email_verified_at", None)
+        # no link sent before this change may verify the account
+        # again, even if the address is later changed back.
+        metadata.pop(VERIFY_NONCE_METADATA_KEY, None)
         # Track that the email was changed during onboarding so a
         # later audit can answer "who changed what when".
         metadata["email_changed_at"] = datetime.now(timezone.utc).isoformat()
@@ -356,6 +580,28 @@ class OnboardingEmailVerificationService:
         if not current:
             return False
         return bool((current.get("metadata") or {}).get("email_verified"))
+
+    @staticmethod
+    def verified_email(username: str) -> str | None:
+        """The user's current address iff it is verified, else ``None``.
+
+        One ES read for both values, so the address returned is the one that
+        was verified (``update_email`` clears the flag on every change).
+        Fails closed: ``None`` on any error. Same contract as
+        ``OnboardingService._verified_email``, exposed here for
+        the invite accept check.
+        """
+        es = get_elasticsearch_client()
+        if es is None:
+            return None
+        try:
+            current = dict(es.security.get_user(username=username)).get(username)
+        except Exception as e:  # noqa: BLE001 — fail closed: no verified email
+            logging.warning("OnboardingEmailVerificationService.verified_email(%s): %s", username, e)
+            return None
+        if not current or (current.get("metadata") or {}).get("email_verified") is not True:
+            return None
+        return (current.get("email") or "").strip().lower() or None
 
     # ------------------------------------------------------------------
     # SMTP send
@@ -525,8 +771,17 @@ class OnboardingEmailVerificationService:
         ``_send_fn`` is a seam for tests to swap in a recording stub
         without monkey-patching SMTP. Production passes ``None`` and
         the real ``send_verification_email`` is used.
+
+        rotates the user's single-use nonce first (invalidating
+        every earlier link) and binds the token to ``email``. Raises
+        ``RuntimeError`` when the nonce cannot be stored or ``email`` is
+        not the account's address — every caller already treats a raise
+        as "the email was not sent" and the user can press Resend.
         """
-        token = OnboardingEmailVerificationService.generate_verification_token(username, secret_key)
+        nonce = OnboardingEmailVerificationService._rotate_verification_nonce(username, email)
+        if not nonce:
+            raise RuntimeError(f"could not issue a verification nonce for '{username}'")
+        token = OnboardingEmailVerificationService.generate_verification_token(username, email, nonce, secret_key)
         verification_url = OnboardingEmailVerificationService.build_verification_url(token, app_base_url=app_base_url)
         sender = _send_fn or OnboardingEmailVerificationService.send_verification_email
 

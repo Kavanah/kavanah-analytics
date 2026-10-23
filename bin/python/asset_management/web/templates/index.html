@@ -751,7 +751,7 @@
 {# cache-buster: without it browsers kept serving stale JS after
    fixes (the charts.js lesson). Bump on every tree-explorer.js
    change. #}
-<script src="{{ url_for('static', filename='js/tree-explorer.js') }}?v=20260827a"></script>
+<script src="{{ url_for('static', filename='js/tree-explorer.js') }}?v=20261013a"></script>
 <script nonce="{{ csp_nonce }}">
     document.addEventListener('DOMContentLoaded', function() {
         TreeExplorer.init();

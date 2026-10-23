@@ -19,12 +19,14 @@ use the tree navigation on the left to find the relevant asset type.
 
 .. tip::
 
-   For Facebook, Echo, and Chatwoot, you can also use the **Data
-   Connectors** wizard under the Management Console (gated on the
-   ``mc_data_connectors`` permission) — it walks you through the
-   account / app / OAuth chain step-by-step instead of asking you to
-   create each asset record by hand. The manual flow described below
-   still works for everything the wizard supports.
+   Every connector — Meta (Facebook and Instagram), YouTube, Google
+   Ads, GA4, Chatwoot, Echo, and Disciple.Tools — has a setup wizard on
+   the **Data Connectors** page under the Management Console (gated on
+   the ``mc_data_connectors`` permission). It walks you through the
+   sign-in or credential steps instead of asking you to create each
+   asset record by hand, and it is the recommended way to connect. The
+   manual flow described below still works for everything the wizard
+   supports.
 
 ----
 
@@ -194,11 +196,18 @@ To find your API key: log in to Chatwoot → Profile → Access Token.
 Disciple Tools
 ---------------
 
-Disciple Tools data is ingested directly into Elasticsearch and does not use
-the standard import pipeline. No asset configuration is required in the Asset Explorer.
+Connect a Disciple.Tools site from the **Disciple.Tools** tile on the
+**Data Connectors** page:
 
-Contact your Kavanah Media account manager for setup instructions specific to
-your Disciple Tools instance.
+1. In your Disciple.Tools site's wp-admin, open **Settings → Site Links**
+   and create a link between the DT site and this dashboard.
+2. In the wizard, enter the **DT site domain** (e.g. ``dt.example.org``,
+   no ``https://``), the **Dashboard domain (as entered in the Site
+   Link)** — it must match the second domain in the Site Link exactly —
+   and the **Site Link token**.
+
+The token is verified against the site before it is saved, and it is
+stored encrypted. No asset configuration is required in the Asset Explorer.
 
 ----
 

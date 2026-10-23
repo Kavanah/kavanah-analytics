@@ -375,14 +375,14 @@ class TestShouldApplyFilter:
             assert RoleFilterService.should_apply_filter() is True
 
     @mock.patch("os.path.exists", return_value=False)
-    def test_no_roles_returns_false(self, _exists, mock_session):
+    def test_no_roles_still_applies_filter(self, _exists, mock_session):
         with mock_session(roles=[]):
-            assert RoleFilterService.should_apply_filter() is False
+            assert RoleFilterService.should_apply_filter() is True  # no scope → deny, never "unrestricted"
 
     @mock.patch("os.path.exists", return_value=False)
-    def test_unrelated_roles_returns_false(self, _exists, mock_session):
+    def test_unrelated_roles_still_applies_filter(self, _exists, mock_session):
         with mock_session(roles=["kibana_admin"]):
-            assert RoleFilterService.should_apply_filter() is False
+            assert RoleFilterService.should_apply_filter() is True  # no scope → deny, never "unrestricted"
 
 
 # ---------------------------------------------------------------------------
@@ -408,9 +408,9 @@ class TestGetFilterForCurrentUser:
         assert result == {"term": {"team_title": "__NO_TEAMS_FOR_ORG__"}}
 
     @mock.patch("os.path.exists", return_value=False)
-    def test_no_roles_returns_none(self, _exists, mock_session):
+    def test_no_roles_returns_deny_all(self, _exists, mock_session):
         with mock_session(roles=[]):
-            assert RoleFilterService.get_filter_for_current_user() is None
+            assert RoleFilterService.get_filter_for_current_user() == {"term": {"team_title": "__NO_TEAMS_FOR_ORG__"}}  # no scope → deny, never "unrestricted"
 
     @mock.patch("os.path.exists", return_value=False)
     def test_single_team_role(self, _exists, mock_session, mock_es):
@@ -457,10 +457,10 @@ class TestGetFilterForCurrentUser:
     # dry-run, expected zero on prod).
 
     @mock.patch("os.path.exists", return_value=False)
-    def test_unrelated_roles_returns_none(self, _exists, mock_session):
+    def test_unrelated_roles_returns_deny_all(self, _exists, mock_session):
         with mock_session(roles=["kibana_admin"]):
             result = RoleFilterService.get_filter_for_current_user()
-        assert result is None
+        assert result == {"term": {"team_title": "__NO_TEAMS_FOR_ORG__"}}  # no scope → deny, never "unrestricted"
 
 
 # ---------------------------------------------------------------------------
@@ -488,9 +488,9 @@ class TestGetAllowedTeams:
             assert RoleFilterService.get_allowed_teams() == ["NFCY"]
 
     @mock.patch("os.path.exists", return_value=False)
-    def test_no_team_roles_returns_none(self, _exists, mock_session):
+    def test_no_team_roles_returns_empty(self, _exists, mock_session):
         with mock_session(roles=["org_VOGZ"]):
-            assert RoleFilterService.get_allowed_teams() is None
+            assert RoleFilterService.get_allowed_teams() == []  # no scope → deny, never "unrestricted"
 
 
 # ---------------------------------------------------------------------------
@@ -529,9 +529,9 @@ class TestGetAllowedTeamsForOrgUsers:
         assert result == ["NFCY"]
 
     @mock.patch("os.path.exists", return_value=False)
-    def test_no_roles_returns_none(self, _exists, mock_session):
+    def test_no_roles_returns_empty(self, _exists, mock_session):
         with mock_session(roles=["kibana_admin"]):
-            assert RoleFilterService.get_allowed_teams_for_org_users() is None
+            assert RoleFilterService.get_allowed_teams_for_org_users() == []  # no scope → deny, never "unrestricted"
 
 
 # ---------------------------------------------------------------------------
@@ -559,9 +559,9 @@ class TestGetAllowedOrganizations:
             assert RoleFilterService.get_allowed_organizations() == ["VOGZ"]
 
     @mock.patch("os.path.exists", return_value=False)
-    def test_no_org_roles_returns_none(self, _exists, mock_session):
+    def test_no_org_roles_returns_empty(self, _exists, mock_session):
         with mock_session(roles=["team_NFCY"]):
-            assert RoleFilterService.get_allowed_organizations() is None
+            assert RoleFilterService.get_allowed_organizations() == []  # no scope → deny, never "unrestricted"
 
 
 # ---------------------------------------------------------------------------

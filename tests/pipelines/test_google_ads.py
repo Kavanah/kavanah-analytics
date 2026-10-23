@@ -595,13 +595,14 @@ class TestFetchVideoCampaignPerformance:
 
 class TestFetchGeoPerformance:
 
-    def _mock_geo_row(self, criterion_id=2840, conversions=10):
+    def _mock_geo_row(self, criterion_id=2840, conversions=10, impressions=1000, clicks=25):
         row = mock.MagicMock()
         row.campaign.id = 123
         row.campaign.name = "Campaign"
         row.geographic_view.country_criterion_id = criterion_id
         row.metrics.conversions = conversions
-        row.metrics.impressions = 1000
+        row.metrics.impressions = impressions
+        row.metrics.clicks = clicks
         row.metrics.cost_micros = 5000000
         row.segments.date = "2024-01-15"
         return row
@@ -616,14 +617,21 @@ class TestFetchGeoPerformance:
         assert len(result) == 1
         assert result[0]["record_type"] == "geo"
 
-    def test_skips_zero_install_rows(self):
+    def test_keeps_zero_conversion_rows_that_had_impressions(self):
+        # 2026-10-23: a country-day with reach but no conversion is data
+        # (impressions and clicks by country); only a row with no activity
+        # at all is skipped.
         client = mock.MagicMock()
         ga_service = mock.MagicMock()
         client.get_service.return_value = ga_service
-        ga_service.search.return_value = [self._mock_geo_row(conversions=0)]
+        ga_service.search.return_value = [
+            self._mock_geo_row(conversions=0),
+            self._mock_geo_row(criterion_id=2356, conversions=0, impressions=0, clicks=0),
+        ]
 
         result = gads_get.fetch_geo_performance(client, "123", "2024-01-01", "2024-01-31")
-        assert result == []
+        assert [d["geo_criterion_id"] for d in result] == [2840]
+        assert result[0]["conversions"] == 0 and result[0]["clicks"] == 25
 
     def test_returns_empty_on_exception(self):
         client = mock.MagicMock()

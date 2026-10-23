@@ -153,6 +153,47 @@ class OrphanSweepService:
         return live
 
     @staticmethod
+    def _orphan_team_docs(es, field: str, live_list: list[str]) -> list[dict]:
+        """the team docs the de_asset_teams leg is about to delete.
+
+        Same query as the delete. A failed read returns ``[]`` — no purge
+        request is written, and the team-data sweep's orphan report (indices
+        whose prefix names no live team) is the backstop.
+        """
+        try:
+            resp = es.search(
+                index=_TEAMS_INDEX,
+                body={
+                    "query": {"bool": {"must_not": {"terms": {field: live_list}}}},
+                    "_source": ["team_title", "workspace_esid"],
+                    "size": 10000,
+                },
+            )
+            return [
+                {**(hit.get("_source") or {}), "esid": hit["_id"]}
+                for hit in resp.get("hits", {}).get("hits", [])
+                if hit.get("_id")
+            ]
+        except Exception as e:  # noqa: BLE001 — startup defense layer; never blocks the sweep
+            logging.warning("OrphanSweepService: could not read orphan teams for purge requests: %s", e)
+            return []
+
+    @staticmethod
+    def _record_orphan_team_purges(es, teams: list[dict]) -> None:
+        """purge requests for teams the startup sweep deleted."""
+        try:
+            from asset_management.web.services.team_purge_service import record_team_purge_tombstones
+
+            record_team_purge_tombstones(
+                es,
+                teams,
+                requested_by="system:startup-orphan-sweep",
+                reason="orphan_workspace_sweep",
+            )
+        except Exception as e:  # noqa: BLE001 — never turn a completed delete into a sweep failure
+            logging.warning("OrphanSweepService: purge requests failed for %d team(s): %s", len(teams), e)
+
+    @staticmethod
     def sweep_workspace_tier() -> dict[str, int]:
         """Delete rows whose workspace_esid is not in de_asset_workspace.
 
@@ -177,6 +218,9 @@ class OrphanSweepService:
         live_list = list(live_ws)
         for index, field in _WORKSPACE_SCOPE_INDICES:
             try:
+                # read the teams this leg is about to delete, so each
+                # gets a purge request for its data (7-day grace).
+                orphan_teams = OrphanSweepService._orphan_team_docs(es, field, live_list) if index == _TEAMS_INDEX else []
                 resp = es.delete_by_query(
                     index=index,
                     body={"query": {"bool": {"must_not": {"terms": {field: live_list}}}}},
@@ -191,6 +235,8 @@ class OrphanSweepService:
                         deleted,
                         index,
                     )
+                    if orphan_teams:
+                        OrphanSweepService._record_orphan_team_purges(es, orphan_teams)
             except Exception as e:
                 err = str(e).lower()
                 if "index_not_found" in err or "404" in err:

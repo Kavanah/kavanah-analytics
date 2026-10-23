@@ -53,8 +53,31 @@ services:
       - discovery.type=single-node
       - ELASTIC_PASSWORD=${ES_ADMIN_PASS}
       - path.repo=/usr/share/elasticsearch/snapshots
+      # pin the JVM heap instead of letting it auto-size to
+      # 50 % of host RAM (3.9 GB on the 8 GB boxes, 8.8 GiB after prod moved to
+      # 16 GB on 2026-10-17) while using 0.6–1.8 GB. Heap used has never passed
+      # 1.8 GB; Elastic's "3,000 indices per GB of heap" master rule is met to
+      # 6,000 indices at 2 GB. Override per box in .env: prod = -Xms4g -Xmx4g.
+      - ES_JAVA_OPTS=${ES_JAVA_OPTS:--Xms2g -Xmx2g}
+      # Keep the heap out of swap (≈1 GB of the JVM was swapped on prod with
+      # swappiness 60). Needs the memlock ulimit below.
+      - bootstrap.memory_lock=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    # Heap + off-heap (Lucene page cache, direct buffers). Per box in .env:
+    # prod = 8g on the 16 GB box; the default fits dev's 8 GB.
+    mem_limit: ${ES_MEM_LIMIT:-4g}
+    # loopback-bound like kib01. Docker's DNAT runs before UFW, so an
+    # all-interfaces publish is reachable from anywhere the cloud firewall
+    # allows. Everything in this repo reaches ES over the Docker network
+    # (es01:9200 — nginx's /elasticsearch/ route included) or from the host
+    # itself (localhost:9200). The km-infra SIEM ELK-access monitor, the last
+    # outside caller of :9200, moved to the nginx /elasticsearch/ route behind
+    # an es-allow/ entry on 2026-10-14.
     ports:
-      - "9200:9200"
+      - "127.0.0.1:9200:9200"
     volumes:
       - ${ELK_DIR}/es01/data:/usr/share/elasticsearch/data
       # Mount the ENTIRE config/ directory, not individual files. ES rewrites
@@ -103,8 +126,14 @@ services:
     depends_on:
       es01:
         condition: service_healthy
+    # loopback-bound. Docker's port publish
+    # bypasses UFW, so "5601:5601" exposed Kibana on every host interface.
+    # Browsers reach Kibana through nginx (/kibana → kib01:5601 over the
+    # Docker network); the host publish exists only for on-host checks
+    # (05_health_check.sh, create-data-views.sh, kibana-import.sh curl
+    # localhost:5601). From elsewhere: ssh -L 5601:localhost:5601.
     ports:
-      - "5601:5601"
+      - "127.0.0.1:5601:5601"
     volumes:
       - ${REPO_DIR}/kibana.yml:/usr/share/kibana/config/kibana.yml
       - ${ELK_DIR}/es01/config/certs/http_ca.crt:/usr/share/kibana/config/certs/http_ca.crt
@@ -306,11 +335,25 @@ services:
       # until the production app is approved.
       - TIKTOK_CLIENT_KEY=${TIKTOK_CLIENT_KEY:-}
       - TIKTOK_CLIENT_SECRET=${TIKTOK_CLIENT_SECRET:-}
+      # hCaptcha keys for the signup forms; SSM-sourced via
+      # start-secrets-container.sh (deam/hcaptcha-site-key|-secret-key),
+      # env-first in config.py. Both empty = captcha skipped (as before).
+      - HCAPTCHA_SITE_KEY=${HCAPTCHA_SITE_KEY:-}
+      - HCAPTCHA_SECRET_KEY=${HCAPTCHA_SECRET_KEY:-}
       # the TikTok connector switch (lib/tiktok_constants.tiktok_enabled).
       # Blank/absent = OFF: no tile, no wizard/OAuth routes, no TikTok data view in
       # the pickers, no job-health expectation. Set true in deployment/.env, then
       # run start-imports-container.sh (it also re-provisions the cron line).
       - TIKTOK_ENABLED=${TIKTOK_ENABLED:-}
+      # global import queue (lib/import_slots.py). IMPORT_GLOBAL_CAP =
+      # max importer processes running at once; blank/0 = OFF (no cap, no queue —
+      # the rollback). ~4 is safe per 2 vCPU, so 8 on the 4 vCPU prod box.
+      # Runs over the cap wait FIFO ("queued (#N)") up to
+      # IMPORT_QUEUE_MAX_WAIT_SECONDS (blank = 43200, 12 h), re-checking every
+      # IMPORT_QUEUE_POLL_SECONDS (blank = 5). Recreate imports_container to apply.
+      - IMPORT_GLOBAL_CAP=${IMPORT_GLOBAL_CAP:-}
+      - IMPORT_QUEUE_MAX_WAIT_SECONDS=${IMPORT_QUEUE_MAX_WAIT_SECONDS:-}
+      - IMPORT_QUEUE_POLL_SECONDS=${IMPORT_QUEUE_POLL_SECONDS:-}
       # AWS credentials for the Restore-from-Backup feature (prod only).
       # On prod, .env.aws is written by start-imports-container.sh on each
       # bounce after fetching from SSM. On dev/staging it's empty (created

@@ -619,11 +619,19 @@ def _es_session():
 # the request (CodeQL py/partial-ssrf).
 import re as _re
 
-_ES_USERNAME_RE = _re.compile(r"^[A-Za-z0-9._@+\-]{1,256}$")
+_ES_USERNAME_RE = _re.compile(r"[A-Za-z0-9._@+\-]{1,256}")
 
 
 def _is_safe_es_username(username):
-    return isinstance(username, str) and bool(_ES_USERNAME_RE.match(username))
+    # fullmatch, not match + "$" ("$" also matches before a trailing
+    # newline), and no "." / ".." path segments — "..", or a name made only of
+    # dots, would still walk the /_security/user/<name> path.
+    return (
+        isinstance(username, str)
+        and _ES_USERNAME_RE.fullmatch(username) is not None
+        and ".." not in username
+        and username.strip(".") != ""
+    )
 
 
 def get_user_email(username):

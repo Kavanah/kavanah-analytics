@@ -934,6 +934,14 @@
                     <div class="billing-summary-label-strong">{{ summary.unit_price }}</div>
                 </div>
                 <div class="billing-summary-caption">Quantity: {{ summary.quantity }}</div>
+                {% if summary.trial_ends_display %}
+                {# card added during the free trial: saved now, charged
+                   when the trial ends. #}
+                <div class="billing-summary-caption" data-testid="billing-summary-trial">
+                    Nothing is charged today. Your free trial runs until {{ summary.trial_ends_display }},
+                    and the first charge is on that day.
+                </div>
+                {% endif %}
             </div>
 
             {# Discount line — pre-rendered visible when the user already has a
@@ -1095,6 +1103,7 @@
             </div>
             {% elif stripe_enabled %}
             <form id="billing-pay-form"
+                  data-next-url="{{ next_url|default('') }}"
                   data-create-url="{{ url_for('analytics.billing_create_subscription') }}"
                   data-publishable-key="{{ stripe_publishable_key }}">
                 {# Name + address collected by our own inputs and passed to
@@ -1276,8 +1285,8 @@
                 Eligibility required.
                 {# the sponsored-license application form replaces the
                    old sales mailto; applications are reviewed by a person. #}
-                <a href="{{ plan.apply_url }}" target="_blank" rel="noopener">Apply for a sponsored license</a>
-                to confirm your ministry's eligibility.
+                <a href="{{ plan.apply_url }}" target="_blank" rel="noopener">Apply for sponsorship</a>
+                and we&rsquo;ll confirm which rate fits: free for missionary teams, $20 for other Christian ministries.
             </div>
             {% endif %}
 
@@ -1291,7 +1300,7 @@
                    sponsored-license application form, not a sales mailto. #}
                 <a class="billing-btn billing-btn-primary"
                    href="{{ plan.apply_url }}" target="_blank" rel="noopener"
-                   data-testid="billing-plan-choose-{{ plan.key }}">Apply for sponsored license</a>
+                   data-testid="billing-plan-choose-{{ plan.key }}">Apply for sponsorship</a>
                 {% endif %}
             </div>
 
@@ -1411,7 +1420,14 @@
                Once a cancel is scheduled, show the end date instead. #}
             {% if billing and billing.current_period_end %}
             <p class="billing-bill-date" data-testid="billing-bill-date">
-                {% if billing.cancel_at_period_end %}
+                {% if billing.is_trialing %}
+                {# card on file during the free trial: the first
+                   charge lands when the trial converts, nothing before. #}
+                <i class="fas fa-info-circle"></i>
+                Your card is on file. First charge on
+                <strong data-testid="billing-first-charge">{{ billing.converts_display or billing.current_period_end[:10] }}</strong>
+                (<span class="billing-eff-price">{{ 'free' if _is_free else _eff_price }}</span>); nothing is charged before then.
+                {% elif billing.cancel_at_period_end %}
                 <i class="fas fa-info-circle"></i>
                 Your subscription is set to cancel — access continues until
                 <strong>{{ billing.current_period_end[:10] }}</strong>, then it won't renew.
@@ -1885,7 +1901,8 @@
                   data-search-url="{{ url_for('analytics.billing_comp_search') }}"
                   data-list-url="{{ url_for('analytics.billing_comp_list') }}"
                   data-ws-search-url="{{ url_for('analytics.billing_comp_workspaces') }}"
-                  data-orgs-url="{{ url_for('analytics.billing_comp_orgs') }}">
+                  data-orgs-url="{{ url_for('analytics.billing_comp_orgs') }}"
+                  data-plan-url="{{ url_for('analytics.billing_set_plan') }}">
                 <div class="billing-coupon-row">
                     <div class="billing-comp-search">
                         <input type="text"
@@ -1949,6 +1966,28 @@
                             id="billing-comp-ws-set"
                             data-testid="billing-comp-ws-set"
                             disabled>Comp entire workspace</button>
+                </div>
+                {# ── move the selected ORG between plans ────────
+                   Business ↔ Nonprofit on the org's live Stripe subscription(s),
+                   no proration — the next invoice is at the new price. Shares
+                   the workspace → org picker above. Nonprofit stays non-self-
+                   serve: this control is the only way onto it. #}
+                <div class="billing-comp-org-divider" aria-hidden="true">or change the selected organization's plan</div>
+                <div class="billing-coupon-row billing-comp-org-row" data-testid="billing-plan-control">
+                    <select id="billing-plan-select"
+                            class="billing-input billing-comp-org-select"
+                            data-testid="billing-plan-select"
+                            disabled
+                            aria-label="Plan">
+                        {% for p in (plans or []) %}
+                        <option value="{{ p.key }}">{{ p.name }} ({{ p.price_display }} / month)</option>
+                        {% endfor %}
+                    </select>
+                    <button type="button"
+                            class="billing-btn billing-btn-primary"
+                            id="billing-plan-set"
+                            data-testid="billing-plan-set"
+                            disabled>Change plan</button>
                 </div>
             </form>
             <div class="billing-comp-result" id="billing-comp-result" data-testid="billing-comp-result" role="status"></div>
@@ -2044,6 +2083,9 @@
 
     var publishableKey = form.getAttribute('data-publishable-key');
     var createUrl = form.getAttribute('data-create-url');
+    // set when the page was opened from the wizard's "Your plan"
+    // screen; a successful order returns there.
+    var nextUrl = form.getAttribute('data-next-url') || '';
     var csrfToken = {{ csrf_token | tojson }};
 
     var stripe = Stripe(publishableKey);
@@ -2286,6 +2328,9 @@
             if (res.ok && (res.data.status === 'active' || res.data.status === 'stub')) {
                 form.style.display = 'none';
                 showSuccess(res.data.message || 'Payment successful.');
+                if (nextUrl) {
+                    setTimeout(function () { window.location.href = nextUrl; }, 1800);
+                }
             } else {
                 showError((res.data && res.data.message) || 'Payment failed. Please try again.');
                 payBtn.disabled = false;
@@ -2518,6 +2563,24 @@
         if (!suggestEl.contains(e.target) && e.target !== targetInput) { closeSuggestions(); }
     });
 
+    // a comp SET also cancels the target's live Stripe
+    // subscription(s); the route reports the outcome as `stripe_cancel`.
+    // Say how many were cancelled, and shout when a cancel failed (the
+    // customer may still be charged) — that case renders as a failure.
+    function stripeCancelNote(action, data) {
+        var sc = (data && data.stripe_cancel) || {};
+        var n = (sc.subscription_ids || []).length;
+        var errs = (sc.errors || []).length;
+        var text = '';
+        if (action !== 'set') { return { text: text, failed: false }; }
+        if (n) { text += ' Canceled ' + n + ' Stripe subscription' + (n === 1 ? '' : 's') + ' — no further charges.'; }
+        if (errs) {
+            text += ' WARNING: ' + errs + ' Stripe cancel' + (errs === 1 ? '' : 's')
+                + ' FAILED — the customer may still be charged. Check Stripe and the audit log.';
+        }
+        return { text: text, failed: errs > 0 };
+    }
+
     // ── Comp set/clear (shared by the form buttons + per-row Clear) ──────
     // Targets a user (by username) OR an org directly (by org_esid). When
     // org_esid is given it wins; `label` is the friendly name to echo back.
@@ -2535,9 +2598,10 @@
             return resp.json().then(function (data) { return { ok: resp.ok, data: data }; });
         }).then(function (res) {
             if (res.ok && res.data.status === 'ok') {
+                var note = stripeCancelNote(action, res.data);
                 showResult(
-                    (action === 'set' ? 'Comped ' : 'Cleared comp for ') + echo + '.',
-                    true
+                    (action === 'set' ? 'Comped ' : 'Cleared comp for ') + echo + '.' + note.text,
+                    !note.failed
                 );
                 if (action === 'set' && !org_esid) { targetInput.value = ''; }
                 if (action === 'set' && org_esid) { resetOrgPicker(); }
@@ -2565,6 +2629,10 @@
     var orgSetBtn = document.getElementById('billing-comp-org-set');
     var wsSetBtn = document.getElementById('billing-comp-ws-set');
     var chosenWs = null;  // {workspace_esid, workspace_title}
+    // plan control (follows the org picker's enabled state).
+    var planUrl = form.getAttribute('data-plan-url');
+    var planSelect = document.getElementById('billing-plan-select');
+    var planSetBtn = document.getElementById('billing-plan-set');
 
     function resetOrgPicker() {
         chosenWs = null;
@@ -2575,10 +2643,15 @@
         }
         if (orgSetBtn) { orgSetBtn.disabled = true; }
         if (wsSetBtn) { wsSetBtn.disabled = true; }
+        if (planSetBtn) { planSetBtn.disabled = true; }
+        if (planSelect) { planSelect.disabled = true; }
     }
 
     function syncOrgSetBtn() {
         if (orgSetBtn) { orgSetBtn.disabled = !(orgSelect && orgSelect.value); }
+        // the plan control is live exactly when an org is chosen.
+        if (planSetBtn) { planSetBtn.disabled = !(orgSelect && orgSelect.value); }
+        if (planSelect) { planSelect.disabled = !(orgSelect && orgSelect.value); }
     }
 
     function closeWsSuggestions() {
@@ -2688,10 +2761,12 @@
                 if (res.ok && res.data.status === 'ok') {
                     var n = res.data.orgs_comped || 0;
                     var failed = (res.data.orgs_failed || []).length;
+                    var note = stripeCancelNote('set', res.data);
                     showResult(
                         'Comped workspace ' + wsLabel + ' and ' + n + ' organization' + (n === 1 ? '' : 's') + ' under it.'
-                        + (failed ? ' (' + failed + ' org comp' + (failed === 1 ? '' : 's') + ' FAILED — check the audit log.)' : ''),
-                        !failed
+                        + (failed ? ' (' + failed + ' org comp' + (failed === 1 ? '' : 's') + ' FAILED — check the audit log.)' : '')
+                        + note.text,
+                        !failed && !note.failed
                     );
                     resetOrgPicker();
                     loadComped();
@@ -2701,6 +2776,45 @@
             }).catch(function () {
                 showResult('Something went wrong. Please try again.', false);
             });
+        });
+    }
+
+    // ── move the chosen org between plans (Business ↔ Nonprofit) ─
+    // Same picker as the org comp; the route swaps the base plan item on the
+    // org's live Stripe subscription(s) with no proration.
+    if (planSetBtn && planSelect && orgSelect) {
+        planSetBtn.addEventListener('click', function () {
+            var orgEsid = orgSelect.value;
+            if (!orgEsid) { showResult('Pick an organization first.', false); return; }
+            var orgLabel = orgSelect.options[orgSelect.selectedIndex].textContent;
+            var planLabel = planSelect.options[planSelect.selectedIndex].textContent;
+            if (!window.confirm('Move ' + orgLabel + ' to the ' + planLabel + ' plan? '
+                + 'The next invoice is at the new price; nothing is charged today.')) { return; }
+            resultEl.textContent = '';
+            planSetBtn.disabled = true;
+            fetch(planUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                body: JSON.stringify({ org_esid: orgEsid, plan: planSelect.value })
+            }).then(function (resp) {
+                return resp.json().then(function (data) { return { ok: resp.ok, data: data }; });
+            }).then(function (res) {
+                if (res.ok && res.data.status === 'ok') {
+                    var n = (res.data.subscription_ids || []).length;
+                    var errs = (res.data.errors || []).length;
+                    showResult(
+                        'Moved ' + orgLabel + ' to the ' + (res.data.plan_name || planSelect.value) + ' plan — '
+                        + n + ' Stripe subscription' + (n === 1 ? '' : 's') + ' updated; the next invoice is at the new price.'
+                        + (errs ? ' WARNING: ' + errs + ' subscription' + (errs === 1 ? '' : 's')
+                            + ' could not be changed — finish in Stripe and check the audit log.' : ''),
+                        !errs
+                    );
+                } else {
+                    showResult((res.data && res.data.message) || 'Plan change failed.', false);
+                }
+            }).catch(function () {
+                showResult('Something went wrong. Please try again.', false);
+            }).then(function () { syncOrgSetBtn(); });
         });
     }
 

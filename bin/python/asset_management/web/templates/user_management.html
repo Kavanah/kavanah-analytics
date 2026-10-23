@@ -1326,7 +1326,7 @@
                 <input type="checkbox" class="user-cb" value="{{ user.username }}" onchange="updateBulkBar()">
                 {% endif %}
             </td>
-            <td><a class="username-link" onclick="openUserDetail('{{ user.username }}')">{{ user.username }}</a></td>
+            <td><a class="username-link" data-username="{{ user.username }}" onclick="openUserDetail(this.dataset.username)">{{ user.username }}</a></td>
             <td>{{ user.full_name or '—' }}</td>
             <td>
                 {% if user.enabled is false %}
@@ -1374,7 +1374,7 @@
             <td>
                 <div class="actions">
                     {% if 'superuser' not in user.roles %}
-                    <button class="btn-sm btn-edit-roles" onclick="openEditRolesFromRow(this, '{{ user.username }}')">Roles</button>
+                    <button class="btn-sm btn-edit-roles" data-username="{{ user.username }}" onclick="openEditRolesFromRow(this, this.dataset.username)">Roles</button>
                     {% endif %}
                 </div>
             </td>
@@ -2254,12 +2254,36 @@ function filterRoles(checklistId, query) {
 }
 
 // ── session-aware JSON parser ────────────────────────────────────────────────
+// only a 401 or a redirect to the login page means the session is
+// gone. A 403 is a refusal (permission, workspace scope, stale CSRF token)
+// whose reason the server sends as the JSON ``error``; show that instead of
+// telling the operator to sign in again.
+function isSessionLoss(r) {
+    return r.redirected || r.status === 401;
+}
+
+function refusalMessage(status, data) {
+    var msg = (data && typeof data.error === 'string') ? data.error : '';
+    if (msg === 'CSRF validation failed') {
+        return 'This page is out of date — reload it and try again.';
+    }
+    if (msg && msg !== 'Forbidden') return msg;
+    if (status === 403) return 'You do not have permission to do that.';
+    return 'Server error (' + status + ') — please reload and try again.';
+}
+
+function throwRefusal(r) {
+    return r.json().catch(function() { return null; }).then(function(data) {
+        throw new Error(refusalMessage(r.status, data));
+    });
+}
+
 function parseJson(r) {
-    if (r.redirected || r.status === 401 || r.status === 403) {
+    if (isSessionLoss(r)) {
         throw new Error('Session expired — please reload the page and sign in again.');
     }
     if (!r.ok) {
-        throw new Error('Server error (' + r.status + ') — please reload and try again.');
+        return throwRefusal(r);
     }
     return r.json();
 }
@@ -2827,9 +2851,13 @@ function submitCreateUser() {
         // suggested_username that the success-branch below pre-fills. The
         // shared parseJson would throw on any non-2xx status, hiding that
         // payload, so we parse the body locally and only short-circuit on
-        // session-loss responses.
-        if (r.redirected || r.status === 401 || r.status === 403) {
+        // session-loss responses (a 403 is a refusal, not a lost
+        // session, and carries its reason).
+        if (isSessionLoss(r)) {
             throw new Error('Session expired — please reload the page and sign in again.');
+        }
+        if (r.status === 403) {
+            return throwRefusal(r);
         }
         return r.json();
     })
@@ -3612,8 +3640,11 @@ function _erCommitAssign(username, a) {
         })
     })
         .then(function(r) {
-            if (r.redirected || r.status === 401 || r.status === 403) {
+            if (isSessionLoss(r)) {
                 throw new Error('Session expired — reload and sign in again.');
+            }
+            if (r.status === 403) {
+                return throwRefusal(r);
             }
             return r.json().catch(function() { return { success: false, error: 'Non-JSON response (' + r.status + ')' }; });
         })
@@ -4232,7 +4263,7 @@ function loadRegistrations() {
             else if (r.status === 'pending_verification') statusBadge = '<span class="badge badge-disabled">Awaiting Verification</span>';
             else if (r.status === 'approved') statusBadge = '<span class="badge badge-enabled">Approved</span>';
             else if (r.status === 'rejected') statusBadge = '<span class="badge" style="background:#f8d7da;color:#721c24">Rejected</span>';
-            else statusBadge = '<span class="badge badge-disabled">' + (r.status || 'Unknown') + '</span>';
+            else statusBadge = '<span class="badge badge-disabled">' + esc(r.status || 'Unknown') + '</span>';
 
             var ts = r['@timestamp'] ? new Date(r['@timestamp']).toLocaleString() : '';
             var actions = '';
@@ -4248,9 +4279,9 @@ function loadRegistrations() {
             }
 
             html += '<tr>' +
-                '<td>' + (r.username || '') + '</td>' +
-                '<td>' + (r.email || '') + '</td>' +
-                '<td>' + (r.full_name || '') + '</td>' +
+                '<td>' + esc(r.username || '') + '</td>' +
+                '<td>' + esc(r.email || '') + '</td>' +
+                '<td>' + esc(r.full_name || '') + '</td>' +
                 '<td>' + statusBadge + '</td>' +
                 '<td>' + ts + '</td>' +
                 '<td>' + actions + '</td>' +
@@ -4260,7 +4291,7 @@ function loadRegistrations() {
         container.innerHTML = html;
     })
     .catch(function(e) {
-        container.innerHTML = '<p class="audit-loading" style="color:#e53e3e">Error loading registrations: ' + e.message + '</p>';
+        container.innerHTML = '<p class="audit-loading" style="color:#e53e3e">Error loading registrations: ' + esc(e.message) + '</p>';
     });
 }
 
@@ -4664,7 +4695,7 @@ function loadAuditLog(offset) {
         initAuditColumnResize(container);
     })
     .catch(function(e) {
-        container.innerHTML = '<p class="audit-loading" style="color:#e53e3e">Error loading audit log: ' + e.message + '</p>';
+        container.innerHTML = '<p class="audit-loading" style="color:#e53e3e">Error loading audit log: ' + esc(e.message) + '</p>';
     });
 }
 

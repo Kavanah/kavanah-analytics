@@ -148,6 +148,13 @@ declare -A PARAM_TO_ENV=(
     # absent params = feature off (compose defaults both to empty).
     ["elasticsearch/de-kibana-gate-user"]="KIBANA_GATE_USER"
     ["elasticsearch/de-kibana-gate-password"]="KIBANA_GATE_PASSWORD"
+    # hCaptcha keys for the self-signup forms. Seeded by km-infra
+    # (admin-tools/create-deam-ssm-params.sh --set deam/hcaptcha-*); config.py
+    # reads the env names first and falls back to the registration yaml only
+    # when they are unset. Both empty = captcha skipped (unchanged behaviour).
+    # In CLEAR_IF_ABSENT below so deleting the params turns the widget off.
+    ["deam/hcaptcha-site-key"]="HCAPTCHA_SITE_KEY"
+    ["deam/hcaptcha-secret-key"]="HCAPTCHA_SECRET_KEY"
     # kibana-system-password / kibana-token are consumed by step3-app-stack.sh
     # writing kibana.yml (deploy layer), NOT by imports_container — intentionally
     # NOT injected here. Their migration is a step3 change.
@@ -232,7 +239,9 @@ done <<< "$SSM_OUT"
 # the old lines in place, so KibanaGateService.enabled() stays true and every
 # mint authenticates as a service account that no longer exists. Blanking them
 # is what actually turns the gate off and drops users back to Kibana's own login.
-CLEAR_IF_ABSENT=(ENC_KEY_PREVIOUS ES_ADMIN_API_KEY KIBANA_GATE_USER KIBANA_GATE_PASSWORD TIKTOK_CLIENT_KEY TIKTOK_CLIENT_SECRET)
+# HCAPTCHA_SITE_KEY / HCAPTCHA_SECRET_KEY likewise: a stale site key
+# would keep rendering a widget whose siteverify call can never succeed.
+CLEAR_IF_ABSENT=(ENC_KEY_PREVIOUS ES_ADMIN_API_KEY KIBANA_GATE_USER KIBANA_GATE_PASSWORD TIKTOK_CLIENT_KEY TIKTOK_CLIENT_SECRET HCAPTCHA_SITE_KEY HCAPTCHA_SECRET_KEY)
 for env_name in "${CLEAR_IF_ABSENT[@]}"; do
     if [[ -z "${NEW_VALUES[$env_name]+x}" ]]; then
         NEW_VALUES["$env_name"]=""
@@ -360,6 +369,12 @@ info "Building imports_container image via docker compose (cache-aware)..."
 docker compose -f "$COMPOSE_FILE" --env-file "$COMPOSE_ENV" build imports_container \
     || error "image build failed — if pip reported a hash mismatch, recompile bin/python/requirements.txt from requirements.in; do not hand-edit the lock"
 success "imports image after build:  $(image_provenance)"
+
+# ── 4b. Bound the build cache this step grows ─────────────────────
+# Each rebuild leaves BuildKit cache and an untagged previous :latest behind;
+# prod had 19.5 GB of it by 2026-10-12. Keep ≤2 GB of recent cache so the next
+# build still hits layers. A prune failure is a warning, never a failed deploy.
+bash "$DEPLOY_DIR/prune-docker-build-cache.sh" || warn "build-cache prune failed (non-fatal); run deployment/prune-docker-build-cache.sh by hand"
 
 # ── 4. Recreate imports_container via compose ────────────────────────────────
 # --force-recreate so the rewritten.env is actually picked up.

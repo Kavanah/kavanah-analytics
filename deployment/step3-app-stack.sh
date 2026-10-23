@@ -321,10 +321,13 @@ else
     sudo chown -R 1000:1000 "$SNAPSHOT_DIR" 2>/dev/null || chown -R 1000:1000 "$SNAPSHOT_DIR"
 
     info "Starting Elasticsearch $ES_VERSION (one-time bootstrap, fixed IP 172.18.0.2)..."
+    # the bootstrap container is loopback-published — wait_for_es and
+    # the kibana_system password call below curl localhost:9200 from this host,
+    # and nothing else needs it before compose replaces this container.
     docker run --name "$ES_CONTAINER" \
         --net "$DOCKER_NETWORK" \
         --ip "172.18.0.2" \
-        -p 9200:9200 \
+        -p 127.0.0.1:9200:9200 \
         -e "discovery.type=single-node" \
         -e "ELASTIC_PASSWORD=${ELASTIC_PASS}" \
         -e "path.repo=/usr/share/elasticsearch/snapshots" \
@@ -654,6 +657,14 @@ SELF_SIGNUP_ENABLED=${SELF_SIGNUP_ENABLED:-false}
 # on. Compose passes it into imports_container, and 03_provision_cron_jobs.sh
 # reads it from this file to decide whether to install the TikTok nightly line.
 TIKTOK_ENABLED=${TIKTOK_ENABLED:-}
+
+# Global import queue. IMPORT_GLOBAL_CAP = max importer processes at
+# once; blank or 0 = no cap (off). ~4 per 2 vCPU (prod 4 vCPU = 8).
+# Over-cap runs wait FIFO for up to IMPORT_QUEUE_MAX_WAIT_SECONDS (blank = 12 h),
+# re-checking every IMPORT_QUEUE_POLL_SECONDS (blank = 5).
+IMPORT_GLOBAL_CAP=${IMPORT_GLOBAL_CAP:-}
+IMPORT_QUEUE_MAX_WAIT_SECONDS=${IMPORT_QUEUE_MAX_WAIT_SECONDS:-}
+IMPORT_QUEUE_POLL_SECONDS=${IMPORT_QUEUE_POLL_SECONDS:-}
 
 # Application secrets (substituted into imports_container env)
 ES_ADMIN_PASS=${LATEST_ES_PASS}

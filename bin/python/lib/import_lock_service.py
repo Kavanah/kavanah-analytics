@@ -72,6 +72,20 @@ Two DIFFERENT scopes still run concurrently — that's the point of
 scoping. Before the classes ignored each other (acquire
 only checked its own doc id), so a bulk sweep could race a scoped
 run on the scope they share.
+
+Global import cap
+----------------------------
+
+The locks above only stop duplicates; nothing capped how many importers run
+at once. ``acquire`` is the one
+call every locked importer makes, so AFTER the per-scope lock is won it also
+takes a global slot from :mod:`lib.import_slots` (``IMPORT_GLOBAL_CAP``; unset
+= off). Taking the scope lock first means a duplicate run of the same scope
+still gets today's instant "already in progress" skip while the first run is
+queued. While queued, the lock's ``expires_at`` is renewed every poll so the
+30-min TTL can't lapse under a run that is merely waiting. A queue timeout or
+a cancel while queued drops the scope lock and returns ``None`` — the same exit
+the importers already take on a lost lock. ``release`` frees the slot too.
 """
 
 from __future__ import annotations
@@ -297,9 +311,24 @@ class ImportLockService:
         return ImportLockService.scope_key_for_ids([conn_esid])
 
     @staticmethod
-    def acquire(connector: str, scope_id: str = "") -> str | None:
+    def acquire(
+        connector: str,
+        scope_id: str = "",
+        progress_run_id: str | None = None,
+        global_slot: bool = True,
+    ) -> str | None:
         """Try to claim the lock for ``connector`` (optionally narrowed to
         ``scope_id``).
+
+        once the lock is won, also wait FIFO for a global import
+        slot (``lib.import_slots``; a no-op unless ``IMPORT_GLOBAL_CAP`` is
+        set). ``progress_run_id`` is the run's ``de_import_progress`` doc: it is
+        marked ``queued`` (with ``queue_position``) while waiting, failed on a
+        queue timeout, and its cancel ends the wait. ``None`` (no run doc) falls
+        back to local queue ordering. ``global_slot=False`` skips the slot for a
+        lock that is not a whole-run lock (TikTok's per-connection token-refresh
+        mutex, held for seconds in the middle of a run). A timeout / cancel
+        while queued releases the scope lock and returns ``None``.
 
         Returns a fresh ``lock_id`` (random UUID) when the caller now
         holds the lock, or ``None`` when an unexpired lock is already
@@ -396,6 +425,24 @@ class ImportLockService:
         except Exception as exc:  # noqa: BLE001 — boundary
             logging.warning("lock acquire failed for %s: %s", doc_id, exc)
             return None
+
+        # global import cap (module docstring). After the scope lock,
+        # so a same-scope duplicate keeps losing instantly while this run queues.
+        if global_slot:
+            from lib.import_slots import acquire_slot
+
+            admitted = acquire_slot(
+                lock_id,
+                progress_run_id=progress_run_id,
+                on_poll=lambda: _renew(connector, scope_id, lock_id),
+                label=doc_id,
+            )
+            if not admitted:
+                # Timed out / cancelled while queued (acquire_slot stamped the
+                # progress doc). Free the scope for the next run and report a
+                # lost lock — the importers' existing clean-exit path.
+                ImportLockService.release(connector, lock_id, scope_id=scope_id)
+                return None
         return lock_id
 
     @staticmethod
@@ -410,9 +457,20 @@ class ImportLockService:
         A's release would clear B's lock and re-open the race.
 
         Soft-fails silently — the lock will expire on its own.
+
+        also frees this lock's global import slot, first and
+        unconditionally (even when the doc is gone or re-acquired, e.g. after a
+        Cancel's force_release): the slot belongs to this process, not the doc.
+        Safe when no slot is held (cap off, double release).
         """
         if not connector or not lock_id:
             return
+        try:
+            from lib.import_slots import release_slot
+
+            release_slot(lock_id)
+        except Exception as exc:  # noqa: BLE001 — the kernel frees the slot at exit anyway
+            logging.warning("slot release raised for %s: %s", connector, exc)
         es = _es()
         if es is None:
             return
@@ -524,6 +582,26 @@ class ImportLockService:
             if expires_at is not None and expires_at > now and not _holder_is_dead(doc):
                 return True
         return _cross_class_hold(es, connector, scope_id, now) is not None
+
+
+def _renew(connector: str, scope_id: str, lock_id: str) -> None:
+    """push a held lock's ``expires_at`` to now + TTL while its run
+    waits for a global import slot (a queue wait can run for hours; without
+    this the 30-min TTL lapses and a second same-scope run could overwrite the
+    "expired" lock and queue behind it). Only touches the doc while ``lock_id``
+    still owns it. Fail-soft."""
+    es = _es()
+    if es is None:
+        return
+    doc_id = _lock_doc_id(connector, scope_id)
+    current = _get(es, doc_id)
+    if current is None or current.get("lock_id") != lock_id:
+        return
+    current["expires_at"] = (_now() + _LOCK_TTL).isoformat()
+    try:
+        es.index(index=LOCK_INDEX, id=doc_id, document=current, refresh="wait_for")
+    except Exception as exc:  # noqa: BLE001 — boundary; the TTL is the fallback
+        logging.warning("lock renew failed for %s: %s", doc_id, exc)
 
 
 def _cross_class_hold(es: Any, connector: str, scope_id: str, now: datetime, heal: bool = False) -> dict | None:

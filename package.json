@@ -11,7 +11,7 @@
     "docs:capture": "npx playwright test --project=docs-capture"
   },
   "devDependencies": {
-    "@playwright/test": "^1.62.1",
+    "@playwright/test": "^1.64.0",
     "otpauth": "^9.5.1"
   }
 }

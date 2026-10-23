@@ -199,23 +199,24 @@ def _schedule_service():
 # ── Entry point ──────────────────────────────────────────────────────────────
 
 
-def build_report_data(es, schedule: dict, scope_titles: list[str], date_range: dict) -> dict:
+def build_report_data(es, schedule: dict, scope_titles: list[str], date_range: dict, *, scope_team_esids: list[str]) -> dict:
     """Build the snapshot ``{tables, summary_metrics}`` for one report-type run.
 
     ``scope_titles`` is the schedule's resolved team-title scope (explicit
     teams, else the creator clamp) — empty computes empty, never
-    unscoped. ``date_range`` is the schedule's resolved {from,to} window; the
+    unscoped. ``scope_team_esids`` are the same teams by ESID; every index
+    list is built from them. ``date_range`` is the schedule's resolved {from,to} window; the
     import-errors report ignores it (it reports last-run STATE, not a window).
     Raises on nothing: any per-view/per-schedule failure degrades to missing
     rows (logged), matching ``_precompute_charts``' per-chart containment.
     """
     report_type = (schedule or {}).get("dashboard_id") or ""
     if report_type == REPORT_TYPE_BACKFILL:
-        return _build_backfill_report(es, scope_titles, date_range)
+        return _build_backfill_report(es, scope_titles, date_range, scope_team_esids=scope_team_esids)
     if report_type == REPORT_TYPE_IMPORT_ERRORS:
-        return _build_import_errors_report(es, schedule, scope_titles)
+        return _build_import_errors_report(es, schedule, scope_titles, scope_team_esids=scope_team_esids)
     if report_type == REPORT_TYPE_BITLY_CLICKS:
-        return _build_bitly_clicks_report(es, scope_titles, date_range)
+        return _build_bitly_clicks_report(es, scope_titles, date_range, scope_team_esids=scope_team_esids)
     return {
         "tables": [],
         "summary_metrics": {},
@@ -236,7 +237,7 @@ def _team_title_clause(team_titles: list[str]) -> dict:
     return {"bool": {"should": should, "minimum_should_match": 1}}
 
 
-def _scoped_indices(pattern: str, titles: list[str]) -> str:
+def _scoped_indices(pattern: str, team_esids: list[str]) -> str:
     """Concrete, team-scoped index list for ``pattern`` — the headless
     equivalent of app._backfill_report's ``RoleFilterService.workspace_scoped_
     index_pattern``.
@@ -248,27 +249,21 @@ def _scoped_indices(pattern: str, titles: list[str]) -> str:
     report's own resolved team titles keeps the query inside the schedule's
     scope.
 
-    ``_build_allowed_indices`` is module-level and takes only team titles (no
-    Flask session), so it is safe under the cron runner. It emits both naming
-    schemes (``{esid}__{source}`` and legacy ``{slug}_{source}``);
-    intersecting with the view's suffix keeps only this view's indices.
-    Returns "" when nothing matches — the caller skips the view rather than
-    falling back to an unscoped glob.
+    the index list is built from the schedule's team ESIDs
+    (``lib.es_helpers.team_data_index_names``, no Flask session, cron-safe).
+    It used to be built from team titles resolved across every tenant, so a
+    same-titled team elsewhere joined the list. Intersecting with the view's
+    suffix keeps only this view's indices. Returns "" when nothing matches —
+    the caller skips the view rather than falling back to an unscoped glob.
     """
-    try:
-        from asset_management.web.services.role_filter_service import _build_allowed_indices
-    except ImportError:  # container / pytest root differences
-        try:
-            from web.services.role_filter_service import _build_allowed_indices
-        except ImportError:
-            from services.role_filter_service import _build_allowed_indices  # type: ignore[no-redef]
+    from lib.es_helpers import team_data_index_names
 
     suffix = pattern[1:] if pattern.startswith("*") else pattern
-    allowed = _build_allowed_indices(list(titles))
+    allowed = team_data_index_names(team_esids)
     return ",".join(sorted(idx for idx in allowed if idx.endswith(suffix)))
 
 
-def _build_backfill_report(es, scope_titles: list[str], date_range: dict) -> dict:
+def _build_backfill_report(es, scope_titles: list[str], date_range: dict, *, scope_team_esids: list[str]) -> dict:
     """Per-team × per-view days-with-data + last-date-imported, over ALL data
     views (the scheduled report always includes every view), scoped
     to the schedule's teams by both index set and team title.
@@ -291,7 +286,7 @@ def _build_backfill_report(es, scope_titles: list[str], date_range: dict) -> dic
         for view in _DATA_VIEWS:
             pattern = view["pattern"]
             date_field = _inventory_date_field(pattern)
-            scoped = _scoped_indices(pattern, titles)
+            scoped = _scoped_indices(pattern, scope_team_esids)
             if not scoped:
                 continue  # no indices for this view within the schedule's scope
             must: list[dict] = [
@@ -407,7 +402,7 @@ def _bitly_period_keys(frm: str, to: str) -> tuple[list[str], bool]:
     return keys, weekly
 
 
-def _build_bitly_clicks_report(es, scope_titles: list[str], date_range: dict) -> dict:
+def _build_bitly_clicks_report(es, scope_titles: list[str], date_range: dict, *, scope_team_esids: list[str]) -> dict:
     """Per-link Bitly click totals + a per-day click series over the schedule's
     resolved window, scoped to the schedule's teams by both index set
     (:func:`_scoped_indices` — never the bare glob) and ``team_title``
@@ -437,7 +432,7 @@ def _build_bitly_clicks_report(es, scope_titles: list[str], date_range: dict) ->
     day_rows: list[list] = []
     total_clicks = 0
 
-    scoped = _scoped_indices(_BITLY_PATTERN, titles) if titles else ""
+    scoped = _scoped_indices(_BITLY_PATTERN, scope_team_esids) if titles else ""
     if scoped:
         body = {
             "size": 0,
@@ -533,33 +528,27 @@ def _build_bitly_clicks_report(es, scope_titles: list[str], date_range: dict) ->
 # ── Import-errors report ─────────────────────────────────────────────────────
 
 
-def _resolve_report_teams(es, schedule: dict, scope_titles: list[str]) -> list[dict]:
+def _resolve_report_teams(es, schedule: dict, scope_titles: list[str], scope_team_esids: list[str]) -> list[dict]:
     """The report's team rows as ``[{esid, title}]``, sorted by title.
 
-    Explicit ``team_esids`` resolve by id; otherwise the creator-clamp
-    titles are mapped back to team docs (the errors join below needs esids —
-    import schedules scope by esid, not title). Empty on no resolvable scope.
+    Resolved by ESID from the schedule's resolved scope (explicit teams, else
+    the creator clamp). the clamp path used to map the
+    creator's titles back to team docs across the whole cluster, so a
+    same-titled team in another tenant joined the report. Empty on no
+    resolvable scope.
     """
-    svc = _schedule_service()
-    team_esids = svc.ReportScheduleService._schedule_team_esids(schedule)
+    team_esids = [e for e in (scope_team_esids or []) if e]
+    if not team_esids:
+        return []
     try:
-        if team_esids:
-            res = es.search(
-                index=_INDEX_TEAMS,
-                body={
-                    "query": {"ids": {"values": team_esids}},
-                    "_source": _TEAM_ASSET_SOURCE_FIELDS,
-                    "size": len(team_esids),
-                },
-            )
-        else:
-            titles = {t for t in (scope_titles or []) if t}
-            if not titles:
-                return []
-            res = es.search(
-                index=_INDEX_TEAMS,
-                body={"query": {"match_all": {}}, "_source": _TEAM_ASSET_SOURCE_FIELDS, "size": 10000},
-            )
+        res = es.search(
+            index=_INDEX_TEAMS,
+            body={
+                "query": {"ids": {"values": team_esids}},
+                "_source": _TEAM_ASSET_SOURCE_FIELDS,
+                "size": len(team_esids),
+            },
+        )
     except Exception as e:  # noqa: BLE001 — no team rows beats a failed run
         logging.error("report_types_service._resolve_report_teams: %s", e)
         return []
@@ -569,8 +558,6 @@ def _resolve_report_teams(es, schedule: dict, scope_titles: list[str]) -> list[d
         title = (src.get("team_title") or "").strip()
         if not title:
             continue
-        if not team_esids and title not in scope_titles:
-            continue  # clamp path: keep only the creator's authorized titles
         teams.append({"esid": h["_id"], "title": title, "doc": src})
     teams.sort(key=lambda t: t["title"].lower())
     return teams
@@ -651,7 +638,7 @@ def _team_asset_keys(es, teams: list[dict]) -> dict[str, set[str]]:
     return keys
 
 
-def _build_import_errors_report(es, schedule: dict, scope_titles: list[str]) -> dict:
+def _build_import_errors_report(es, schedule: dict, scope_titles: list[str], *, scope_team_esids: list[str]) -> dict:
     """Teams and the classified import errors their import schedules' most
     recent runs recorded (``last_run_state.import_errors``, lazily
     back-filled from ``de_import_progress`` via ``backfill_import_outcome``).
@@ -686,7 +673,7 @@ def _build_import_errors_report(es, schedule: dict, scope_titles: list[str]) -> 
     config state, not a run outcome.
     """
     svc = _schedule_service()
-    teams = _resolve_report_teams(es, schedule, scope_titles)
+    teams = _resolve_report_teams(es, schedule, scope_titles, scope_team_esids)
     if not teams:
         return {
             "tables": [_table_entry(REPORT_TYPE_IMPORT_ERRORS, _ERRORS_TABLE_TITLE, list(_ERRORS_COLUMNS), [])],

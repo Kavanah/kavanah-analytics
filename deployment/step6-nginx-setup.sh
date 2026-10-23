@@ -124,6 +124,9 @@ ok "default.conf seeded from $TEMPLATE_FILE"
 echo "Building nginx-reverse-proxy:local image..."
 docker build --no-cache -t nginx-reverse-proxy:local "$NGINX_DIR"
 ok "Image built (tag: nginx-reverse-proxy:local)"
+# --no-cache above leaves a full set of fresh layers plus the untagged previous
+# image every run; bound it. A prune failure is a warning only.
+bash "$DERS_HOME/deployment/prune-docker-build-cache.sh" || warn "build-cache prune failed (non-fatal)"
 
 # ── Ensure compose bind-mount targets exist ──────────────────────────────────
 # Docs (built by step7-build-docs.sh) and marketing site (rsync'd from the

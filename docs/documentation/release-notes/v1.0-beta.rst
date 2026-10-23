@@ -186,22 +186,29 @@ for future releases.
 **Disciple Tools: no import UI**
    Disciple Tools data is ingested directly into Elasticsearch without using the
    standard Import Data page. Contact Kavanah Media for setup instructions.
+   *Since shipped:* Disciple.Tools now has a setup wizard on the Data Connectors
+   page — see :doc:`../getting-started/connecting-data-sources`.
 
 **Dashboard Builder: no stacked bar or scatter plot**
    The Dashboard Builder does not yet support stacked bar charts or scatter plots.
    These chart types are planned for Dashboard Builder v2 in Phase 2.
 
-**Enterprise white-label branding not available in v1.0**
-   White-label branding (custom logos, colour schemes, domain) is an Enterprise
-   tier feature planned for Phase 3 (Q4 2026).
+**White-label branding not available in v1.0**
+   White-label branding (custom logos, colour schemes, domain) is planned for
+   Phase 3 (Q4 2026). There are no separate feature tiers: every subscription
+   tier is the whole platform (see *Subscription Tiers* on the :doc:`../index`
+   page).
 
-**Automated weekly reports deferred to v1.1**
-   The automated email reporting feature described in :doc:`../dashboards/automated-reporting`
-   is a Pro tier feature planned for Phase 2. It is not available in v1.0.
+**Automated reports deferred**
+   Scheduled reporting was not available in v1.0. *Since shipped:* the Report
+   Scheduler is live on every subscription tier — see
+   :doc:`../dashboards/automated-reporting`.
 
 **No Stripe billing integration**
-   Subscription billing via Stripe is planned for Phase 2. Users are provisioned
-   manually by the Kavanah Media team.
+   Subscription billing via Stripe was not available in v1.0; users were
+   provisioned manually by the Kavanah Media team. *Since shipped:* self-serve
+   billing via Stripe (June 2026), with per-team pricing and no data-source
+   caps since 16 October 2026.
 
 **Single-node Elasticsearch only**
    Beta v1.0 runs on a single-node Elasticsearch cluster. Index health may show
@@ -213,10 +220,11 @@ for future releases.
 Access
 ------
 
-Kavanah Analytics v1.0 is available by invitation. To request access:
-
-- Contact Kavanah Media at the address provided in your onboarding communication
-- Specify your organisation name and the subscription tier you need
+Kavanah Analytics v1.0 was available by invitation. Signups opened to everyone
+on 20 October 2026: sign up at `kavanahanalytics.com
+<https://kavanahanalytics.com>`_, or apply for a sponsored license at
+`kavanahanalytics.com/pricing <https://kavanahanalytics.com/pricing>`_. See
+*Subscription Tiers* on the :doc:`../index` page.
 
 ----
 

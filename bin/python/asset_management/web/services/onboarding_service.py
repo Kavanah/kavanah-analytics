@@ -66,6 +66,9 @@ from lib.es_helpers import (
     generate_es_safe_doc_id,
     get_elasticsearch_client,
 )
+from lib.org_title_restamp import propagate_org_title
+from lib.publish_scope_rename import rename_publish_snapshots
+from lib.team_title_restamp import restamp_team_title
 
 from asset_management.web.services.permissions_index_service import (
     USER_ORG_ROLE_INDEX,
@@ -272,7 +275,7 @@ class OnboardingService:
         # earlier individual default).
         t_title = (team_title or "").strip() or o_title
         team_esid, team_created = OnboardingService._upsert_team(
-            es, title=t_title, org_esid=org_esid, workspace_esid=workspace_esid
+            es, title=t_title, org_esid=org_esid, org_title=o_title, workspace_esid=workspace_esid
         )
         if team_esid is None:
             result.errors.append("team create failed")
@@ -377,7 +380,7 @@ class OnboardingService:
         # historical "General" org_owner default per a teammate 2026-06-22).
         t_title = (team_title or "").strip() or "Team 1"
         team_esid, team_created = OnboardingService._upsert_team(
-            es, title=t_title, org_esid=org_esid, workspace_esid=workspace_esid
+            es, title=t_title, org_esid=org_esid, org_title=o_title, workspace_esid=workspace_esid
         )
         if team_esid is None:
             result.errors.append("team create failed")
@@ -704,7 +707,7 @@ class OnboardingService:
         result.org_created = org_created
 
         team_esid, team_created = OnboardingService._upsert_team(
-            es, title=first_client_title, org_esid=org_esid, workspace_esid=workspace_esid
+            es, title=first_client_title, org_esid=org_esid, org_title=first_client_title, workspace_esid=workspace_esid
         )
         if team_esid is None:
             result.errors.append("team create failed")
@@ -795,7 +798,7 @@ class OnboardingService:
         result.org_created = org_created
 
         team_esid, team_created = OnboardingService._upsert_team(
-            es, title=client_title, org_esid=org_esid, workspace_esid=workspace_esid
+            es, title=client_title, org_esid=org_esid, org_title=client_title, workspace_esid=workspace_esid
         )
         if team_esid is None:
             result.errors.append("team create failed")
@@ -883,6 +886,13 @@ class OnboardingService:
         result.org_esid = org_esid
         result.team_esid = team_esid
 
+        # public links are scoped by the org / team NAME, so the old
+        # names are read before they are overwritten.
+        old_org_title = OnboardingService._current_title(es, ORG_INDEX, org_esid, "organization_title")
+        old_team_title = (
+            OnboardingService._current_title(es, TEAM_INDEX, team_esid, "team_title") if rename_team and team_esid else ""
+        )
+
         try:
             es.update(
                 index=WORKSPACE_INDEX,
@@ -915,6 +925,15 @@ class OnboardingService:
             result.errors.append(f"org rename failed: {e}")
             return result
 
+        # the org's teams and their data carry the org name too
+        # (importers copy it from the team record). Waited, so it finishes
+        # before the team-title restamp below touches the same docs.
+        try:
+            propagate_org_title(es, org_esid, wait_for_completion=True)
+        except Exception as e:  # noqa: BLE001 — the rename is saved; tools.restamp_org_titles repairs the teams
+            logging.error("OnboardingService.rename: updating org %s's teams failed: %s", org_esid, e)
+        OnboardingService._rename_publish_scope(es, "org", org_esid, old_org_title, new_org_title)
+
         if rename_team and team_esid:
             # rename the team to the user-typed team name when
             # supplied; fall back to the org title for earlier callers.
@@ -934,6 +953,18 @@ class OnboardingService:
                 )
                 result.errors.append(f"team rename failed: {e}")
                 return result
+            # Data imported before the rename still carries the old name, and
+            # dashboards filter on it. Only docs that differ are rewritten, so
+            # a same-name call touches nothing.
+            try:
+                restamp_team_title(es, team_esid, team_rename_title)
+            except Exception as e:  # noqa: BLE001 — the rename is saved; tools.restamp_team_titles repairs the data
+                logging.error(
+                    "OnboardingService.rename: restamping data for team %s failed: %s",
+                    team_esid,
+                    e,
+                )
+            OnboardingService._rename_publish_scope(es, "team", team_esid, old_team_title, team_rename_title)
 
         return result
 
@@ -987,15 +1018,29 @@ class OnboardingService:
         # Check for an existing doc at the resolved slug first — if
         # present, this is the no-op refresh case and we return the
         # existing ESID without attempting a write.
+        # ONLY when that workspace is the caller's own. The slug
+        # ladder fails open (an ES hiccup reports a taken slug as free) and
+        # falls back to the bare slug after 50 attempts, so a doc at the
+        # resolved slug can belong to another tenant — returning it made
+        # the caller its workspace_owner.
         try:
             existing = es.get(index=WORKSPACE_INDEX, id=slug)
-            return existing["_id"], False
         except Exception as e:
+            existing = None
             if "not_found" not in str(e).lower() and "404" not in str(e):
                 # Real ES error, not just doc-missing.
                 logging.warning("OnboardingService: workspace lookup failed for %s: %s", slug, e)
                 # Fall through to create — the create path will surface
                 # the same error if ES is truly broken.
+        if existing is not None:
+            if OnboardingService._caller_owns_workspace(existing, exclude_username):
+                return existing["_id"], False
+            logging.warning(
+                "OnboardingService: refusing workspace %s for %r — it belongs to another tenant",
+                slug,
+                exclude_username,
+            )
+            return None, False
 
         doc = {
             "workspace_title": title,
@@ -1009,6 +1054,9 @@ class OnboardingService:
             "fiscal_year_start_month": DEFAULT_FISCAL_YEAR_START_MONTH,
             "created_at": _now_iso(),
             "created_by": "onboarding_wizard",
+            # lets a double-submitted step recognise its own
+            # just-created workspace before the membership row lands.
+            "created_by_username": exclude_username or "",
         }
         try:
             es.index(
@@ -1021,12 +1069,63 @@ class OnboardingService:
             return slug, True
         except Exception as e:
             if "version_conflict" in str(e).lower():
-                # Lost a race to a parallel call — the other call's doc
-                # is canonical. Return the slug as the ESID; the doc
-                # contents may differ but the natural key is the same.
-                return slug, False
+                # Lost a race to a parallel call. the other
+                # call's doc is canonical only if it is the CALLER's own
+                # (a double submit); a parallel signup by someone else with
+                # the same title must not hand this caller their workspace.
+                try:
+                    raced = es.get(index=WORKSPACE_INDEX, id=slug)
+                except Exception as get_err:  # noqa: BLE001 — refuse rather than guess
+                    logging.error("OnboardingService: workspace re-read failed for %s: %s", slug, get_err)
+                    return None, False
+                if OnboardingService._caller_owns_workspace(raced, exclude_username):
+                    return slug, False
+                logging.warning("OnboardingService: lost a create race for %s to another tenant; refusing", slug)
+                return None, False
             logging.error("OnboardingService: workspace create failed for %r: %s", title, e)
             return None, False
+
+    @staticmethod
+    def _caller_owns_workspace(workspace_doc, username: str | None) -> bool:
+        """is this existing workspace doc the caller's own?
+
+        True when the caller created it (``created_by_username``, stamped at
+        create — covers a double submit before the membership row lands) or
+        is a member of it. No username → never (fail closed).
+        """
+        if not username or not workspace_doc:
+            return False
+        source = workspace_doc.get("_source") or {}
+        if source.get("created_by_username") == username:
+            return True
+        try:
+            from asset_management.web.services.workspace_membership_service import WorkspaceMembershipService
+
+            return workspace_doc.get("_id") in set(WorkspaceMembershipService.get_workspaces_for_user(username) or [])
+        except Exception as e:  # noqa: BLE001 — an unknown owner is not the caller
+            logging.warning("OnboardingService: workspace ownership check failed for %r: %s", username, e)
+            return False
+
+    @staticmethod
+    def _current_title(es, index: str, esid: str, field: str) -> str:
+        """The stored title of one doc, or "" when it cannot be read."""
+        try:
+            value = (es.get(index=index, id=esid).get("_source") or {}).get(field)
+            return value.strip() if isinstance(value, str) else ""
+        except Exception as e:  # noqa: BLE001 — only the public-link rename needs it; it skips on ""
+            logging.warning("OnboardingService.rename: could not read %s %s before renaming: %s", index, esid, e)
+            return ""
+
+    @staticmethod
+    def _rename_publish_scope(es, kind: str, esid: str, old_title: str, new_title: str) -> None:
+        """move public links scoped to the renamed team / org to its new name."""
+        old, new = (old_title or "").strip(), (new_title or "").strip()
+        if not old or not new or old == new:
+            return
+        try:
+            rename_publish_snapshots(es, kind=kind, esid=esid, old_title=old, new_title=new)
+        except Exception as e:  # noqa: BLE001 — the rename is saved; the publisher can re-publish
+            logging.error("OnboardingService.rename: moving %s %s's public links failed: %s", kind, esid, e)
 
     @staticmethod
     def _upsert_org(
@@ -1038,32 +1137,48 @@ class OnboardingService:
     ) -> tuple[str | None, bool]:
         """Return ``(org_esid, created)``.
 
-        Looks up an org by ``organization_title`` first; creates one
-        only when no match exists. ``is_multi_workspace`` is set on
-        creation and refreshed on the existing doc (cheap, single-doc
-        update) so a wizard rerun that toggles agency-mode lands the
-        right flag.
+        Looks up an org by ``organization_title`` WITHIN ``workspace_esid``
+        first; creates one only when no match exists. ``is_multi_workspace``
+        is set on creation and refreshed on the existing doc (cheap,
+        single-doc update) so a wizard rerun that toggles agency-mode lands
+        the right flag.
+
+        the lookup used to search every tenant's orgs by title,
+        reuse the first hit, and rewrite its ``workspace_esid`` — so a signup
+        that typed another tenant's org name was re-parented onto it and
+        made its Owner. Reuse is now confined to the caller's own workspace
+        (rerun idempotency only), an existing org is never re-parented, and
+        without a workspace there is no reuse at all.
 
         ``workspace_esid`` (F7 addition): if provided, written onto
         the org doc on create so F5's per-workspace slug scoping has
         the link from day one. Optional during the F7 transition so
         legacy callers that haven't been updated still work.
         """
-        try:
-            hit = es.search(
-                index=ORG_INDEX,
-                body={"query": {"match": {"organization_title": title}}, "size": 1},
-            )
-        except Exception as e:
-            logging.warning("OnboardingService: org lookup failed for %r: %s", title, e)
-            return None, False
-
-        hits = hit.get("hits", {}).get("hits", [])
+        hits = []
+        if workspace_esid:
+            try:
+                hit = es.search(
+                    index=ORG_INDEX,
+                    body={
+                        "query": {
+                            "bool": {
+                                "must": [
+                                    dual_term("organization_title", title),
+                                    dual_term("workspace_esid", workspace_esid),
+                                ]
+                            }
+                        },
+                        "size": 1,
+                    },
+                )
+            except Exception as e:
+                logging.warning("OnboardingService: org lookup failed for %r: %s", title, e)
+                return None, False
+            hits = hit.get("hits", {}).get("hits", [])
         if hits:
             esid = hits[0]["_id"]
             update_doc = {"is_multi_workspace": is_multi_workspace}
-            if workspace_esid:
-                update_doc["workspace_esid"] = workspace_esid
             try:
                 es.update(
                     index=ORG_INDEX,
@@ -1090,7 +1205,9 @@ class OnboardingService:
             return None, False
 
     @staticmethod
-    def _upsert_team(es, *, title: str, org_esid: str, workspace_esid: str | None = None) -> tuple[str | None, bool]:
+    def _upsert_team(
+        es, *, title: str, org_esid: str, org_title: str, workspace_esid: str | None = None
+    ) -> tuple[str | None, bool]:
         """Return ``(team_esid, created)``.
 
         Lookup key is ``team_title`` scoped by ``organization_esid``
@@ -1108,6 +1225,11 @@ class OnboardingService:
         stamp this field, leaving wizard-created teams orphaned across
         a workspace delete + resign cycle. Optional kwarg for backward
         compat with any caller that doesn't yet thread the value.
+
+        ``org_title`` is stamped as ``organization_title`` (a list,
+        parallel to ``organization_esid``). Importers copy it from the team
+        record onto every data doc; without it they stamped "Unknown" and the
+        team's data never showed in an org-scoped dashboard.
         """
         try:
             hit = es.search(
@@ -1159,6 +1281,7 @@ class OnboardingService:
         doc = {
             "team_title": title,
             "organization_esid": [org_esid],
+            "organization_title": [org_title],
             "@timestamp": _now_iso(),
         }
         if workspace_esid:

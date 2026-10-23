@@ -23,9 +23,12 @@ Two kinds of value, deliberately different shapes:
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import logging
 import secrets
 import string
+from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
 
 # Same window as ConnectionService.OAUTH_STATE_TTL_SECONDS: long
@@ -74,3 +77,47 @@ def oauth_state_expired(expires_at: str | None, now: datetime | None = None) -> 
         deadline = deadline.replace(tzinfo=timezone.utc)
     current = now if now is not None else datetime.now(timezone.utc)
     return deadline < current
+
+
+# ── bind each attempt to the browser that started it ─────────────
+#
+# The state alone correlates a provider callback to an asset doc / connection,
+# but it was not tied to the browser: an attacker could open the initiate leg
+# for THEIR asset, forward the provider consent URL (state inside) to a victim,
+# and the victim's consent would land the victim's token on the attacker's
+# asset (consent phishing). The initiate leg now sets a short-lived cookie
+# derived from the state it hands out, and every callback refuses a state the
+# presenting browser holds no matching cookie for.
+#
+# Both legs are served by the same OAuth host (``fboauth.hostname``: the popup
+# opens ``https://<host>/<leg>/<auth_url>`` and the provider redirects to
+# ``https://<host>/<leg>/auth_callback``), so a host-only cookie spans them with
+# no shared domain. ``__Host-`` makes the browser refuse the cookie unless it
+# is Secure, Path=/ and carries no Domain — a sibling subdomain cannot plant
+# one. The provider redirect is a top-level GET, which SameSite=Lax allows.
+# One cookie per state (name keyed by its digest) so two attempts in the same
+# browser do not overwrite each other; each expires with its state.
+
+OAUTH_BIND_COOKIE_PREFIX = "__Host-km_oauth_"
+
+
+def _state_digest(state: str) -> str:
+    return hashlib.sha256(state.encode("utf-8")).hexdigest()
+
+
+def oauth_bind_cookie_name(state: str) -> str:
+    """The binding cookie's name for ``state`` (keyed by a digest prefix)."""
+    return OAUTH_BIND_COOKIE_PREFIX + _state_digest(state)[:16]
+
+
+def oauth_bind_cookie_value(state: str) -> str:
+    """The binding cookie's value for ``state`` (its full SHA-256, never the state)."""
+    return _state_digest(state)
+
+
+def oauth_browser_bound(state: str, cookies: Mapping[str, str]) -> bool:
+    """True when ``cookies`` carry the binding cookie the initiate leg set for ``state``."""
+    if not state:
+        return False
+    presented = cookies.get(oauth_bind_cookie_name(state)) or ""
+    return hmac.compare_digest(presented.encode("utf-8"), oauth_bind_cookie_value(state).encode("utf-8"))

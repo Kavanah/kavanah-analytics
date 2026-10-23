@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your plan · Kavanah Analytics</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/cloudscape.css') }}">
+    <style>
+        {# shell styles mirror onboarding_step5_workspace.html so the
+           optional "Your plan" screen reads as the same wizard. #}
+        body {
+            background: var(--cs-bg-page);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 84px 20px 40px;
+        }
+        .login-topbar {
+            position: fixed; top: 0; left: 0; right: 0;
+            height: 56px;
+            background: var(--cs-nav-bg);
+            display: flex; align-items: center;
+            padding: 0 24px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+            z-index: 10;
+        }
+        .login-topbar-logo { height: 24px; width: auto; margin-right: 12px; }
+        .login-topbar-title { font-size: 17px; font-weight: 700; color: #FFFFFF; }
+
+        .wizard-shell { width: 100%; max-width: 640px; }
+
+        .card {
+            background: var(--cs-bg-primary);
+            border: 1px solid var(--cs-border-default);
+            border-radius: var(--cs-radius-l);
+            box-shadow: var(--cs-shadow-m);
+            padding: 36px 36px 28px;
+        }
+        .eyebrow {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 11px; font-weight: 600;
+            letter-spacing: 0.08em; text-transform: uppercase;
+            color: var(--cs-text-secondary);
+            margin-bottom: 8px;
+        }
+        .wizard-title {
+            font-size: 24px; font-weight: 700;
+            color: var(--cs-text-heading);
+            margin: 0 0 6px;
+        }
+        .wizard-sub {
+            font-size: var(--cs-font-size-m);
+            color: var(--cs-text-secondary);
+            line-height: 1.5;
+            margin: 0 0 22px;
+        }
+        .pricing-line {
+            font-size: 13px;
+            color: var(--cs-text-secondary);
+            margin: 0 0 22px;
+        }
+        .pricing-line strong { color: var(--cs-text-heading); font-weight: 600; }
+
+        .path {
+            border: 1px solid var(--cs-border-default);
+            border-radius: var(--cs-radius-m);
+            padding: 16px 18px;
+            margin-bottom: 12px;
+        }
+        .path--primary {
+            border-color: var(--cs-btn-primary-bg);
+            box-shadow: 0 0 0 1px var(--cs-btn-primary-bg) inset;
+        }
+        .path h2 {
+            font-size: 15px; font-weight: 700;
+            color: var(--cs-text-heading);
+            margin: 0 0 4px;
+        }
+        .path p {
+            font-size: 13px;
+            color: var(--cs-text-secondary);
+            line-height: 1.5;
+            margin: 0 0 12px;
+        }
+        .path form { margin: 0; }
+
+        .btn-row {
+            display: flex; align-items: center; justify-content: space-between;
+            padding-top: 16px;
+            margin-top: 10px;
+            border-top: 1px solid var(--cs-border-divider);
+        }
+        .btn {
+            height: 40px; padding: 0 18px;
+            border-radius: var(--cs-radius-s);
+            font-size: var(--cs-font-size-m);
+            font-weight: 600;
+            font-family: var(--cs-font);
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition: background 90ms ease-out, border-color 90ms ease-out;
+            text-decoration: none;
+            display: inline-flex; align-items: center;
+        }
+        .btn-primary {
+            background: var(--cs-btn-primary-bg);
+            color: #FFFFFF;
+            font-weight: 700;
+        }
+        .btn-primary:hover { background: var(--cs-btn-primary-bg-hover); }
+        .btn-primary:focus-visible {
+            outline: none;
+            box-shadow: 0 0 0 2px #FFFFFF, 0 0 0 4px var(--cs-btn-primary-bg);
+        }
+        .btn-secondary {
+            background: var(--cs-bg-primary);
+            color: var(--cs-text-link);
+            border-color: var(--cs-border-input);
+        }
+        .btn-secondary:hover { background: var(--cs-bg-page); }
+        .btn-ghost {
+            background: transparent;
+            color: var(--cs-text-link);
+            border-color: transparent;
+        }
+        .btn-ghost:hover { background: var(--cs-bg-page); }
+
+        .alert-ok {
+            padding: 12px 14px;
+            margin-bottom: 18px;
+            border-radius: var(--cs-radius-s);
+            background: #EAF7EE;
+            border: 1px solid #A9DDB8;
+            color: #1B5E2B;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <a href="#wizard-main" class="cs-skip-link" data-testid="wizard-skip-link">Skip to main content</a>
+    <div class="login-topbar">
+        <img src="{{ url_for('static', filename='kavanah-analytics-logo.svg') }}?v=5" alt="" class="login-topbar-logo">
+        <span class="login-topbar-title">Kavanah Analytics</span>
+    </div>
+
+    <main class="wizard-shell" id="wizard-main">
+        {% include "_onboarding_progress.html" %}
+
+        <div class="card" data-testid="plan-step">
+            <div class="eyebrow">Your plan</div>
+            <h1 class="wizard-title">Start your {{ trial_days }}-day free trial</h1>
+            <p class="wizard-sub">Nothing to pay today, and no card needed. Every team starts on the full feature set.</p>
+            <p class="pricing-line" data-testid="plan-pricing-line">
+                <strong>Free</strong> for missionary teams &middot;
+                <strong>{{ ministry_price }}</strong>/month for other Christian ministries &middot;
+                full price is Business at <strong>{{ business_price }}</strong>/month.
+            </p>
+
+            {% if plan_is_active %}
+            <div class="alert-ok" data-testid="plan-active-note">
+                {% if plan_is_comped %}
+                Your workspace is sponsored &mdash; there is nothing to set up here.
+                {% else %}
+                Your plan is set up. Nothing is charged until the trial ends{% if trial_ends_display %} on {{ trial_ends_display }}{% endif %}.
+                {% endif %}
+            </div>
+            <form method="POST" action="{{ url_for('analytics.onboarding_plan_post') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="btn-row">
+                    <a class="btn btn-ghost" href="{{ url_for('analytics.onboarding_step5_page') }}">&larr; Back</a>
+                    <button type="submit" class="btn btn-primary" data-testid="plan-continue-btn">Continue &rarr;</button>
+                </div>
+            </form>
+            {% else %}
+
+            <div class="path path--primary" data-testid="plan-path-trial">
+                <h2>Just start the trial</h2>
+                <p>Use everything for {{ trial_days }} days{% if trial_ends_display %} (until {{ trial_ends_display }}){% endif %}.
+                   Pick a plan any time before then &mdash; or a card or code can wait until the trial ends.</p>
+                <form method="POST" action="{{ url_for('analytics.onboarding_plan_post') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn btn-primary" data-testid="plan-trial-btn">Continue with the free trial &rarr;</button>
+                </form>
+            </div>
+
+            <div class="path" data-testid="plan-path-card">
+                <h2>Already know you&rsquo;ll pay? Add a card or promo code now</h2>
+                <p>Your card is saved today and first charged when the trial ends{% if trial_ends_display %} on {{ trial_ends_display }}{% endif %}.
+                   Have a code? Enter it on the same page &mdash; a ministry code sets the {{ ministry_price }} rate, a missionary code makes it free (no card needed).</p>
+                <a class="btn btn-secondary" href="{{ payment_url }}" data-testid="plan-card-link">Add a card or promo code &rarr;</a>
+            </div>
+
+            <div class="path" data-testid="plan-path-apply">
+                <h2>Missionary team or Christian ministry without a code?</h2>
+                <p>Apply for sponsorship and we&rsquo;ll confirm which rate fits (free or {{ ministry_price }}/month). Keep working during the trial while we review it.</p>
+                <a class="btn btn-secondary" href="{{ apply_url }}" target="_blank" rel="noopener" data-testid="plan-apply-link">Apply for sponsorship &nearr;</a>
+            </div>
+
+            <div class="btn-row">
+                <a class="btn btn-ghost" href="{{ url_for('analytics.onboarding_step5_page') }}">&larr; Back</a>
+                <span></span>
+            </div>
+            {% endif %}
+        </div>
+    </main>
+</body>
+</html>

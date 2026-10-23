@@ -734,7 +734,11 @@ def fetch_conversations_graphql(base_url, headers, start_date, end_date, rate_st
         try:
             data = response.json()
         except json.JSONDecodeError:
-            logging.error(f"Invalid JSON from GraphQL (page {page}): {response.text}")
+            # status + the first 200 chars only — an Echo error page can
+            # be megabytes, and the body may echo request material back.
+            logging.error(
+                f"Invalid JSON from GraphQL (page {page}): status={response.status_code} body={response.text[:200]!r}"
+            )
             return None
 
         if "errors" in data:

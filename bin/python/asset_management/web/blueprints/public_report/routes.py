@@ -18,16 +18,20 @@ from werkzeug.exceptions import HTTPException
 
 from . import public_report_bp
 
+from lib.es_helpers import scoped_index_pattern, team_data_index_names
+
 try:
     from lib.es_helpers import get_elasticsearch_client
     from web.services.es_query_builder import build_query
     from web.services.echarts_transformer import transform
     from web.services.login_lockout_service import LoginLockoutService
+    from web.services.role_filter_service import set_public_publish_allowed_indices
 except ImportError:
     from lib.es_helpers import get_elasticsearch_client
     from services.es_query_builder import build_query
     from services.echarts_transformer import transform
     from services.login_lockout_service import LoginLockoutService
+    from services.role_filter_service import set_public_publish_allowed_indices
 
 # Use a relative import for the dashboard_builder helpers so pytest
 # mock-patches applied to the canonical module path actually reach the
@@ -41,6 +45,7 @@ from ..dashboard_builder.routes import (  # noqa: E402
     _es_doc_to_dashboard_state,
     _forced_publish_filters,
     _lookup_dashboard_by_token,
+    _publish_scope_team_esids,
     _strip_org_team_filters,
 )
 from ..dashboard_builder import canvas_theme  # noqa: E402
@@ -119,6 +124,56 @@ def _map_detail(source: dict) -> str:
 
 def _empty_map_payload(map_detail: str) -> dict:
     return {"success": True, "cities": [], "regions": [], "countries": [], "map_detail": map_detail}
+
+
+# ── fail closed when the publish scope is gone ─────────────────────
+#
+# Every public query is scoped by ``_forced_publish_filters``. When the
+# dashboard's allowed team/org ESIDs no longer resolve (team deleted, scope
+# cleared after publishing), that list is empty — and a query without it runs
+# over the chart's wildcard data view for EVERY tenant. A link with no scope
+# serves nothing: the viewer gets the not-found answer, never data.
+
+
+def _scope_missing_response(token: str):
+    """JSON 404 for a data route whose publish scope no longer resolves."""
+    # Same truncated-token audit pattern as the data_view rejections below.
+    # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+    logging.warning("AUDIT: public report refused — publish scope resolves to nothing token_prefix=%s", token[:8])
+    return jsonify({"success": False, "error": "Invalid or revoked token"}), 404
+
+
+def _pin_publish_scope(source: dict) -> frozenset:
+    """resolve the publish to its teams' ESIDs and pin this request.
+
+    Returns the ``{team_esid}__{source}`` allowlist (empty → the caller
+    refuses). Pinning makes ``RoleFilterService.scoped_index_pattern`` — used
+    by the shared map helpers — intersect with the publisher's own indices
+    instead of passing an anonymous request through to the wildcard.
+    """
+    allowed = team_data_index_names(_publish_scope_team_esids(source))
+    if allowed:
+        set_public_publish_allowed_indices(allowed)
+    return allowed
+
+
+# person-level location below country. The Disciple.Tools contact
+# place ("City, Country") and location grid id. A public query that names one
+# of these is refused unless the publisher chose city-level map detail
+# otherwise a canvas binding or a hand-built query on a
+# ``country`` / ``hidden`` link would hand out what the map withholds.
+_PUBLIC_SUB_COUNTRY_FIELDS = ("meta.contact_place", "meta.location_grid")
+
+
+def _references_sub_country_field(value) -> bool:
+    """True when any string inside ``value`` names a sub-country person field."""
+    if isinstance(value, str):
+        return any(value == f or value.startswith(f + ".") for f in _PUBLIC_SUB_COUNTRY_FIELDS)
+    if isinstance(value, dict):
+        return any(_references_sub_country_field(v) for v in value.values())
+    if isinstance(value, (list, tuple)):
+        return any(_references_sub_country_field(v) for v in value)
+    return False
 
 
 def _render_passcode_page(token: str, source: dict, *, error: str | None = None, status: int = 401):
@@ -299,18 +354,23 @@ def run_public_query():
             )
             return jsonify({"success": False, "error": "data_view not allowed for this report"}), 403
 
+        if _map_detail(source) != "city" and _references_sub_country_field(config):
+            return jsonify({"success": False, "error": "Field not available on this report"}), 403
+
         config = _strip_org_team_filters(config)
         forced = _forced_publish_filters(source)
-        if forced:
-            config = dict(config)
-            config["filters"] = list(config.get("filters") or []) + forced
+        allowed = _pin_publish_scope(source)
+        if not forced or not allowed:
+            return _scope_missing_response(token)
+        config = dict(config)
+        config["filters"] = list(config.get("filters") or []) + forced
 
         es = get_elasticsearch_client()
         if es is None:
             return jsonify({"success": False, "error": "Elasticsearch unavailable"}), 503
 
         query_body = build_query(config)
-        es_response = es.search(index=data_view, body=query_body)
+        es_response = es.search(index=scoped_index_pattern(data_view, allowed), body=query_body)
         es_dict = es_response.body if hasattr(es_response, "body") else dict(es_response)
         return jsonify(transform(es_dict, config))
     except HTTPException:
@@ -374,6 +434,10 @@ def run_public_query_batch():
 
         allowed_dvs = _allowed_data_views_for_publish(source)
         forced = _forced_publish_filters(source)
+        allowed = _pin_publish_scope(source)
+        if not forced or not allowed:
+            return _scope_missing_response(token)
+        city_detail = _map_detail(source) == "city"
 
         results = []
         for item_config in queries:
@@ -395,14 +459,17 @@ def run_public_query_batch():
                 results.append({"success": False, "error": "data_view not allowed for this report"})
                 continue
 
+            if not city_detail and (_references_sub_country_field(config) or _references_sub_country_field(dashboard_filters)):
+                results.append({"success": False, "error": "Field not available on this report"})
+                continue
+
             config = _strip_org_team_filters(config)
-            if forced:
-                config = dict(config)
-                config["filters"] = list(config.get("filters") or []) + forced
+            config = dict(config)
+            config["filters"] = list(config.get("filters") or []) + forced
 
             try:
                 query_body = build_query(config, dashboard_filters=dashboard_filters)
-                es_response = es.search(index=data_view, body=query_body)
+                es_response = es.search(index=scoped_index_pattern(data_view, allowed), body=query_body)
                 es_dict = es_response.body if hasattr(es_response, "body") else dict(es_response)
                 results.append(transform(es_dict, config))
             except Exception as e:  # per-item boundary: one bad binding must not sink the batch
@@ -465,6 +532,8 @@ def public_map_data():
         # Force the publish-time scope; any client-supplied org/team is
         # dropped to prevent scope-escape via the public URL.
         org, teams = _publish_org_team_scope(source)
+        if (not org and not teams) or not _pin_publish_scope(source):
+            return _scope_missing_response(token)
 
         # the publisher's map-detail choice is enforced HERE, not in
         # the viewer script — a ``hidden`` link returns no geography at all and
@@ -570,6 +639,8 @@ def public_map_city_data():
         date_from = request.args.get("date_from", "")
         date_to = request.args.get("date_to", "")
         org, teams = _publish_org_team_scope(source)
+        if (not org and not teams) or not _pin_publish_scope(source):
+            return _scope_missing_response(token)
 
         # city markers exist only for a ``city`` publish. Answer the
         # empty shape the viewer already understands, before touching ES.

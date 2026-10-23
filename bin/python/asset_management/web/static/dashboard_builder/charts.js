@@ -206,7 +206,9 @@ function formatNumber(n) {
     if (abs >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'K';
     return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
   }
-  return n;
+  // a non-number here is stored data (a keyword value) and most
+  // callers interpolate the result into innerHTML — escape it.
+  return escHtml(String(n));
 }
 
 // render a count of SECONDS as a human duration, matching GA4's
@@ -2900,7 +2902,7 @@ function renderTrendLine(chartId, data, config) {
       const _hasCustomToggles = Object.keys(_dTogglesForCat).length > 0;
       const _catHasVisible = _catGroups[cat].some(s =>
         _hasCustomToggles
-          ? (_dTogglesForCat[s.name] !== fmt === 'DD' || s.name in _dTogglesForCat)
+          ? (_dTogglesForCat[s.name] !== false && s.name in _dTogglesForCat)
           : s.default_visible !== false
       );
       let _catOpen = _catHasVisible;

@@ -1253,14 +1253,24 @@ def _geo_row_to_doc(row):
 
     Covers all campaign types now (no MULTI_CHANNEL filter). Carries a generic
     ``conversions`` field; ``app_installs`` (== conversions) is kept only for app
-    campaigns so the existing app geo-map chart doesn't regress. Skips rows with
-    no country criterion or zero conversions. Shared by the main + retry paths.
+    campaigns so the existing app geo-map chart doesn't regress. Shared by the
+    main + retry paths.
+
+    Keeps every row with activity (impressions, clicks or conversions). Until
+    2026-10-23 a row with zero conversions was dropped, so per-country
+    impressions only existed for converting country-days and no geo doc
+    carried clicks at all — anything summing reach or clicks by country
+    (the dashboards' country maps, the country x month aggregate export) was
+    reading a converting-days-only subset. Only a row with no country
+    criterion, or no activity at all, is skipped.
     """
     criterion_id = row.geographic_view.country_criterion_id
     if not criterion_id:
         return None
     conversions = row.metrics.conversions
-    if conversions <= 0:
+    impressions = row.metrics.impressions
+    clicks = row.metrics.clicks
+    if conversions <= 0 and impressions <= 0 and clicks <= 0:
         return None
     channel_type = row.campaign.advertising_channel_type.name
     doc = {
@@ -1270,7 +1280,8 @@ def _geo_row_to_doc(row):
         "campaign_channel_type": channel_type,
         "geo_criterion_id": criterion_id,
         "conversions": conversions,
-        "impressions": row.metrics.impressions,
+        "impressions": impressions,
+        "clicks": clicks,
         "cost": row.metrics.cost_micros / 1_000_000,
         "date": row.segments.date,
     }
@@ -1280,11 +1291,12 @@ def _geo_row_to_doc(row):
 
 
 def fetch_geo_performance(client, customer_id, start_date, end_date, cancel_check=None):
-    """Fetch country-level geographic performance for app install campaigns.
+    """Fetch country-level geographic performance for every campaign.
 
-    Queries the geographic_view resource, which returns conversions broken
-    down by the country where the user was physically present (LOCATION_OF_PRESENCE).
-    Each row represents one campaign × country × day.
+    Queries the geographic_view resource, which returns impressions, clicks,
+    conversions and cost broken down by the country where the user was
+    physically present (LOCATION_OF_PRESENCE). Each row represents one
+    campaign × country × day.
 
     Returns a list of dicts ready to be saved as JSON and indexed to ES.
     The caller is responsible for adding team/customer metadata and resolving
@@ -1304,6 +1316,7 @@ def fetch_geo_performance(client, customer_id, start_date, end_date, cancel_chec
             geographic_view.location_type,
             metrics.conversions,
             metrics.impressions,
+            metrics.clicks,
             metrics.cost_micros,
             segments.date
         FROM geographic_view

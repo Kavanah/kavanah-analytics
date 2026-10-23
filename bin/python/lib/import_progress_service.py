@@ -13,7 +13,11 @@ Doc shape (one per (connection_esid, run_id))::
         "connector_id":    "meta_ads",
         "days_total":      90,
         "days_fetched":    0,            # bumped by update_progress
-        "status":          "pending",    # pending | running | succeeded | failed
+        "status":          "pending",    # pending | queued | running | succeeded | failed
+                                         # (+ cancelling / cancelled)
+        "queued_at": "<iso utc>", # set while waiting for a
+        "queue_position":  2,            #   global import slot (1 = next); see
+                                         #   lib.import_slots
         "started_at":      "<iso utc>",  # set on start_run
         "updated_at":      "<iso utc>",  # bumped on every write
         "ended_at":        "<iso utc>",  # set on complete_run
@@ -68,6 +72,18 @@ _RESTART_WINDOW = timedelta(minutes=60)
 # run. Anchored on ``updated_at`` (not ``started_at``) so a long run that's
 # actively bumping update_progress is never reaped.
 _REAP_WINDOW = timedelta(minutes=30)
+
+# guarded partial update for the global-import-queue fields: apply
+# ``params.doc`` (and drop ``params.remove``) ONLY when the doc's current status
+# is in ``params.expect``, else noop. A plain partial update would let a queued
+# waiter's heartbeat overwrite a ``cancelling`` the cancel route wrote between
+# the waiter's read and its write — silently un-cancelling the run.
+_GUARDED_UPDATE_SCRIPT = (
+    "if (params.expect.contains(ctx._source.status)) { "
+    "for (e in params.doc.entrySet()) { ctx._source[e.getKey()] = e.getValue(); } "
+    "for (f in params.remove) { ctx._source.remove(f); } "
+    "} else { ctx.op = 'noop'; }"
+)
 
 
 def _now_iso() -> str:
@@ -601,6 +617,117 @@ class ImportProgressService:
         return _find_active_run(es, connection_esid)
 
     @staticmethod
+    def _guarded_update(run_id: str, *, expect: list[str], doc: dict, remove: list[str] | None = None) -> bool:
+        """apply ``doc`` iff the current status is in ``expect``.
+
+        Returns True only when ES reports the doc ``updated``; False on a noop
+        (status moved on), a missing doc, or an ES error. Never raises."""
+        if not run_id:
+            return False
+        es = _es()
+        if es is None:
+            return False
+        try:
+            resp = es.update(
+                index=PROGRESS_INDEX,
+                id=run_id,
+                body={
+                    "script": {
+                        "source": _GUARDED_UPDATE_SCRIPT,
+                        "lang": "painless",
+                        "params": {"expect": list(expect), "doc": dict(doc), "remove": list(remove or [])},
+                    }
+                },
+                refresh="wait_for",
+            )
+        except Exception as exc:  # noqa: BLE001 — boundary
+            logging.warning("progress queue update run_id=%r: %s", run_id, exc)
+            return False
+        result = resp.get("result") if hasattr(resp, "get") else None
+        return result == "updated"
+
+    @staticmethod
+    def mark_queued(*, run_id: str, queued_at: str, queue_position: int) -> bool:
+        """the run is waiting for a global import slot.
+
+        Flips a non-terminal, non-cancelled doc (pending / running / queued) to
+        ``queued`` with ``queued_at`` + ``queue_position``. ``updated_at`` is
+        bumped so the reaper reads the waiter as alive. Returns True when
+        the doc was updated — lib.import_slots falls back to a local queue ticket
+        otherwise."""
+        return ImportProgressService._guarded_update(
+            run_id,
+            expect=["pending", "running", "queued"],
+            doc={
+                "status": "queued",
+                "queued_at": queued_at,
+                "queue_position": int(queue_position),
+                "updated_at": _now_iso(),
+            },
+        )
+
+    @staticmethod
+    def heartbeat_queued(*, run_id: str, queue_position: int) -> bool:
+        """per-poll refresh of a queued run: new ``queue_position``
+        and ``updated_at`` (keeps the reaper off it and keeps the waiter in the
+        FIFO ordering). Noop once the status is no longer ``queued`` — a cancel
+        written meanwhile is never overwritten."""
+        return ImportProgressService._guarded_update(
+            run_id,
+            expect=["queued"],
+            doc={"queue_position": int(queue_position), "updated_at": _now_iso()},
+        )
+
+    @staticmethod
+    def mark_admitted(*, run_id: str) -> bool:
+        """the queued run got its slot: status back to ``running``,
+        ``queue_position`` cleared (``queued_at`` stays as a record of the wait)."""
+        return ImportProgressService._guarded_update(
+            run_id,
+            expect=["queued"],
+            doc={"status": "running", "updated_at": _now_iso()},
+            remove=["queue_position"],
+        )
+
+    @staticmethod
+    def list_queued(*, fresh_within: timedelta) -> list[dict[str, Any]] | None:
+        """every ``queued`` doc re-stamped within ``fresh_within``
+        (``run_id`` + ``queued_at``), the FIFO ordering source for
+        lib.import_slots. A queued doc older than that belongs to a dead waiter
+        and is left out so it cannot block the head of the queue. Returns None
+        on ES error (caller degrades to its local ordering)."""
+        es = _es()
+        if es is None:
+            return None
+        cutoff = (datetime.now(tz=timezone.utc) - fresh_within).isoformat()
+        try:
+            resp = es.search(
+                index=PROGRESS_INDEX,
+                body={
+                    "size": 500,
+                    "_source": ["run_id", "queued_at"],
+                    "query": {
+                        "bool": {
+                            "filter": [
+                                {"terms": {"status": ["queued"]}},
+                                {"range": {"updated_at": {"gte": cutoff}}},
+                            ]
+                        }
+                    },
+                },
+                ignore_unavailable=True,
+                allow_no_indices=True,
+            )
+        except Exception as exc:  # noqa: BLE001 — boundary
+            logging.warning("list_queued search failed: %s", exc)
+            return None
+        out = []
+        for hit in (resp.get("hits") or {}).get("hits") or []:
+            src = hit.get("_source") or {}
+            out.append({"run_id": src.get("run_id") or hit.get("_id"), "queued_at": src.get("queued_at")})
+        return out
+
+    @staticmethod
     def reap_stale_runs() -> int:
         """stamp orphaned non-terminal docs terminal.
 
@@ -621,6 +748,10 @@ class ImportProgressService:
             the route's stale-cancelling reinterpretation.
           * ``pending`` / ``running`` → ``failed`` (error="orphaned:
             importer died before completing") — the run never finished.
+          * ``queued`` → ``failed``, same as ``running``. A live
+            waiter for a global import slot re-stamps ``updated_at`` every
+            poll, so only a waiter that died in the queue ever ages past the
+            window.
 
         Idempotent and safe to call on every importer start: it routes
         each doc through :meth:`complete_run`, whose terminal-guard makes
@@ -646,7 +777,8 @@ class ImportProgressService:
                     "query": {
                         "bool": {
                             "filter": [
-                                {"terms": {"status": ["pending", "running", "cancelling"]}},
+                                # ``queued`` is non-terminal like ``running``.
+                                {"terms": {"status": ["pending", "queued", "running", "cancelling"]}},
                                 {"range": {"updated_at": {"lt": cutoff}}},
                             ]
                         }
@@ -686,7 +818,8 @@ def _find_active_run(es: Any, connection_esid: str) -> str | None:
     """Idempotency lookup. Returns the run_id of an active doc started
     within the last hour, or None.
 
-    "Active" = status in {pending, running}. A failed/succeeded doc
+    "Active" = status in {pending, queued, running} (a run waiting
+    for a global import slot is still in flight). A failed/succeeded doc
     from the same connection earlier today is *not* reused — the user
     is starting a fresh backfill (e.g. they reconfigured assets and re-
     finished onboarding), and conflating the two would surface the old
@@ -703,7 +836,7 @@ def _find_active_run(es: Any, connection_esid: str) -> str | None:
                     "bool": {
                         "filter": [
                             {"term": {"connection_esid": connection_esid}},
-                            {"terms": {"status": ["pending", "running"]}},
+                            {"terms": {"status": ["pending", "queued", "running"]}},
                             {"range": {"started_at": {"gte": cutoff}}},
                         ]
                     }

@@ -54,6 +54,15 @@ def _seed_session(client, **overrides):
         sess.update(overrides)
 
 
+def _real_image(fmt):
+    """A tiny valid image in ``fmt``."""
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGB", (2, 2), (200, 30, 30)).save(buf, format=fmt)
+    return buf.getvalue()
+
+
 # ===========================================================================
 # _handle_logo_upload  (lines 132-154)
 # ===========================================================================
@@ -128,7 +137,8 @@ class TestHandleLogoUploadDirect:
     def test_valid_upload_saves_file(self, mock_makedirs, app):
         from asset_management.web.app import _handle_logo_upload
 
-        png_data = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
+        # the content is verified now, so this must be a real PNG.
+        png_data = _real_image("PNG")
         with app.test_request_context(
             method="POST",
             data={"logo_file": (io.BytesIO(png_data), "logo.png")},
@@ -145,7 +155,7 @@ class TestHandleLogoUploadDirect:
     def test_valid_jpg_upload(self, mock_makedirs, app):
         from asset_management.web.app import _handle_logo_upload
 
-        jpg_data = b"\xff\xd8\xff" + b"\x00" * 50
+        jpg_data = _real_image("JPEG")  # real JPEG, content is verified
         with app.test_request_context(
             method="POST",
             data={"logo_file": (io.BytesIO(jpg_data), "photo.jpg")},
@@ -160,7 +170,7 @@ class TestHandleLogoUploadDirect:
     def test_valid_jpeg_upload(self, mock_makedirs, app):
         from asset_management.web.app import _handle_logo_upload
 
-        data = b"\xff\xd8\xff" + b"\x00" * 50
+        data = _real_image("JPEG")  # real JPEG, content is verified
         with app.test_request_context(
             method="POST",
             data={"logo_file": (io.BytesIO(data), "photo.jpeg")},

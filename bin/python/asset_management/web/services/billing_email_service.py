@@ -20,6 +20,8 @@ Emails (decisions confirmed 2026-06-05):
   * cancel_scheduled   — the user SCHEDULED a cancel at period end (still
     active until then; can still restore). Sent from the /billing/cancel route.
   * trial_ending       — the free trial ends in N days (cron-driven).
+  * plan_changed       — a superuser moved the org between Business and
+    Nonprofit; the next invoice is at the new price.
   * comp_granted       — a superuser comped the user AND that canceled a live
     PAID subscription (mode=canceled only). NOT sent for a comp on a user who
     had no paid sub — there is no billing change to explain.
@@ -132,7 +134,7 @@ class BillingEmailService:
 
         ``kind`` ∈ {payment_succeeded, payment_receipt, payment_failed,
         subscription_canceled, cancel_scheduled, addons_removal_scheduled,
-        trial_ending, comp_granted, comp_revoked}. Unknown kinds raise
+        trial_ending, comp_granted, comp_revoked, plan_changed}. Unknown kinds raise
         ValueError (a programming error, not a runtime input).
         """
         name = ctx.get("full_name", "")
@@ -337,6 +339,25 @@ class BillingEmailService:
                 f"{hello}\n\nYour complimentary access to Kavanah Analytics has ended. Your existing data is "
                 f"still visible, but new data imports are paused.\n\nTo continue, ask an administrator for "
                 f"access again, or choose a plan: {link}\n"
+            )
+        elif kind == "plan_changed":
+            # a superuser moved the org between Business and
+            # Nonprofit. No proration: the next invoice is at the new price.
+            subject = f"Your Kavanah Analytics plan is now {plan}"
+            heading = "Your plan has changed"
+            html = (
+                f"<p style='margin:0 0 12px;'>{hello}</p>"
+                f"<p style='margin:0 0 12px;'>An administrator has moved your organization to the "
+                f"<strong>{plan}</strong> plan" + (f" ({price}/month)" if price else "") + ". "
+                f"The new price applies from your next invoice — <strong>nothing is charged today</strong> — "
+                f"and your account, connections and data are unchanged.</p>"
+                f"<p style='margin:0 0 12px;'>See your <a href='{link}'>Current Plan</a>.</p>"
+            )
+            text = (
+                f"{hello}\n\nAn administrator has moved your organization to the {plan} plan"
+                + (f" ({price}/month)" if price else "")
+                + ". The new price applies from your next invoice — nothing is charged today — and your "
+                f"account, connections and data are unchanged.\n\nCurrent Plan: {link}\n"
             )
         else:
             raise ValueError(f"unknown billing email kind: {kind!r}")

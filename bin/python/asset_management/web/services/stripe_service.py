@@ -294,6 +294,7 @@ class StripeService:
         company: str = "",
         coupon: str = "",
         promotion_code: str = "",
+        trial_end: int | None = None,
         sdk=None,
     ) -> dict:
         """Create a Customer (with the payment method attached as default)
@@ -348,6 +349,9 @@ class StripeService:
                 sub_params["discounts"] = [{"promotion_code": promotion_code}]
             elif coupon:
                 sub_params["discounts"] = [{"coupon": coupon}]
+            # charge when the free trial ends, not today.
+            if trial_end:
+                sub_params["trial_end"] = int(trial_end)
             subscription = stripe.Subscription.create(**sub_params)
         except Exception as exc:  # noqa: BLE001 — wrap every SDK error uniformly
             logging.warning("StripeService.create_subscription failed: %s", exc)
@@ -410,6 +414,7 @@ class StripeService:
         promotion_code: str = "",
         metadata: dict | None = None,
         payment_method_id: str = "",
+        trial_end: int | None = None,
         sdk=None,
     ) -> dict:
         """Add ONE subscription on ``price_id`` to an EXISTING customer (
@@ -441,6 +446,9 @@ class StripeService:
                 params["discounts"] = [{"promotion_code": promotion_code}]
             elif coupon:
                 params["discounts"] = [{"coupon": coupon}]
+            # charge when the free trial ends, not today.
+            if trial_end:
+                params["trial_end"] = int(trial_end)
             subscription = stripe.Subscription.create(**params)
         except Exception as exc:  # noqa: BLE001
             logging.warning("StripeService.create_subscription_for_customer failed: %s", exc)
@@ -632,12 +640,14 @@ class StripeService:
             {
                 "subscription_id": str,
                 "status": str,                 # raw Stripe status
+                "trial_end": str, # ISO-8601 UTC while trialing, "" otherwise
                 "current_period_start": str,   # ISO-8601 UTC (cycle start), "" if absent
                 "current_period_end": str,     # ISO-8601 UTC (next charge), "" if absent
                 "cancel_at_period_end": bool,  # True once a cancel is scheduled
                 "has_discount": bool,          # True iff a coupon discounts the sub
                 "amount_total": int,           # actual charged amount, minor units (cents)
                 "amount_subtotal": int,        # pre-discount amount, minor units (cents)
+                "price_ids": [str], # item price ids
             }
 
         ``amount_total`` is what Stripe actually charges (list price minus any
@@ -693,6 +703,9 @@ class StripeService:
 
         iso = _epoch_iso(period_end)
         start_iso = _epoch_iso(period_start)
+        # a card saved during the free trial leaves the subscription
+        # ``trialing`` until ``trial_end``; the Current Plan page shows that date.
+        trial_end_iso = _epoch_iso(_field(sub, "trial_end", 0))
 
         # Recurring charged amount = the item's unit price minus any active
         # subscription discount. We read this from the SUBSCRIPTION (durable),
@@ -710,6 +723,9 @@ class StripeService:
         except Exception:  # noqa: BLE001
             sub_d = {}
         items = ((sub_d.get("items") or {}).get("data")) or []
+        # every item's price id, so the Current Plan page can name
+        # the plan from the live subscription after a superuser plan change.
+        price_ids = [str((it.get("price") or {}).get("id") or "") for it in items if (it.get("price") or {}).get("id")]
         if items:
             unit = (items[0].get("price") or {}).get("unit_amount")
             qty = items[0].get("quantity") or 1
@@ -741,6 +757,7 @@ class StripeService:
         return {
             "subscription_id": _field(sub, "id"),
             "status": _field(sub, "status"),
+            "trial_end": trial_end_iso,
             "current_period_start": start_iso,
             "current_period_end": iso,
             "cancel_at_period_end": bool(_field(sub, "cancel_at_period_end", False)),
@@ -748,6 +765,7 @@ class StripeService:
             "amount_total": amount_total,
             "amount_subtotal": amount_subtotal,
             "discount_coupon": discount_coupon_id,
+            "price_ids": price_ids,
         }
 
     @staticmethod
@@ -813,6 +831,78 @@ class StripeService:
             "status": _field(sub, "status"),
             "cancel_at_period_end": bool(_field(sub, "cancel_at_period_end", False)),
         }
+
+    @staticmethod
+    def change_subscription_price(
+        *,
+        secret_key: str,
+        subscription_id: str,
+        new_price_id: str,
+        base_price_ids,
+        proration_behavior: str = "none",
+        sdk=None,
+    ) -> dict:
+        """Move a subscription's BASE plan item onto another price (—
+        the superuser Business ↔ Nonprofit change).
+
+        The base item is the subscription item whose price is one of
+        ``base_price_ids`` (the caller passes the configured Business and
+        Nonprofit price ids — this module never reads config); the add-on
+        connections item is left alone. ``proration_behavior``
+        defaults to ``"none"``: the new price applies from the next invoice
+        and nothing is charged or credited today (an administrative decision,
+        not a customer purchase).
+
+        Returns ``{"subscription_id", "status", "item_id", "old_price_id",
+        "new_price_id", "changed"}``. ``changed`` is False — and nothing is
+        sent to Stripe — when the base item already carries ``new_price_id``.
+        Raises ``StripeError`` when an id is missing, ``new_price_id`` is not
+        one of the base prices, the subscription has no base plan item, or
+        the SDK fails.
+        """
+        if not subscription_id or not new_price_id:
+            raise StripeError("missing subscription or price id")
+        base_ids = {p for p in (base_price_ids or ()) if p}
+        if new_price_id not in base_ids:
+            raise StripeError("new price is not a base plan price")
+        stripe = sdk or _load_sdk()
+        stripe.api_key = secret_key
+        try:
+            sub = stripe.Subscription.retrieve(subscription_id, expand=["items.data.price"])
+        except Exception as exc:  # noqa: BLE001
+            logging.warning("StripeService.change_subscription_price retrieve failed: %s", exc)
+            raise StripeError(str(exc)) from exc
+        items = _field(_field(sub, "items", {}) or {}, "data", []) or []
+        item_id, old_price_id = "", ""
+        for it in items:
+            pid = _field(_field(it, "price", {}) or {}, "id", "")
+            if pid in base_ids:
+                item_id, old_price_id = _field(it, "id", ""), pid
+                break
+        if not item_id:
+            raise StripeError("subscription has no base plan item")
+        result = {
+            "subscription_id": _field(sub, "id") or subscription_id,
+            "status": _field(sub, "status"),
+            "item_id": item_id,
+            "old_price_id": old_price_id,
+            "new_price_id": new_price_id,
+            "changed": False,
+        }
+        if old_price_id == new_price_id:
+            return result
+        try:
+            updated = stripe.Subscription.modify(
+                subscription_id,
+                items=[{"id": item_id, "price": new_price_id}],
+                proration_behavior=proration_behavior,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logging.warning("StripeService.change_subscription_price modify failed: %s", exc)
+            raise StripeError(str(exc)) from exc
+        result["status"] = _field(updated, "status") or result["status"]
+        result["changed"] = True
+        return result
 
     @staticmethod
     def apply_coupon_to_subscription(

@@ -149,6 +149,15 @@ const TreeExplorer = (function() {
         return m ? m.content : '';
     }
 
+    // allow only http(s) URLs into href (mirrors charts.js
+    // _safeUrl). escapeHtml stops attribute breakout but not a
+    // ``javascript:`` scheme; anything else renders as plain text.
+    function _safeUrl(url) {
+        const s = String(url || '').trim();
+        if (/^https?:\/\//i.test(s)) return s;
+        return '';
+    }
+
     const ContextMenu = {
         element: null,
         _dashboardId: null,
@@ -1268,7 +1277,10 @@ const TreeExplorer = (function() {
                 } else {
                     html += '<div class="detail-value">';
                     if (field.type === 'url' && value) {
-                        html += `<a href="${escapeHtml(value)}" target="_blank">${escapeHtml(value)}</a>`;
+                        const safeHref = _safeUrl(value);
+                        html += safeHref
+                            ? `<a href="${escapeHtml(safeHref)}" target="_blank">${escapeHtml(value)}</a>`
+                            : escapeHtml(value);
                     } else if (field.type === 'logo') {
                         html += `<img src="/static/${escapeHtml(value)}" alt="Organization logo" style="max-height: 80px; max-width: 220px; border: 1px solid #ddd; border-radius: 4px; padding: 4px; background: #fff;">`;
                     } else {
@@ -1288,8 +1300,9 @@ const TreeExplorer = (function() {
                     html += `<div class="detail-label">${escapeHtml(fieldData.label)}</div>`;
                     html += '<div class="detail-value">';
 
-                    if (fieldData.type === 'url') {
-                        html += `<a href="${escapeHtml(fieldData.value)}" target="_blank">${escapeHtml(fieldData.value)}</a>`;
+                    const safeHref = fieldData.type === 'url' ? _safeUrl(fieldData.value) : '';
+                    if (safeHref) {
+                        html += `<a href="${escapeHtml(safeHref)}" target="_blank">${escapeHtml(fieldData.value)}</a>`;
                     } else {
                         html += escapeHtml(fieldData.value);
                     }

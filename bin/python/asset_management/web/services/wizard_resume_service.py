@@ -71,6 +71,8 @@ _STEP_ROUTE_NAMES = {
     "mfa-setup": "analytics.onboarding_mfa_setup_step_page",
     "step-4": "analytics.onboarding_step4_page",
     "step-5": "analytics.onboarding_step5_page",
+    # optional "Your plan" screen after Workspace.
+    "plan": "analytics.onboarding_plan_page",
     "step-6": "analytics.onboarding_step6_page",
     "step-7": "analytics.onboarding_step7_page",
     "step-8": "analytics.onboarding_step8_page",

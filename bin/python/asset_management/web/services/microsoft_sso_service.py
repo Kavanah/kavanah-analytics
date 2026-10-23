@@ -72,6 +72,10 @@ from typing import Any
 sys.path.insert(0, "/app/python")
 
 from lib.es_helpers import get_elasticsearch_client, get_es_admin_client  # noqa: E402
+from asset_management.web.services.onboarding_email_verification_service import (  # noqa: E402
+    SSO_UNVERIFIED_ACCOUNT_MESSAGE,
+    email_ownership_unproven,
+)
 from asset_management.web.services.user_provisioning_service import (  # noqa: E402
     UserProvisioningService,
 )
@@ -643,11 +647,24 @@ class MicrosoftSsoService:
             username = existing["username"]
             if existing.get("enabled", True) is False:
                 return MicrosoftSsoService._refuse_suspended(username)
+            # same pre-hijack refusal as the Google path — an
+            # unverified self-signup address must not capture this login.
+            # The sub-linked path above is untouched (that link exists).
+            existing_meta = existing.get("metadata") or {}
+            if email_ownership_unproven(existing_meta):
+                logging.warning(
+                    "AUDIT: action=microsoft_sso_rejected reason=local_email_unverified username=%s",
+                    username,
+                )
+                return {
+                    "success": False,
+                    "errors": [SSO_UNVERIFIED_ACCOUNT_MESSAGE],
+                    "code": "email_unverified",
+                }
             # Stamp microsoft_sub if not already present so future
             # sign-ins have the linkage recorded. Failure to stamp is
             # non-fatal — the user can still sign in via the
             # email-match path.
-            existing_meta = existing.get("metadata") or {}
             if existing_meta.get("microsoft_sub") != microsoft_sub:
                 MicrosoftSsoService._stamp_microsoft_sub(username, microsoft_sub, existing_meta)
             logging.info(

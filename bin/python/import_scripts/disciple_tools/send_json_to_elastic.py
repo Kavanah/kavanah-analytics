@@ -1,13 +1,20 @@
-"""map raw DT posts and index into per-team ES indices.
+"""index the DT staging files into per-team ES indices.
 
 Action: ``python3 import.py disciple_tools send_json_to_elastic``
 
-Reads the raw files written by ``fetch.py``, maps each DT post to the dashboard
-document shape (``mapping.py``), and bulk-upserts (by DT ID) into
-``{team_esid}__disciple_tools``. After indexing it
-folds in the existing ``organization_title`` enrichment and the geocache prewarm
-against each per-team index — the same post-processing the legacy
-``promote_staging.py`` ran against the shared alias.
+Reads the staging files written by ``fetch.py`` — already-mapped, minimised
+documents — adds ``team_title`` and
+bulk-upserts (by DT ID) into ``{team_esid}__disciple_tools`` (ESID-keyed
+scheme). After indexing it folds in the existing ``organization_title``
+enrichment and the geocache prewarm against each per-team index — the same
+post-processing the legacy ``promote_staging.py`` ran against the shared alias.
+
+a staging file is DELETED once every document in it indexed
+cleanly; it is no longer archived to ``raw_imported/`` (a new full copy every
+run, never purged). A file with a failed document is kept for the next run and,
+failing that, for the retention sweep's raw-JSON purge. A legacy file that still
+carries the raw REST ``posts`` (written) is mapped here, through
+the same street-free geocoder, and then deleted the same way.
 """
 
 from __future__ import annotations
@@ -15,8 +22,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import shutil
-from datetime import datetime, timezone
 
 import lib.logging
 from elasticsearch.helpers import bulk
@@ -36,7 +41,6 @@ from migration.schema_loader import get_schema_for_index_type
 from lib.geocoding import coarse_location_for_address as _coarse_location
 
 RAW_DIR = "/app/data/disciple_tools/raw"
-ARCHIVE_DIR = "/app/data/disciple_tools/raw_imported"
 SOURCE_SLUG = "disciple_tools"
 BULK_CHUNK_SIZE = 500
 
@@ -57,10 +61,42 @@ def _team_title_for(team_cache, team_esid: str) -> str:
     return ((team_cache.get("by_esid") or {}).get(team_esid) or {}).get("team_title") or ""
 
 
-def _archive(filename: str) -> None:
-    os.makedirs(ARCHIVE_DIR, exist_ok=True)
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-    shutil.move(os.path.join(RAW_DIR, filename), os.path.join(ARCHIVE_DIR, f"{stamp}__{filename}"))
+def _docs_for(payload: dict, team_esid: str, team_title: str):
+    """Yield the documents a staging file carries, with ``team_title`` set.
+
+    Current files carry mapped ``docs``. A legacy file with raw
+    REST ``posts`` is mapped here through the street-free coarse geocoder.
+    """
+    if "docs" in payload:
+        for doc in payload.get("docs") or []:
+            if isinstance(doc, dict) and doc.get("ID"):
+                doc["team_esid"] = team_esid
+                doc["team_title"] = team_title
+                yield doc
+        return
+    for post in payload.get("posts") or []:
+        doc = mapping.map_post(post, team_esid, team_title=team_title, geocode=_coarse_location)
+        if doc is not None:
+            yield doc
+
+
+def _failed_doc_ids(errors: list) -> set[str]:
+    """Ids of every document the bulk call reported as failed. Matched by id
+    alone (not index): DT ids repeat across sites, so a collision can only keep
+    a file that could have been deleted — never delete one that failed."""
+    ids: set[str] = set()
+    for err in errors or []:
+        if not isinstance(err, dict):
+            continue
+        for item in err.values():
+            if isinstance(item, dict):
+                ids.add(str(item.get("_id") or ""))
+    return ids
+
+
+def _remove_staging_file(filename: str) -> None:
+    """delete an indexed staging file (no ``raw_imported`` copy)."""
+    os.remove(os.path.join(RAW_DIR, filename))
 
 
 def main(params):
@@ -80,7 +116,7 @@ def main(params):
     team_cache = build_team_lookup_cache(es)
     indices_created: dict[str, str] = {}
     touched_indices: set[str] = set()
-    processed_files: list[str] = []
+    processed_files: dict[str, set[str]] = {}  # filename -> ids it carried
 
     def _actions():
         for filename, payload in _read_raw_files():
@@ -95,13 +131,10 @@ def main(params):
                 logging.info("DT send: index %s ready", indices_created[team_esid])
             index_name = indices_created[team_esid]
 
-            count = 0
-            for post in payload.get("posts") or []:
-                doc = mapping.map_post(post, team_esid, team_title=team_title, geocode=_coarse_location)
-                if doc is None:
-                    continue
+            ids: set[str] = set()
+            for doc in _docs_for(payload, team_esid, team_title):
                 touched_indices.add(index_name)
-                count += 1
+                ids.add(str(doc["ID"]))
                 yield {
                     "_op_type": "update",
                     "_index": index_name,
@@ -109,8 +142,8 @@ def main(params):
                     "doc": doc,
                     "doc_as_upsert": True,
                 }
-            logging.info("DT send: %s → %d doc(s) into %s", filename, count, index_name)
-            processed_files.append(filename)
+            logging.info("DT send: %s → %d doc(s) into %s", filename, len(ids), index_name)
+            processed_files[filename] = ids
 
     success_count, errors = bulk(es, _actions(), chunk_size=BULK_CHUNK_SIZE, raise_on_error=False)
     lib.logging.define("dt-json-to-elastic")  # es_helpers may have reset the prefix
@@ -135,11 +168,17 @@ def main(params):
                 logging.warning("DT send: geocache prewarm on %s failed: %s", index_name, e)
         lib.logging.define("dt-json-to-elastic")
 
-    for filename in processed_files:
+    # delete each staging file whose documents all indexed; keep the
+    # rest (minimised) for the next run / the retention sweep's raw-JSON purge.
+    failed_ids = _failed_doc_ids(errors)
+    for filename, ids in processed_files.items():
+        if ids & failed_ids:
+            logging.warning("DT send: keeping %s — %d doc(s) failed to index", filename, len(ids & failed_ids))
+            continue
         try:
-            _archive(filename)
+            _remove_staging_file(filename)
         except OSError as e:
-            logging.warning("DT send: could not archive %s: %s", filename, e)
+            logging.warning("DT send: could not remove %s: %s", filename, e)
 
     logging.info(
         "DT send: indexed %d doc(s) into %d team index(es). Errors: %d",

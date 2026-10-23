@@ -34,10 +34,10 @@ from flask import session
 # Add Python path for imports
 sys.path.insert(0, "/app/python")
 from lib.es_helpers import (
-    KNOWN_SOURCES,
     get_document_by_id,
     get_elasticsearch_client,
     scoped_index_pattern as _scoped_index_pattern_impl,
+    team_data_index_names,
 )
 
 # Partnership detection cache (TTL-based)
@@ -234,10 +234,21 @@ def _grant_scoped_titles(username: str) -> dict:
     grants = DataGrantService.list_for_user(username)
     has_grants = bool(grants)
     if not has_grants:
-        return {"team_titles": [], "org_titles": [], "team_esids": [], "org_esids": [], "has_grants": False}
+        return {
+            "team_titles": [],
+            "org_titles": [],
+            "team_esids": [],
+            "org_esids": [],
+            "scope_team_esids": [],
+            "has_grants": False,
+        }
 
     org_esids: list[str] = []
     team_esids: list[str] = []
+    # every team the grants reach, by ESID — direct team grants
+    # plus the org / workspace expansions below. Layer-1 index allowlists
+    # are built from these, never by re-resolving the (non-unique) titles.
+    scope_team_esids: list[str] = []
     # workspace-scoped grants. Resolved at query time via the
     # same workspace→orgs→teams join _workspace_scoped_titles uses, so a
     # grant survives org migrations cleanly — when team X moves to a new
@@ -291,7 +302,10 @@ def _grant_scoped_titles(username: str) -> dict:
         # teams. ``org_titles`` is still carried (above) for the title-keyed
         # data-layer filter; only the team expansion switches to ESID.
         if org_esids:
-            team_titles.extend(RoleFilterService.get_team_titles_by_organization_esids(org_esids) or [])
+            for esid, title in RoleFilterService.get_teams_by_organization_esids(org_esids):
+                scope_team_esids.append(esid)
+                if title:
+                    team_titles.append(title)
     if es is not None and team_esids:
         try:
             resp = es.search(
@@ -302,11 +316,13 @@ def _grant_scoped_titles(username: str) -> dict:
                     "size": len(team_esids),
                 },
             )
-            team_titles.extend(
-                hit["_source"]["team_title"]
-                for hit in resp.get("hits", {}).get("hits", [])
-                if hit.get("_source", {}).get("team_title")
-            )
+            for hit in resp.get("hits", {}).get("hits", []):
+                # only teams that exist count toward the allowlist.
+                if hit.get("_id"):
+                    scope_team_esids.append(hit["_id"])
+                title = hit.get("_source", {}).get("team_title")
+                if title:
+                    team_titles.append(title)
         except Exception as e:
             logging.error("RoleFilterService._grant_scoped_titles: team join failed: %s", e)
 
@@ -345,7 +361,10 @@ def _grant_scoped_titles(username: str) -> dict:
             # organization_esid gathered just above, not the org title — a
             # same-titled org in another workspace would otherwise leak its
             # teams into a workspace-grant holder's scope.
-            team_titles.extend(RoleFilterService.get_team_titles_by_organization_esids(ws_org_esids) or [])
+            for esid, title in RoleFilterService.get_teams_by_organization_esids(ws_org_esids):
+                scope_team_esids.append(esid)
+                if title:
+                    team_titles.append(title)
 
     # De-duplicate while preserving order.
     def _dedup(values: list[str]) -> list[str]:
@@ -366,6 +385,7 @@ def _grant_scoped_titles(username: str) -> dict:
         # walk consumer treats them uniformly.
         "team_esids": _dedup(list(team_esids)),
         "org_esids": _dedup(list(org_esids)),
+        "scope_team_esids": _dedup(scope_team_esids),
         "has_grants": True,
     }
 
@@ -428,11 +448,11 @@ def _workspace_scoped_titles(username: str) -> dict:
         )
 
     if not username:
-        return {"team_titles": [], "org_titles": [], "org_esids": [], "has_workspace": False}
+        return {"team_titles": [], "org_titles": [], "org_esids": [], "scope_team_esids": [], "has_workspace": False}
 
     membership_workspaces = WorkspaceMembershipService.get_workspaces_for_user(username)
     if not membership_workspaces:
-        return {"team_titles": [], "org_titles": [], "org_esids": [], "has_workspace": False}
+        return {"team_titles": [], "org_titles": [], "org_esids": [], "scope_team_esids": [], "has_workspace": False}
 
     # gate on the workspace ROLE. Only membership workspaces the
     # user actually holds a role for expand to the workspace-wide org/team
@@ -441,11 +461,11 @@ def _workspace_scoped_titles(username: str) -> dict:
     role_workspaces = set(_workspace_role_assignment_esids(username))
     workspace_esids = [ws for ws in membership_workspaces if ws in role_workspaces]
     if not workspace_esids:
-        return {"team_titles": [], "org_titles": [], "org_esids": [], "has_workspace": False}
+        return {"team_titles": [], "org_titles": [], "org_esids": [], "scope_team_esids": [], "has_workspace": False}
 
     es = get_elasticsearch_client()
     if es is None:
-        return {"team_titles": [], "org_titles": [], "org_esids": [], "has_workspace": True}
+        return {"team_titles": [], "org_titles": [], "org_esids": [], "scope_team_esids": [], "has_workspace": True}
 
     # Workspace → orgs: term-on-keyword scan of de_asset_organization.
     # F5 backfill guarantees every existing org has workspace_esid set.
@@ -478,8 +498,12 @@ def _workspace_scoped_titles(username: str) -> dict:
     # wizard signups each create a "Kavanah"/"General" org), so the title
     # join here was the live-firing leak.
     team_titles: list[str] = []
+    scope_team_esids: list[str] = []
     if org_esids:
-        team_titles = RoleFilterService.get_team_titles_by_organization_esids(org_esids) or []
+        for esid, title in RoleFilterService.get_teams_by_organization_esids(org_esids):
+            scope_team_esids.append(esid)
+            if title:
+                team_titles.append(title)
 
     # De-duplicate while preserving order — same shape as the sibling
     # helpers above.
@@ -496,6 +520,8 @@ def _workspace_scoped_titles(username: str) -> dict:
         "team_titles": _dedup(team_titles),
         "org_titles": _dedup(org_titles),
         "org_esids": _dedup(org_esids),
+        # the workspace's teams by ESID (Layer-1 allowlist source).
+        "scope_team_esids": _dedup(scope_team_esids),
         "has_workspace": True,
     }
 
@@ -605,7 +631,7 @@ def _membership_scoped_titles(username: str) -> dict:
     membership doc is still a bare privileged user.
     """
     if not username:
-        return {"team_titles": [], "org_titles": [], "team_esids": [], "org_esids": []}
+        return {"team_titles": [], "org_titles": [], "team_esids": [], "org_esids": [], "scope_team_esids": []}
 
     # capture ESIDs alongside titles so the resolver can store
     # them on UserScope and downstream workspace-walk helpers can join
@@ -635,8 +661,15 @@ def _membership_scoped_titles(username: str) -> dict:
     # this org expansion still contribute their TITLE (not their ESID) for
     # data-layer filtering; the workspace-walk path remains driven by the
     # ``team_esids`` / ``org_esids`` captured above.
+    # the same expansion also yields the teams' ESIDs, so the
+    # Layer-1 allowlist never has to turn a title back into an ESID.
+    scope_team_esids: list[str] = list(team_esids)
     if org_esids:
-        team_titles = list(team_titles) + (RoleFilterService.get_team_titles_by_organization_esids(org_esids) or [])
+        team_titles = list(team_titles)
+        for esid, title in RoleFilterService.get_teams_by_organization_esids(org_esids):
+            scope_team_esids.append(esid)
+            if title:
+                team_titles.append(title)
 
     def _dedup(values: list[str]) -> list[str]:
         seen: set[str] = set()
@@ -652,6 +685,7 @@ def _membership_scoped_titles(username: str) -> dict:
         "org_titles": _dedup(org_titles),
         "team_esids": team_esids,
         "org_esids": org_esids,
+        "scope_team_esids": _dedup(scope_team_esids),
     }
 
 
@@ -1030,6 +1064,10 @@ def _resolve_user_scope_uncached(username: str, user_roles: list[str], config: d
     # their respective workspaces).
     team_esids: list[str] = []
     org_esids: list[str] = []
+    # every team the user's scope reaches, by ESID. The Layer-1
+    # index allowlist is built from this — never from team titles, which are
+    # not unique across tenants (two signups can both name a team "Team 1").
+    scope_team_esids: list[str] = []
     sources: list[str] = []
 
     if privileged:
@@ -1050,6 +1088,11 @@ def _resolve_user_scope_uncached(username: str, user_roles: list[str], config: d
         # safe at the data-layer filter but doesn't seed the workspace
         # walk; the org_esids alone re-derive the workspace).
         team_esids = _dedup_union(memberships.get("team_esids") or [], grants.get("team_esids") or [])
+        scope_team_esids = _dedup_union(
+            memberships.get("scope_team_esids") or [],
+            grants.get("scope_team_esids") or [],
+            workspace.get("scope_team_esids") or [],
+        )
         org_esids = _dedup_union(
             memberships.get("org_esids") or [],
             grants.get("org_esids") or [],
@@ -1132,6 +1175,7 @@ def _resolve_user_scope_uncached(username: str, user_roles: list[str], config: d
         # branch — same shape as the privileged branch above.
         new_authz_team_esids: list[str] = []
         new_authz_org_esids: list[str] = []
+        new_authz_scope_team_esids: list[str] = []
         new_authz_source: str | None = None
         if username:
             # (2026-05-28): the ``_use_new_permissions`` gate
@@ -1159,11 +1203,13 @@ def _resolve_user_scope_uncached(username: str, user_roles: list[str], config: d
             new_authz_orgs = list(memberships["org_titles"])
             new_authz_team_esids = list(memberships.get("team_esids") or [])
             new_authz_org_esids = list(memberships.get("org_esids") or [])
+            new_authz_scope_team_esids = list(memberships.get("scope_team_esids") or [])
             workspace = _workspace_scoped_titles(username)
             if workspace.get("has_workspace"):
                 new_authz_teams.extend(workspace["team_titles"])
                 new_authz_orgs.extend(workspace["org_titles"])
                 new_authz_org_esids.extend(workspace.get("org_esids") or [])
+                new_authz_scope_team_esids.extend(workspace.get("scope_team_esids") or [])
                 try:
                     from web.services.workspace_membership_service import WorkspaceMembershipService
                 except ImportError:
@@ -1199,16 +1245,21 @@ def _resolve_user_scope_uncached(username: str, user_roles: list[str], config: d
         workspace_esids = list(new_authz_workspaces)
         team_esids = list(new_authz_team_esids)
         org_esids = list(new_authz_org_esids)
+        scope_team_esids = _dedup_union(new_authz_scope_team_esids)
         if new_authz_source:
             sources.append(new_authz_source)
 
     scope_source = sources[0] if sources else "none"
     # Phase B: compute the index-name allowlist for Layer-1
-    # enforcement. Empty team_titles → empty allowlist → Layer-1 returns
-    # the no-match sentinel for every wrapped es.search call. This is
-    # the structural complement to the team_title body-filter Layer-2:
-    # a leak now requires BOTH layers to fail.
-    allowed_indices = _build_allowed_indices(team_titles)
+    # enforcement. No teams → empty allowlist → Layer-1 returns the
+    # no-match sentinel for every wrapped es.search call. This is the
+    # structural complement to the team_title body-filter Layer-2: a leak
+    # now requires BOTH layers to fail.
+    # built from the scope's team ESIDs. It used to be built from
+    # team_titles re-resolved across ALL tenants, so a same-titled team in
+    # another workspace landed in the allowlist (and its title passed the
+    # Layer-2 filter too).
+    allowed_indices = _build_allowed_indices_for_team_esids(scope_team_esids)
     return UserScope(
         workspace_esids=tuple(workspace_esids),
         org_titles=tuple(org_titles),
@@ -1224,128 +1275,50 @@ def _resolve_user_scope_uncached(username: str, user_roles: list[str], config: d
     )
 
 
-def _resolve_team_esids_from_titles(team_titles: list[str]) -> list[str]:
-    """Phase B: resolve a list of ``team_title`` strings to their
-    ``team_esid`` document IDs via a single ES round-trip against
-    ``de_asset_teams``.
+def _build_allowed_indices_for_team_esids(team_esids) -> frozenset[str]:
+    """Phase B / the concrete ES index names a scope may
+    read — ``{team_esid}__{source}`` (``build_data_index_name``'s naming,
+    lowercased) for every team ESID and every ``KNOWN_SOURCES`` slug.
 
-    The resolver carries titles through every source helper (memberships /
-    grants / workspace / legacy) because the four consumer helpers and
-    Layer-2 body filter all key on ``team_title``. Phase B's Layer-1 index
-    allowlist needs ESIDs to build ``{team_esid}__{source}`` names — this
-    helper bridges the two representations.
+     replaced the title-based ``_build_allowed_indices``. That
+    resolved team TITLES back to ESIDs with a cluster-wide ``terms``
+    search, so any team anywhere that shared a title (onboarding defaults
+    to "Team 1") joined the allowlist; and it added legacy
+    ``{slug}_{source}`` names, which are only migration-era
+    reverse aliases onto the same ESID indices — they add no data a team
+    does not already reach by ESID, but a colliding slug could alias onto
+    another tenant's index. Both are gone: ESIDs are unique by
+    construction, so this cannot cross a tenant boundary.
 
-    Returns ``[]`` on empty input, ES outage, or no matches — the resolver
-    treats an empty ESID list as "no index allowlist" and the caller's
-    Layer-1 enforcement falls through to the empty-scope sentinel. The
-    fail-soft mirrors the rest of the role_filter_service contract (every
-    join helper here degrades to empty list on ES failure).
-
-    Args:
-        team_titles: List of canonical team_title strings (the resolver's
-            ``team_titles`` union output). De-duplication is the caller's
-            responsibility — this helper just joins.
-
-    Returns:
-        List of team_esid strings (ES ``_id`` values). Order is not
-        guaranteed; the index-name builder doesn't care.
+    Returns an empty frozenset for no teams — the deny-everything signal
+    at the Layer-1 boundary.
     """
-    if not team_titles:
-        return []
-    es = get_elasticsearch_client()
-    if es is None:
-        logging.warning("_resolve_team_esids_from_titles: ES unavailable; returning empty ESID list")
-        return []
-
-    # query BOTH `team_title.keyword` AND raw `team_title` because
-    # `de_asset_teams.team_title` is mapped two different ways across
-    # clusters/age cohorts. Older indices have plain `keyword` (no `.keyword`
-    # subfield) so the `.keyword` path returns 0; newer indices have
-    # `text` + `.keyword` subfield, so the raw path matches the
-    # analyzer instead of the keyword. ES refuses to convert keyword→text
-    # in-place, so the only forward-compatible fix is to OR both shapes.
-    titles_list = list(team_titles)
-    query = {
-        "bool": {
-            "should": [
-                {"terms": {"team_title.keyword": titles_list}},
-                {"terms": {"team_title": titles_list}},
-            ],
-            "minimum_should_match": 1,
-        }
-    }
-    try:
-        resp = es.search(
-            index="de_asset_teams",
-            body={
-                "query": query,
-                "_source": False,
-                "size": max(len(team_titles), 1),
-            },
-        )
-    except Exception as e:
-        # Fail-soft: log + return empty so Layer-1 denies rather than
-        # silently falling back to a wider pattern. Layer-2 body filter
-        # still gates on team_title — defense in depth.
-        logging.error("_resolve_team_esids_from_titles: de_asset_teams join failed: %s", e)
-        return []
-    return [hit["_id"] for hit in resp.get("hits", {}).get("hits", []) if hit.get("_id")]
+    return team_data_index_names(team_esids)
 
 
-def _build_allowed_indices(team_titles: list[str]) -> frozenset[str]:
-    """Phase B / compute the frozenset of concrete ES
-    index names a user may read, given their resolved ``team_titles``.
+_PUBLIC_PUBLISH_ALLOWED_ATTR = "public_publish_allowed_indices"
 
-    Emits TWO naming conventions in the same allowlist:
 
-    1. ``{team_esid}__{source}`` — the ESID-keyed naming that
-       Phase B was designed for. Matches ``build_data_index_name``.
-    2. ``{sanitize_team_title(team_title)}_{source}`` — the legacy
-       team-slug naming the importers still write to today (is
-       paused; see project_paused.md). Single underscore
-       separator, no esid.
+def set_public_publish_allowed_indices(allowed) -> None:
+    """pin this (anonymous, public-report) request's index scope.
 
-    Both branches are emitted unconditionally so the allowlist is a
-    superset across both naming schemes. ``scoped_index_pattern``
-    intersects with the wildcard the caller passed, so emitting extra
-    names that don't match the wildcard is a no-op. (2026-05-16)
-    added the legacy branch after discovering on staging that the actual
-    data indices were exclusively legacy-slug-named and every
-    grant-bearing user got "No data" because Phase B's allowlist
-    intersection returned a comma-list of nonexistent ESID-keyed names.
-
-    Once every importer is on the scheme, drop the legacy
-    branch (and this comment). Until then both names are valid targets.
-
-    Returns an empty frozenset when ``team_titles`` is empty — that's
-    the deny-everything signal at the Layer-1 boundary. The dataclass
-    field is ``frozenset`` so UserScope stays hashable / immutable.
+    The public blueprint calls this once it has resolved a publish token to
+    the publisher's team ESIDs; ``RoleFilterService.scoped_index_pattern``
+    then intersects every query with it instead of passing through.
     """
-    if not team_titles:
-        return frozenset()
-    # ESID-keyed names.
-    esids = _resolve_team_esids_from_titles(team_titles)
-    esid_names = {f"{esid}__{source}".lower() for esid in esids for source in KNOWN_SOURCES}
-    # Legacy team-slug names. Computed from titles directly — no ES
-    # round-trip, fail-soft on a bad title via sanitize_team_title's
-    # "unknown" fallback. The "unknown_*" name would not match a real
-    # index, so it can't accidentally widen scope.
+    from flask import g
+
+    setattr(g, _PUBLIC_PUBLISH_ALLOWED_ATTR, frozenset(allowed or ()))
+
+
+def public_publish_allowed_indices():
+    """The pinned public-report allowlist for this request, or None if unset."""
     try:
-        from lib.es_helpers import sanitize_team_title
-    except ImportError:
-        # Fallback if the import path differs in a test/CLI context;
-        # bias toward an empty legacy set rather than crashing the
-        # resolver, since ESID names will still cover the path.
-        sanitize_team_title = None  # type: ignore[assignment]
-    legacy_names: set[str] = set()
-    if sanitize_team_title is not None:
-        for title in team_titles:
-            slug = sanitize_team_title(title)
-            if not slug or slug == "unknown":
-                continue
-            for source in KNOWN_SOURCES:
-                legacy_names.add(f"{slug}_{source}".lower())
-    return frozenset(esid_names | legacy_names)
+        from flask import g
+
+        return getattr(g, _PUBLIC_PUBLISH_ALLOWED_ATTR, None)
+    except RuntimeError:  # outside an app/request context
+        return None
 
 
 def _dedup_union(*lists: list[str]) -> list[str]:
@@ -1864,11 +1837,6 @@ class RoleFilterService:
         ESID join can't collide: ``organization_esid`` is the org's ``_id``,
         unique by construction.
 
-        ``terms organization_esid`` is exact-token and handles the
-        multi-org-per-team shape (``organization_esid`` may be a list) the
-        same way the title ``match`` did — a team in-scope if ANY of its
-        parent org ESIDs is requested.
-
         Args:
             org_esids: list of organization ESIDs (de_asset_organization _id).
 
@@ -1876,14 +1844,30 @@ class RoleFilterService:
             list: team_title strings (possibly empty). Fail-soft: ES down or
                   error → empty list, mirroring the title helper.
         """
-        team_titles: list[str] = []
+        return [title for _esid, title in cls.get_teams_by_organization_esids(org_esids) if title]
+
+    @classmethod
+    def get_teams_by_organization_esids(cls, org_esids):
+        """``(team_esid, team_title)`` for every team under the
+        given org ESIDs (the join ``get_team_titles_by_organization_esids``
+        projects to titles). Scope resolution needs the ESIDs: the Layer-1
+        index allowlist is built from them, never from titles.
+
+        ``terms organization_esid`` is exact-token and handles the
+        multi-org-per-team shape (``organization_esid`` may be a list) — a
+        team is in scope if ANY of its parent org ESIDs is requested.
+
+        Returns ``[]`` on empty input, ES outage or error (fail-soft: an
+        empty result denies, it never widens).
+        """
+        teams: list[tuple[str, str]] = []
         if not org_esids:
-            return team_titles
+            return teams
 
         es = get_elasticsearch_client()
         if not es:
             logging.error("Failed to get Elasticsearch client for team lookup by org ESIDs")
-            return team_titles
+            return teams
 
         # ``de_asset_teams.organization_esid`` is mapped
         # ``text`` + ``.keyword`` subfield on staging/prod (and plain
@@ -1893,8 +1877,8 @@ class RoleFilterService:
         # teams for every grant/workspace/membership user — orgs survived
         # (different field) but teams vanished everywhere. OR both shapes,
         # the same forward-compatible pattern uses for
-        # ``team_title`` (line 1217): ``.keyword`` matches the text-cohort,
-        # the bare field matches the plain-keyword-cohort.
+        # ``team_title``: ``.keyword`` matches the text-cohort, the bare
+        # field matches the plain-keyword-cohort.
         esids_list = list(org_esids)
         try:
             result = es.search(
@@ -1914,21 +1898,20 @@ class RoleFilterService:
                 },
             )
 
-            hits = result.get("hits", {}).get("hits", [])
-            for hit in hits:
-                team_title = hit["_source"].get("team_title")
-                if team_title:
-                    team_titles.append(team_title)
+            for hit in result.get("hits", {}).get("hits", []):
+                esid = hit.get("_id")
+                if esid:
+                    teams.append((esid, (hit.get("_source") or {}).get("team_title") or ""))
 
-            if team_titles:
-                logging.info(f"Found {len(team_titles)} teams for org ESIDs {org_esids}")
+            if teams:
+                logging.info(f"Found {len(teams)} teams for org ESIDs {org_esids}")
             else:
                 logging.warning(f"No teams found for org ESIDs: {org_esids}")
 
         except Exception as e:
             logging.error(f"Error searching for teams by org ESIDs '{org_esids}': {e}")
 
-        return team_titles
+        return teams
 
     @classmethod
     def get_allowed_teams(cls):
@@ -1984,7 +1967,8 @@ class RoleFilterService:
         scope = resolve_user_scope(username, user_roles, config)
         if not scope.is_empty:
             return list(scope.team_titles)
-        return None
+        # no scope → admit nothing (None meant "unrestricted").
+        return []
 
     @classmethod
     def get_allowed_teams_for_org_users(cls):
@@ -2039,7 +2023,8 @@ class RoleFilterService:
         scope = resolve_user_scope(username, user_roles, config)
         if not scope.is_empty:
             return list(scope.team_titles)
-        return None
+        # no scope → admit nothing (None meant "unrestricted").
+        return []
 
     @classmethod
     def get_filter_for_current_user(cls):
@@ -2070,10 +2055,10 @@ class RoleFilterService:
 
         # Get user roles from session
         user_roles = session.get("roles", [])
-
-        if not user_roles:
-            logging.warning("No roles found in session for filter resolution")
-            return None
+        # an empty ES role list is NOT "no filter". Self-signup
+        # owners always have ``session["roles"] == []`` (their scope lives in
+        # the new-authz indexes), and returning None here ran their queries
+        # with no Layer-2 filter. They resolve below like everyone else.
 
         # follow-up: system-admin in the new authz model is
         # checked first; legacy unrestricted_roles bypass remains as
@@ -2176,8 +2161,9 @@ class RoleFilterService:
             logging.info(f"Resolver-derived team filter (source={scope.scope_source}): {filter_clause}")
             return filter_clause
 
-        logging.warning(f"No valid org or team roles found in: {user_roles}")
-        return None
+        # no resolvable scope → deny-all, never "no filter".
+        logging.warning(f"No valid org or team roles found in: {user_roles}; emitting deny-all")
+        return _DENY_ALL_FILTER
 
     # Fields that scope a query to a particular team/org. When a
     # scoped user passes a filter on one of these fields with a value
@@ -2232,6 +2218,12 @@ class RoleFilterService:
             return generic_pattern
 
         if not username:
+            # a public report request (no session) pins every
+            # query — including the shared map helpers — to the publisher's
+            # own teams' indices, set by the public blueprint on ``g``.
+            public_allowed = public_publish_allowed_indices()
+            if public_allowed is not None:
+                return _scoped_index_pattern_impl(generic_pattern, public_allowed)
             # No authenticated user. Pass through rather than denying —
             # this branch covers anonymous error-page rendering and a
             # handful of healthcheck paths that hit the same routes.
@@ -2288,8 +2280,8 @@ class RoleFilterService:
             # sentinel (no foreign tenant's indices, ever).
             return _scoped_index_pattern_impl(generic_pattern, frozenset())
 
-        # Resolve the chosen workspace's team titles, build their index
-        # names with the same dual-scheme helper the resolver uses, and
+        # Resolve the chosen workspace's teams, build their index names with
+        # the same ESID-keyed helper the resolver uses, and
         # intersect with the data-view wildcard.
         try:
             from web.services.invite_service import InviteService
@@ -2297,8 +2289,7 @@ class RoleFilterService:
             from asset_management.web.services.invite_service import InviteService
 
         teams = InviteService.list_workspace_teams(workspace_esid)
-        team_titles = [t["team_title"] for t in teams if t.get("team_title")]
-        ws_indices = _build_allowed_indices(team_titles)
+        ws_indices = _build_allowed_indices_for_team_esids([t.get("team_esid") for t in teams])
 
         # Layer 2: never exceed the user's own scope. Intersect the
         # workspace's indices with the user's full allowed set.
@@ -2492,8 +2483,13 @@ class RoleFilterService:
         # preserved because their UserScope still resolves to
         # ``is_empty=True`` — they have nothing in the new-authz
         # indexes either.
-        scope = resolve_user_scope(username, user_roles, config)
-        return not scope.is_empty
+        # an authenticated user with no resolvable scope is still
+        # filtered — to nothing. Returning False here told callers to run
+        # UNSCOPED (``get_allowed_*`` → None → cluster-wide lists, the map
+        # routes trusting a client-chosen team), so a user caught between
+        # signup and provisioning, or one whose roles were removed, reached
+        # every tenant's names. Deny by default.
+        return True
 
     @classmethod
     def current_user_has_any_scope(cls):
@@ -2625,7 +2621,8 @@ class RoleFilterService:
         scope = resolve_user_scope(username, user_roles, config)
         if not scope.is_empty:
             return list(scope.org_titles)
-        return None
+        # no scope → admit nothing (None meant "unrestricted").
+        return []
 
     @classmethod
     def get_allowed_workspaces(cls):

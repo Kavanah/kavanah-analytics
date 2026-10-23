@@ -3,11 +3,19 @@
 {% block extrabody %}
 <div class="back-to-app-banner">
   <span class="back-to-app-title">Kavanah Analytics Documentation</span>
-  <a href="/dashboard"
-     class="back-to-app-close"
-     id="back-to-app-close"
-     title="Close documentation"
-     aria-label="Close documentation">Close</a>
+  <div class="back-to-app-actions">
+    <a href="https://kavanah-tech-support.ministries.bot/"
+       class="back-to-app-support"
+       target="_blank"
+       rel="noopener noreferrer"
+       title="Chat with Kavanah tech support (opens in a new window)"
+       aria-label="Support chat (opens in a new window)">Support chat</a>
+    <a href="/dashboard"
+       class="back-to-app-close"
+       id="back-to-app-close"
+       title="Close documentation"
+       aria-label="Close documentation">Close</a>
+  </div>
 </div>
 <script>
   // Docs opens in a new tab from the management console (rel="noopener").

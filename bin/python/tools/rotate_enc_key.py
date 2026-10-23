@@ -73,6 +73,8 @@ INVENTORY: dict[str, tuple[str, ...]] = {
     "de_asset_ga4_accounts": ("ga4_account_token",),
     "de_asset_user_mfa": ("totp_secret_enc",),
     "de_pending_registrations": ("encrypted_password",),
+    # publishes[].publish_token_enc (display copy of a public report token).
+    "de_asset_echarts_dashboards": ("publishes",),
 }
 
 # Directories whose ``*.enc`` files are Fernet tokens written by

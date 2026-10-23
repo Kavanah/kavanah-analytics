@@ -163,7 +163,8 @@ def fetch_user_stats_graphql(base_url, headers, start_date, end_date):
     try:
         data = response.json()
     except json.JSONDecodeError:
-        logging.error(f"Invalid JSON from user stats GraphQL: {response.text}")
+        # status + the first 200 chars only (see get_conversations).
+        logging.error(f"Invalid JSON from user stats GraphQL: status={response.status_code} body={response.text[:200]!r}")
         return None
 
     if "errors" in data:

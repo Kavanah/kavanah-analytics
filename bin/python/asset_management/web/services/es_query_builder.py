@@ -15,6 +15,21 @@ from datetime import datetime, timedelta, timezone
 # yyyy-MM-dd, but other custom-format date fields could still appear.)
 _ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
+# ``terms_size`` arrives in the client's chart config (public and
+# authenticated query paths alike). Unbounded, one request asks ES for an
+# arbitrary bucket count; clamp it. No shipped chart sends more than the default.
+_TERMS_SIZE_DEFAULT = 100
+_TERMS_SIZE_MAX = 1000
+
+
+def _clamped_terms_size(raw) -> int:
+    """Return ``raw`` as an int in [1, _TERMS_SIZE_MAX]; the default when unparseable."""
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return _TERMS_SIZE_DEFAULT
+    return max(1, min(value, _TERMS_SIZE_MAX))
+
 
 def _iso_to_epoch_ms(iso_value, *, upper_bound=False):
     """Convert a yyyy-MM-dd string to an epoch-millisecond integer.
@@ -1923,7 +1938,7 @@ def build_query(config, *, dashboard_filters=None):
         bucket_agg = {
             "terms": {
                 "field": x_field,
-                "size": config.get("terms_size", 100),
+                "size": _clamped_terms_size(config.get("terms_size", _TERMS_SIZE_DEFAULT)),
                 "order": {"_count": "desc"},
             }
         }

@@ -474,7 +474,7 @@ class _FakeLockService:
         self.acquire_calls = []
         self.release_calls = []
 
-    def acquire(self, connector, scope_id=""):
+    def acquire(self, connector, scope_id="", **_kwargs):  # acquire also takes progress_run_id
         self.acquire_calls.append((connector, scope_id))
         return self.acquire_result
 

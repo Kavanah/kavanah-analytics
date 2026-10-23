@@ -19,6 +19,14 @@ _SCOPE = {"term": {"team_title": "AllowedTeam"}}
 _ALLOWED = {"victim_team__fb_insights"}
 
 
+def _own_index_scope():
+    """_execute_tool now narrows every index to the caller's own
+    indices and DENIES outside a request context. These tests exercise
+    the Layer-2 scope-filter wrap, so they stand in a caller whose Layer-1 scope
+    is the (allow-listed) index itself."""
+    return mock.patch.object(nlq, "_caller_index_scope", side_effect=lambda index: index)
+
+
 def _es_returning_empty():
     es = mock.MagicMock()
     es.search.return_value = {"hits": {"total": {"value": 0}, "hits": []}}
@@ -45,7 +53,7 @@ class TestApplyScopeFilter:
 class TestExecuteToolEnforcesScope:
     def test_search_injects_scope_regardless_of_model_query(self):
         es = _es_returning_empty()
-        with mock.patch.object(nlq, "get_elasticsearch_client", return_value=es):
+        with mock.patch.object(nlq, "get_elasticsearch_client", return_value=es), _own_index_scope():
             nlq._execute_tool(
                 "search_elasticsearch",
                 {"index": "victim_team__fb_insights",
@@ -60,7 +68,7 @@ class TestExecuteToolEnforcesScope:
 
     def test_count_injects_scope(self):
         es = _es_returning_empty()
-        with mock.patch.object(nlq, "get_elasticsearch_client", return_value=es):
+        with mock.patch.object(nlq, "get_elasticsearch_client", return_value=es), _own_index_scope():
             nlq._execute_tool(
                 "count_documents",
                 {"index": "victim_team__fb_insights", "query": {"match_all": {}}},
@@ -75,7 +83,8 @@ class TestExecuteToolEnforcesScope:
         es.search.return_value = {"aggregations": {}, "hits": {"hits": []}}
         with mock.patch.object(nlq, "get_elasticsearch_client", return_value=es), \
                 mock.patch.object(nlq, "build_query", return_value={"query": {"match_all": {}}}), \
-                mock.patch.object(nlq, "echarts_transform", return_value={"title": {}}):
+                mock.patch.object(nlq, "echarts_transform", return_value={"title": {}}), \
+                _own_index_scope():
             nlq._execute_tool(
                 "render_chart",
                 {"data_view": "victim_team__fb_insights", "y_fields": []},

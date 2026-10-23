@@ -54,10 +54,10 @@ from lib.errors import UserFacingError
 
 try:
     from web.config import config
-    from web.services.nlq_usage_service import get_feature_spend_today
+    from web.services.nlq_usage_service import CREDIT_EXHAUSTED_ERROR, get_feature_spend_today, is_credit_exhausted
 except ImportError:
     from ..config import config
-    from ..services.nlq_usage_service import get_feature_spend_today
+    from ..services.nlq_usage_service import CREDIT_EXHAUSTED_ERROR, get_feature_spend_today, is_credit_exhausted
 
 
 FEATURE = "canvas_ai"
@@ -112,16 +112,27 @@ def route_model(message_text: str, has_attachments: bool, complex_mode: bool, ha
 
 
 def resolve_model(tier: str) -> str:
-    """Resolve a tier to the configured model ID.
+    """Resolve a tier to the configured model ID for the active provider.
 
-    Tier map per the private docs 2026-07-14 (post-IAM-grant
-    re-probe): legacy AnthropicBedrock client with global./us. inference
-    profiles — Haiku 4.5 fast, Sonnet 5 default, Opus 4.8 complex.
+    Bedrock (the private docs 2026-07-14 post-IAM-grant
+    re-probe): legacy AnthropicBedrock client with us. inference profiles —
+    Haiku 4.5 fast, Sonnet 5 default, Opus 4.8 complex.
+
+    Direct Anthropic API: Haiku 5.5 fast,
+    Sonnet 5.5 default, Opus 5.5 complex. The two id families are not
+    interchangeable (the direct API rejects inference-profile ids), so the
+    provider picks the config set — a master-config override of one family
+    never leaks into the other.
     """
+    if config.NLQ_PROVIDER == "bedrock":
+        return {
+            TIER_FAST: config.CANVAS_AI_MODEL_FAST,
+            TIER_COMPLEX: config.CANVAS_AI_MODEL_COMPLEX,
+        }.get(tier, config.CANVAS_AI_MODEL_DEFAULT)
     return {
-        TIER_FAST: config.CANVAS_AI_MODEL_FAST,
-        TIER_COMPLEX: config.CANVAS_AI_MODEL_COMPLEX,
-    }.get(tier, config.CANVAS_AI_MODEL_DEFAULT)
+        TIER_FAST: config.CANVAS_AI_ANTHROPIC_MODEL_FAST,
+        TIER_COMPLEX: config.CANVAS_AI_ANTHROPIC_MODEL_COMPLEX,
+    }.get(tier, config.CANVAS_AI_ANTHROPIC_MODEL_DEFAULT)
 
 
 def _create_client() -> Any:
@@ -1934,12 +1945,35 @@ def chat(
         )
     except anthropic.AuthenticationError:
         return {"success": False, "error": "AI provider credentials are invalid"}
+    except anthropic.BadRequestError as e:
+        # the credit-balance refusal is a planned monthly state.
+        if is_credit_exhausted(e):
+            logging.warning("Canvas AI: monthly AI credit exhausted; refusing until it renews")
+            return {"success": False, "error": CREDIT_EXHAUSTED_ERROR}
+        logging.exception("Canvas AI: Anthropic API rejected the request (model=%s)", model)
+        return {"success": False, "error": "AI request failed — see server logs for detail"}
     except anthropic.RateLimitError:
         return {"success": False, "error": "AI rate limit exceeded — try again shortly"}
     except Exception:
         # traceback to the server log, generic message out.
         logging.exception("Canvas AI: API call failed (model=%s)", model)
         return {"success": False, "error": "AI request failed — see server logs for detail"}
+
+    # the direct-API models can decline a request (HTTP 200,
+    # stop_reason "refusal", no text). Say so instead of returning an
+    # empty reply; the turn is not stored.
+    if getattr(response, "stop_reason", None) == "refusal":
+        logging.warning("Canvas AI: request declined by the model (model=%s)", model)
+        return {
+            "success": False,
+            "error": "The AI declined that request — try rephrasing it.",
+            "conversation_id": conv["conversation_id"],
+            "usage": {
+                "input_tokens": response.usage.input_tokens,
+                "output_tokens": response.usage.output_tokens,
+                "model": model,
+            },
+        }
 
     reply = "\n".join(block.text for block in response.content if hasattr(block, "text") and block.text).strip()
 

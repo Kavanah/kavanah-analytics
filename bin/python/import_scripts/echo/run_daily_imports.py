@@ -213,7 +213,8 @@ def main(params):
             get_elasticsearch_client(),
             limit_teams,  # comma-string or None (cron full-pull → "" → global lock)
         )
-        lock_id = ImportLockService.acquire("echo", scope_id=lock_scope)
+        # progress_run_id: queue position + cancel while waiting for a global slot.
+        lock_id = ImportLockService.acquire("echo", scope_id=lock_scope, progress_run_id=progress_run_id)
         if lock_id is None:
             logging.warning("lock: another echo importer holds the lock; " "exiting cleanly.")
             # resolve our progress doc IFF it's a true orphan (the lock

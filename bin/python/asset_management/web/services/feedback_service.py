@@ -174,6 +174,7 @@ class FeedbackService:
 
         # Optional Jira link row
         jira_url = feedback_data.get("jira_issue_url")
+        jira_error = feedback_data.get("jira_error")
         jira_html = ""
         jira_text = ""
         if jira_url:
@@ -184,6 +185,18 @@ class FeedbackService:
                 f"</tr>"
             )
             jira_text = f"\nJira Issue: {jira_url}\n"
+        elif jira_error:
+            # a failed Jira filing used to drop this row silently, so a
+            # deactivated feedback Jira account went unnoticed for weeks. Say so
+            # in the email the team actually reads.
+            jira_note = f"NOT created ({jira_error}). File this report in Jira by hand and check the feedback Jira account."
+            jira_html = (
+                f"\n            <tr>"
+                f'<td style="padding:10px 14px;font-weight:600;color:#5F6B7A;white-space:nowrap">Jira Issue</td>'
+                f'<td style="padding:10px 14px;color:#D91515;font-weight:600">{_esc(jira_note)}</td>'
+                f"</tr>"
+            )
+            jira_text = f"\nJira Issue: {jira_note}\n"
 
         logo_url = f"{_get_app_base_url()}/static/kavanah-analytics-logo.svg"
 

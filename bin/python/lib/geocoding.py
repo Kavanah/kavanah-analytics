@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import time
 import logging
 
@@ -467,20 +468,89 @@ def geocode_all_targeting_levels(targeting, cache_only=False):
     return result
 
 
+# words that mark an address component as street-level (a street,
+# a building, a unit, a neighbourhood block) rather than a town, district,
+# region or country. Matched as whole lower-cased tokens after stripping
+# trailing punctuation. Deliberately broad: a dropped component only costs map
+# precision, a kept one sends part of a convert's street to a third party.
+# fmt: off
+_STREET_TOKENS = frozenset(
+    {
+        # English
+        "street", "st", "str", "road", "rd", "avenue", "ave", "av", "lane", "ln", "drive", "dr",
+        "boulevard", "blvd", "way", "close", "court", "ct", "place", "pl", "terrace", "crescent",
+        "highway", "hwy", "alley", "apt", "apartment", "apartments", "suite", "unit", "flat",
+        "floor", "building", "bldg", "block", "house", "box", "po", "park", "compound", "villa",
+        # Turkish
+        "cad", "cd", "cadde", "caddesi", "sok", "sk", "sokak", "sokağı", "sokagi", "mah", "mh",
+        "mahalle", "mahallesi", "bulvar", "bulvarı", "bulvari", "apartmanı", "apartmani",
+        "daire", "kat", "blok", "no", "site", "sitesi", "parkı", "parki", "çıkmazı", "cikmazi",
+        # French / Spanish / Portuguese / Italian / German
+        "rue", "chemin", "impasse", "allée", "allee", "calle", "avenida", "carrera", "barrio",
+        "rua", "travessa", "via", "viale", "piazza", "vicolo", "straße", "strasse", "weg",
+        "gasse", "platz",
+        # Indonesian / Malay
+        "jalan", "jl", "jln", "gang", "gg", "rt", "rw", "lorong",
+        # Russian
+        "улица", "ул", "проспект", "пр", "переулок", "пер", "дом", "д", "кв", "квартира",
+        # Arabic / Persian / Urdu / Hebrew
+        "شارع", "زقاق", "عمارة", "شقة", "خیابان", "خيابان", "کوچه", "كوچه", "پلاک", "گلی", "רחוב",
+    }
+)
+# fmt: on
+_COMPONENT_SPLIT = re.compile(r"[,;\n\r|،，、]+")  # incl. Arabic / CJK commas
+_TOKEN_SPLIT = re.compile(r"[\s/\\\-–—()]+")
+# A component of more words than this reads as a description, not a place name.
+_MAX_PLACE_WORDS = 4
+# Keep at most this many trailing components: "City, Country" grain.
+_MAX_PLACE_COMPONENTS = 2
+
+
+def _is_coarse_component(component):
+    """True when an address component can be sent to a geocoder: no digit
+    (house / unit numbers, postcodes, phone numbers), no ``@``, no street-level
+    word, and short enough to be a place name."""
+    if not component or any(ch.isdigit() for ch in component) or "@" in component or "#" in component:
+        return False
+    words = [w.strip(".:'\"`").lower() for w in _TOKEN_SPLIT.split(component) if w.strip(".:'\"`")]
+    if not words or len(words) > _MAX_PLACE_WORDS:
+        return False
+    return not any(w in _STREET_TOKENS for w in words)
+
+
+def coarse_query_for_address(address):
+    """reduce a free-text address to a coarse query LOCALLY, or "".
+
+    Splits on commas / semicolons / newlines, drops every street-level
+    component (see :func:`_is_coarse_component`) and keeps at most the last
+    two survivors — the ``City, Country`` end of an address. Nothing here
+    touches the network; this is what makes "the street never leaves the box"
+    true for :func:`coarse_location_for_address`.
+
+    "Mevlana Sk. 12, Karatay, Konya" → "Karatay, Konya";
+    "Atatürk Caddesi 5" → "" (nothing coarse left, so nothing is geocoded).
+    """
+    parts = [p.strip() for p in _COMPONENT_SPLIT.split(address or "")]
+    kept = [p for p in parts if _is_coarse_component(p)]
+    return ", ".join(kept[-_MAX_PLACE_COMPONENTS:])
+
+
 def coarse_location_for_address(address):
     """reduce a free-text street address to ``{"place": "City, Country",
     "country": "Country", "lat": float, "lon": float}`` via Nominatim, or None.
 
-    The street never leaves this function: only the coarse place is returned
-    (and cached, under ``addr|<address>`` — the cache file lives on the app host,
-    not in Elasticsearch, so the mapping street→place is not recoverable from a
-    dumped index). Rate-limited to Nominatim's 1 req/s; only successes cached.
+    the street never leaves this host. The address is first reduced
+    locally by :func:`coarse_query_for_address`; only that coarse string is sent
+    to Nominatim and used as the cache key (``place|<coarse>``), so neither the
+    geocoder nor ``geocoding_cache.json`` ever sees the street, and lat/lon are
+    the coarse place's, not the street's. Rate-limited to Nominatim's 1 req/s;
+    only successes cached.
     """
-    address = (address or "").strip()
-    if not address:
+    query = coarse_query_for_address(address)
+    if not query:
         return None
     cache = _load_cache()
-    key = f"addr|{address}"
+    key = f"place|{query}"
     if key in cache:
         return cache[key]
     from geopy.geocoders import Nominatim
@@ -495,12 +565,12 @@ def coarse_location_for_address(address):
     for attempt, delay in enumerate([0] + _NOMINATIM_RETRY_DELAYS):
         time.sleep(delay or 1)
         try:
-            loc = geocoder.geocode(address, addressdetails=True, timeout=10)
+            loc = geocoder.geocode(query, addressdetails=True, timeout=10)
         except GeocoderUnavailable as e:
             last_error = e
             continue
         except Exception as e:
-            logging.warning(f"[geocoding] Error geocoding address (len={len(address)}): {e}")
+            logging.warning(f"[geocoding] Error geocoding a coarse place (len={len(query)}): {type(e).__name__}")
             break
         if loc:
             addr = (getattr(loc, "raw", {}) or {}).get("address", {}) or {}

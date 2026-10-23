@@ -109,6 +109,9 @@ _STEP_LABELS: dict[str, str] = {
     # invited users land here instead of step-2 (logical
     # step 4 now). Same slot in the numbering, different caption.
     "invite-team-picker": "Pick a team",
+    # the optional "Your plan" screen between step-5 and step-6
+    # renders in step-5's slot (see _STEP_NUMBER_OVERRIDES).
+    "plan": "Your plan",
 }
 
 # Steps that resolve to another slug's position in the numbering.
@@ -116,6 +119,7 @@ _STEP_LABELS: dict[str, str] = {
 # addition rather than a branch in every consumer.
 _STEP_NUMBER_OVERRIDES: dict[str, str] = {
     "invite-team-picker": "step-4",
+    "plan": "step-5",
 }
 
 # Upper pace-multiplier cap. A user who's burned 3× the expected time

@@ -300,7 +300,12 @@
             </div>
             {% endif %}
 
-            {% if request.args.get('changed') %}
+            {% if request.args.get('rate_limited') %}
+            <div class="alert-warn" role="alert" data-testid="verify-email-step-rate-limited">
+                We've sent several verification emails already. Check your inbox
+                (and spam folder) for the latest one, or try again in an hour.
+            </div>
+            {% elif request.args.get('changed') %}
             <div class="alert-info" role="status" data-testid="verify-email-step-changed">
                 Email updated. A fresh verification link is on its way to
                 your new inbox.

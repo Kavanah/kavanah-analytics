@@ -15,6 +15,7 @@
 # • notify_trial_ending.py — daily (06:00)
 # • run_report_schedules.py — every 5 minutes
 # • youtube_duplicate_check — daily (05:05), tracked in de_job_health
+# • team_data_purge — daily (04:55), --apply, tracked in de_job_health
 # • tiktok_daily_snapshot — daily (06:20), ONLY while deployment/.env
 # has TIKTOK_ENABLED=true; absent/false = no line at all
 #
@@ -173,6 +174,19 @@ SCHEDULE=(
     # post id per site and removes ES docs the upstream no longer has (the
     # importer never tombstones). Same dry-run gate as the sweep above.
     $'45\t04\t* * 0\tretention_dt_reconcile\tpython3 /app/python/asset_management/jobs/retention_sweep.py --only-dt'
+
+    # deleted-team data purge, 04:55 daily. A team delete writes a
+    # purge request (de_team_purge_requests) with a 7-day grace; this job
+    # deletes the team's {team_esid}__* indices, unshared legacy {slug}_*
+    # indices and raw /app/data files once the grace has passed AND the team
+    # doc is still gone, and reports orphan data indices (prefix names no live
+    # team). Tracked, so a refused request reaches Status Reports.
+    #
+    # GATE: --apply added 2026-10-14 after a teammate reviewed the first prod report
+    # (it was provisioned report-only on 10-13). Never --force here: the mass
+    # guard is the backstop. --apply-orphans stays a one-off manual run (it
+    # starts the grace on orphan prefixes; the 10-14 run requested six).
+    $'55\t04\t* * *\tteam_data_purge\tpython3 /app/python/tools/run_tracked_job.py --job team_data_purge -- python3 /app/python/asset_management/jobs/team_data_purge.py --apply'
 
     # YouTube duplicate-channel check, 05:05 daily. Read-only and
     # ES-only (no Google calls, no quota). Fails when a youtube_channel_id is held

@@ -3,6 +3,7 @@ Web Asset Manager - Flask Application
 A web-based interface for managing Digital Engagement Dashboard assets.
 """
 
+import io
 import sys
 import os
 import re
@@ -61,6 +62,8 @@ from flask import (
     g,
 )
 from werkzeug.middleware.proxy_fix import ProxyFix
+from markupsafe import Markup
+from werkzeug.exceptions import Forbidden
 import threading
 import time
 import calendar
@@ -98,6 +101,7 @@ if __name__ == "__main__" or __package__ is None or __package__ == "":
     from web.services.kibana_gate_service import KibanaGateService
     from web.services.presence_service import PresenceService
     from web.services.registration_service import RegistrationService
+    from web.services.registration_service import _USERNAME_RE as _REGISTRATION_USERNAME_RE
     from web.services.user_management_service import UserManagementService
     from web.services.user_profile_service import UserProfileService
     from web.services.feedback_service import FeedbackService
@@ -166,6 +170,7 @@ else:
     from .services.kibana_gate_service import KibanaGateService
     from .services.presence_service import PresenceService
     from .services.registration_service import RegistrationService
+    from .services.registration_service import _USERNAME_RE as _REGISTRATION_USERNAME_RE
     from .services.user_management_service import UserManagementService
     from .services.user_profile_service import UserProfileService
     from .services.feedback_service import FeedbackService
@@ -502,6 +507,26 @@ except Exception as _team_org_sweep_err:
 LOGO_UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "uploads", "logos")
 _ALLOWED_LOGO_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 _MAX_LOGO_BYTES = 2 * 1024 * 1024  # 2 MB
+# the image format the CONTENT must decode as, per extension.
+_LOGO_FORMAT_BY_EXTENSION = {".jpg": "JPEG", ".jpeg": "JPEG", ".png": "PNG"}
+
+
+def _logo_content_matches(ext, file_data):
+    """True when ``file_data`` really is the image its extension
+    claims. The extension alone let any bytes (HTML, SVG, a script) be stored
+    under a .png/.jpg name in a directory Flask serves as static content.
+    Pillow (already shipped via qrcode[pil]) parses the header and checks the
+    file's structure; it does not decode the pixels, so a decompression bomb
+    costs nothing here."""
+    from PIL import Image
+
+    try:
+        with Image.open(io.BytesIO(file_data)) as image:
+            detected = image.format
+            image.verify()
+    except Exception:  # noqa: BLE001 — Pillow raises many types for bad input; all mean "not this image"
+        return False
+    return detected == _LOGO_FORMAT_BY_EXTENSION.get(ext)
 
 
 def _handle_logo_upload(field_name):
@@ -532,6 +557,9 @@ def _handle_logo_upload(field_name):
     file_data = file.read()
     if len(file_data) > _MAX_LOGO_BYTES:
         return False, "Logo file exceeds the 2 MB size limit."
+
+    if not _logo_content_matches(ext, file_data):
+        return False, "Logo must be a valid JPG or PNG image (the file content does not match its extension)."
 
     os.makedirs(LOGO_UPLOAD_DIR, exist_ok=True)
     filename = f"logo_{uuid.uuid4().hex}{ext}"
@@ -939,15 +967,28 @@ def set_security_headers(response):
     # Re-enabling the nonce in script-src is gated on Phase 2/3/4
     # first migrating those 112 inline handlers (and the rest) to
     # addEventListener so nothing breaks under strict CSP3.
+    #
+    # the signup forms render the hCaptcha widget when hCaptcha keys
+    # are configured; hCaptcha's CSP guide needs its hosts on script-src,
+    # style-src, frame-src and connect-src. Added only when a site key is set,
+    # so an install without hCaptcha keeps the narrower policy.
+    hcaptcha_src = " https://hcaptcha.com https://*.hcaptcha.com" if (app_config.HCAPTCHA_SITE_KEY or "").strip() else ""
     response.headers.setdefault(
         "Content-Security-Policy",
         "default-src 'self'; "
-        "script-src 'self' " + "'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com https://js.stripe.com; "
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://unpkg.com; "
+        "script-src 'self' "
+        + "'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com https://js.stripe.com"
+        + hcaptcha_src
+        + "; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://unpkg.com"
+        + hcaptcha_src
+        + "; "
         "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; "
         "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com https://server.arcgisonline.com; "
-        "connect-src 'self' https://d2ad6b4ur7yvpq.cloudfront.net https://cdn.jsdelivr.net https://unpkg.com https://api.stripe.com; "
-        "frame-src 'self' https://js.stripe.com https://hooks.stripe.com; "
+        "connect-src 'self' https://d2ad6b4ur7yvpq.cloudfront.net https://cdn.jsdelivr.net https://unpkg.com https://api.stripe.com"
+        + hcaptcha_src
+        + "; "
+        "frame-src 'self' https://js.stripe.com https://hooks.stripe.com" + hcaptcha_src + "; "
         "frame-ancestors 'self'; "
         "object-src 'none'; "
         "base-uri 'self'; " + form_action,
@@ -3016,6 +3057,24 @@ def edit_asset(asset_type, item_id):
 
                     create_ga_metrics_index_for_team(new_team_esid)
 
+            if asset_type == "teams":
+                renamed = (updated_document.get("team_title") or "").strip() != (existing_item.get("team_title") or "").strip()
+                if _team_orgs_changed(existing_item, updated_document):
+                    # Waited when the name changed too, so the two restamps
+                    # never update the same docs at once (conflicts=proceed
+                    # would silently skip the loser's docs).
+                    _restamp_team_org_titles(item_id, wait_for_completion=renamed)
+                _restamp_renamed_team_data(item_id, existing_item.get("team_title"), updated_document.get("team_title"))
+                _rename_publish_scope("team", item_id, existing_item.get("team_title"), updated_document.get("team_title"))
+
+            if asset_type == "organizations":
+                _propagate_renamed_org_title(
+                    item_id, existing_item.get("organization_title"), updated_document.get("organization_title")
+                )
+                _rename_publish_scope(
+                    "org", item_id, existing_item.get("organization_title"), updated_document.get("organization_title")
+                )
+
             # For FB App Users: if OAuth button clicked, save then redirect straight to Facebook auth
             if asset_type == "facebook_app_users" and request.form.get("oauth_redirect") == "1":
                 return redirect(_build_fb_app_user_oauth_url(updated_document))
@@ -3059,6 +3118,120 @@ def edit_asset(asset_type, item_id):
     )
 
 
+def _restamp_renamed_team_data(team_esid, old_title, new_title):
+    """Move a renamed team's imported data to its new name.
+
+    Dashboards filter data docs on their stored ``team_title``, so without this
+    a rename empties every dashboard for the team (see lib.team_title_restamp).
+    The rename itself is already saved; a restamp failure is logged, not
+    raised, and ``tools.restamp_team_titles`` repairs the team afterwards.
+    """
+    new_title = (new_title or "").strip()
+    if not new_title or new_title == (old_title or "").strip():
+        return
+    from lib.es_helpers import get_elasticsearch_client
+    from lib.team_title_restamp import restamp_team_title
+
+    es = get_elasticsearch_client()
+    if es is None:
+        logging.error("Team %s renamed but ES is unavailable: its data still says %r", team_esid, old_title)
+        return
+    try:
+        task = restamp_team_title(es, team_esid, new_title).get("task")
+    except Exception as e:  # noqa: BLE001 — the rename is saved; the sweep tool repairs a failed restamp
+        logging.error("Team %s renamed to %r but restamping its data failed: %s", team_esid, new_title, e)
+        return
+    logging.info("Team %s renamed %r -> %r; restamping its data (task %s)", team_esid, old_title, new_title, task)
+
+
+def _org_list(value):
+    if isinstance(value, str):
+        value = [value]
+    return [str(v).strip() for v in (value or []) if str(v or "").strip()]
+
+
+def _team_orgs_changed(existing_item, updated_document):
+    """True when a team edit changed which orgs it belongs to, or their stored names."""
+    return any(
+        _org_list(existing_item.get(field)) != _org_list(updated_document.get(field))
+        for field in ("organization_esid", "organization_title")
+    )
+
+
+def _restamp_team_org_titles(team_esid, *, wait_for_completion):
+    """bring a team's record and imported data to its current org names.
+
+    Importers copy ``organization_title`` from the team record and org-scoped
+    dashboards filter on it. The edit is already saved; a failure is logged
+    and ``tools.restamp_org_titles`` repairs the team afterwards.
+    """
+    from lib.es_helpers import get_elasticsearch_client
+    from lib.org_title_restamp import sync_and_restamp_team
+
+    es = get_elasticsearch_client()
+    if es is None:
+        logging.error("Team %s's orgs changed but ES is unavailable: its data keeps the old org names", team_esid)
+        return
+    try:
+        result = sync_and_restamp_team(es, team_esid, wait_for_completion=wait_for_completion)
+    except Exception as e:  # noqa: BLE001 — the edit is saved; the sweep tool repairs a failed restamp
+        logging.error("Team %s's orgs changed but restamping its data failed: %s", team_esid, e)
+        return
+    logging.info("Team %s's orgs changed; restamping its data's org names (%s)", team_esid, result)
+
+
+def _propagate_renamed_org_title(org_esid, old_title, new_title):
+    """move a renamed org's teams and their imported data to its new name.
+
+    Same contract as :func:`_restamp_renamed_team_data`: the rename is already
+    saved; a failure is logged and ``tools.restamp_org_titles`` repairs it.
+    """
+    new_title = (new_title or "").strip()
+    if not new_title or new_title == (old_title or "").strip():
+        return
+    from lib.es_helpers import get_elasticsearch_client
+    from lib.org_title_restamp import propagate_org_title
+
+    es = get_elasticsearch_client()
+    if es is None:
+        logging.error("Org %s renamed but ES is unavailable: its teams and data still say %r", org_esid, old_title)
+        return
+    try:
+        results = propagate_org_title(es, org_esid)
+    except Exception as e:  # noqa: BLE001 — the rename is saved; the sweep tool repairs it
+        logging.error("Org %s renamed to %r but updating its teams failed: %s", org_esid, new_title, e)
+        return
+    logging.info("Org %s renamed %r -> %r; updating %d team(s)", org_esid, old_title, new_title, len(results))
+
+
+def _rename_publish_scope(kind, esid, old_title, new_title):
+    """move public links scoped to a renamed team or org to its new name.
+
+    Without this a link keeps the old name, serves nothing (the scope no
+    longer resolves) and disappears from the publisher's UI under the new
+    name. The rename is already saved; a failure is logged.
+    """
+    old_title, new_title = (old_title or "").strip(), (new_title or "").strip()
+    if not old_title or not new_title or old_title == new_title:
+        return
+    from lib.es_helpers import get_elasticsearch_client
+    from lib.publish_scope_rename import rename_publish_snapshots
+
+    es = get_elasticsearch_client()
+    if es is None:
+        logging.error("%s %s renamed but ES is unavailable: its public links keep the old name", kind, esid)
+        return
+    try:
+        updated = rename_publish_snapshots(es, kind=kind, esid=esid, old_title=old_title, new_title=new_title)
+    except Exception as e:  # noqa: BLE001 — the rename is saved; the publisher can re-publish under the new name
+        logging.error("%s %s renamed to %r but moving its public links failed: %s", kind, esid, new_title, e)
+        return
+    if updated:
+        logging.info(
+            "%s %s renamed %r -> %r; moved public links on %d dashboard(s)", kind, esid, old_title, new_title, updated
+        )
+
+
 def _plan_team_dashboards(team_esid):
     """read-only plan for a team's dashboards, taken before the team
     is deleted. Best-effort: None (no cleanup) on any failure."""
@@ -3085,6 +3258,23 @@ def _apply_team_dashboards(plan):
             logging.info("dashboard cascade for team %s: %s", plan.team_esid, counts)
     except Exception as e:  # noqa: BLE001 — never fail a completed delete on cascade bookkeeping
         logging.warning("dashboard cascade failed for team %s: %s", plan.team_esid, e)
+
+
+def _record_team_purge_requests(teams: list[dict], *, reason: str) -> None:
+    """write a purge request (7-day grace) for each deleted team.
+
+    ``teams`` carry ``esid`` + the doc's ``team_title`` / ``workspace_esid``,
+    read BEFORE the delete. Never fails the completed delete.
+    """
+    if not teams:
+        return
+    try:
+        from asset_management.web.services.team_purge_service import record_team_purge_tombstones
+        from lib.es_helpers import get_elasticsearch_client as _get_es
+
+        record_team_purge_tombstones(_get_es(), teams, requested_by=session.get("username", "unknown"), reason=reason)
+    except Exception as e:  # noqa: BLE001 — never fail a completed delete on purge bookkeeping
+        logging.warning("purge request failed for %d team(s): %s", len(teams), e)
 
 
 @app.route("/asset/<asset_type>/delete/<item_id>", methods=["POST"])
@@ -3200,6 +3390,11 @@ def delete_asset(asset_type, item_id):
                     logging.info("authz cascade for %s %s: %s", _scope_type, item_id, _counts)
             except Exception as e:  # noqa: BLE001 — never fail a completed delete on cascade bookkeeping
                 logging.warning("authz cascade failed for %s %s: %s", asset_type, item_id, e)
+        # the team's data indices and raw files are NOT deleted here.
+        # A purge request starts a 7-day grace; team_data_purge.py removes the
+        # data afterwards only if the team doc is still gone. Best-effort.
+        if asset_type == "teams":
+            _record_team_purge_requests([{**existing_item, "esid": item_id}], reason="team_delete")
         # the org is the billing entity, so its
         # de_billing_org record must not outlive it. Prod had three comped
         # records whose orgs had been deleted — rendering in the roster as
@@ -3328,6 +3523,8 @@ def bulk_delete_assets(asset_type):
     # per-team dashboard plans, taken before each delete (see the
     # single-delete route) and applied only for teams that were deleted.
     team_dashboard_plans = {}
+    # each team doc as read before its delete, for the purge request.
+    deleted_team_docs = {}
     for item_id in item_ids:
         try:
             # company-tier (teams/organizations) per-item scope check.
@@ -3391,6 +3588,8 @@ def bulk_delete_assets(asset_type):
             if AssetService.delete_only(asset_config["index"], item_id):
                 deleted_count += 1
                 deleted_ids.append(item_id)
+                if asset_type == "teams":
+                    deleted_team_docs[item_id] = {**existing_item, "esid": item_id}
             else:
                 failed_count += 1
                 failures.append({"item_id": item_id, "error": "Delete failed"})
@@ -3430,6 +3629,9 @@ def bulk_delete_assets(asset_type):
                         logging.info("authz cascade for %s %s: %s", _scope_type, _id, _counts)
             except Exception as e:  # noqa: BLE001 — never fail a completed delete on cascade bookkeeping
                 logging.warning(f"bulk authz cascade failed for {asset_type}: {e}")
+
+        # purge requests (7-day grace) for the deleted teams' data.
+        _record_team_purge_requests(list(deleted_team_docs.values()), reason="team_bulk_delete")
 
     return jsonify(
         {
@@ -9165,6 +9367,12 @@ def search_assets():
                 field_name = field.get("name")
                 if not field_name:
                     continue
+                # never match on (or echo back) a secret field — an
+                # ``encrypted`` config field or a token/secret/password-named
+                # key. A ciphertext both leaked in ``value`` and let a wildcard
+                # probe its prefix.
+                if _options_is_secret_key(asset_key, field_name):
+                    continue
 
                 field_value = item_data.get(field_name, "")
 
@@ -10822,14 +11030,27 @@ def _require_memberships_in_workspace_scope(memberships: list[str]) -> None:
                 team_src = team_hits[0].get("_source") or {}
                 org_esid = team_src.get("organization_esid")
                 if not org_esid:
-                    # Orphan team — treat as out-of-scope by definition.
-                    out_of_scope.append(membership)
+                    # an org-less team can belong to a workspace
+                    # directly via its own workspace_esid. Only a team with
+                    # neither is an orphan (out of scope by definition).
+                    target_ws_esid = team_src.get("workspace_esid")
+                else:
+                    # team.organization_esid is a multi-select list;
+                    # passing the list to es.get() failed every multi-org
+                    # team and 403'd its create-user. In scope only if EVERY
+                    # parent org is in an allowed workspace (strict, so a
+                    # team straddling a foreign workspace stays refused).
+                    org_esids = [o for o in org_esid if o] if isinstance(org_esid, list) else [org_esid]
+                    team_ws_esids: set[str | None] = set()
+                    for oid in org_esids:
+                        try:
+                            org_doc = es.get(index="de_asset_organization", id=oid)
+                            team_ws_esids.add((org_doc.get("_source") or {}).get("workspace_esid"))
+                        except Exception:
+                            team_ws_esids.add(None)
+                    if not team_ws_esids or not team_ws_esids <= allowed_ws_set:
+                        out_of_scope.append(membership)
                     continue
-                try:
-                    org_doc = es.get(index="de_asset_organization", id=org_esid)
-                    target_ws_esid = (org_doc.get("_source") or {}).get("workspace_esid")
-                except Exception:
-                    target_ws_esid = None
             else:
                 target_ws_esid = None
         except Exception as e:
@@ -12349,6 +12570,20 @@ def api_create_user():
 
     if not username:
         return jsonify({"success": False, "error": "Username is required"}), 400
+    # same character rule as the registration path. A quote or
+    # angle bracket in a username is an XSS payload wherever the name is
+    # rendered; fullmatch so a trailing newline cannot slip past ``$``.
+    if not _REGISTRATION_USERNAME_RE.fullmatch(username):
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": "Username must be 3-30 characters and contain only "
+                    "letters, digits, underscores, hyphens, or dots",
+                }
+            ),
+            400,
+        )
     if not skip_email and not email:
         return jsonify({"success": False, "error": "Email address is required"}), 400
     if not isinstance(system_roles, list):
@@ -13680,10 +13915,12 @@ def api_list_teams():
 # empty-workspace delete from User Management. Superuser-only,
 # enabled only when the selected workspace has zero rows in
 # ``de_authz_workspace_membership``. Purges the workspace doc + its
-# child orgs/teams + all matching authz rows. Data indices
-# (``{team_esid}__*``) are deliberately NOT purged — that belongs to a
-# separate "delete all user data" surface (filed as out-of-scope follow-
-# up on the ticket).
+# child orgs/teams + all matching authz rows. The child teams' data
+# (``{team_esid}__*`` indices, legacy ``{slug}_{source}`` indices, raw files
+# under /app/data) is NOT deleted in the request: records a purge
+# request per team with a 7-day grace, and
+# asset_management/jobs/team_data_purge.py deletes the data after it only if
+# the team doc is still gone.
 @app.route("/api/user-management/workspaces/<workspace_esid>/empty-check", methods=["GET"])
 def api_workspace_empty_check(workspace_esid: str):
     """Return ``{empty, membership_count}`` for the workspace.
@@ -13747,7 +13984,7 @@ def api_delete_workspace(workspace_esid: str):
             409,
         )
 
-    counts = _cascade_purge_empty_workspace(es, workspace_esid)
+    counts = _cascade_purge_empty_workspace(es, workspace_esid, requested_by=session.get("username", "unknown"))
     cascade_summary = ",".join(f"{i}={n}" for i, n in counts.items())
     logging.info(
         "AUDIT: admin=%s action=delete_workspace target=%s title=%r ip=%s cascade=%s",
@@ -16411,7 +16648,17 @@ def forbidden(error):
         or request.path.startswith("/dashboard-builder/api/")
         or request.path.startswith("/restore-backup/api/")
     ):
-        return jsonify({"error": "Forbidden"}), 403
+        # carry the abort reason ("Membership(s) outside your
+        # workspace scope: ...") so the caller can show why it was refused.
+        # A bare abort(403) keeps werkzeug's generic text, which stays
+        # "Forbidden" on the wire. Tags are stripped: the auth.py route gate's
+        # reason carries a link meant for the HTML page, and some reasons echo
+        # request input (usernames, membership strings).
+        desc = getattr(error, "description", None)
+        if not desc or desc == Forbidden.description:
+            desc = "Forbidden"
+        desc = Markup(desc).striptags() or "Forbidden"
+        return jsonify({"success": False, "error": desc}), 403
 
     # Authenticated users get redirected to a page they can access
     if "authenticated" in session:
@@ -16613,6 +16860,8 @@ def api_feedback_submit():
             feedback_data["jira_issue_url"] = jira_result["issue_url"]
         else:
             logging.warning("Feedback: creation failed: %s", jira_result.get("error"))
+            # surface the failure in the notification email.
+            feedback_data["jira_error"] = jira_result.get("error") or "unknown error"
 
     result = FeedbackService.send_feedback_email(es, feedback_data)
     status_code = 200 if result.get("success") else 500

@@ -77,6 +77,9 @@ PUBLISH_ENTRY_FIELDS = (
     "published_org_title",
     "published_team_title",
     "display_time_selector",
+    # the token at rest (hash + encrypted copy) replaces publish_token.
+    "publish_token_hash",
+    "publish_token_enc",
 )
 
 STATES = ("never_expires", "active", "expired", "disabled")
@@ -122,7 +125,7 @@ def parse_expiry(raw) -> datetime | None:
 
 def classify_entry(entry: dict, *, now: datetime) -> str:
     """One of ``STATES`` for a publish entry, judged at ``now``."""
-    token = entry.get("publish_token")
+    token = entry.get("publish_token") or entry.get("publish_token_hash")  # hashed entries
     if not token or not entry.get("publish_enabled"):
         return "disabled"
     expires_at = parse_expiry(entry.get("publish_expires_at"))
@@ -140,6 +143,9 @@ def build_rows(docs: list[dict], *, now: datetime) -> list[dict]:
             state = classify_entry(entry, now=now)
             expires_at = parse_expiry(entry.get("publish_expires_at"))
             team, org = _scope_key(entry)
+            # a hashed entry has no plaintext; its hash tail ("#…")
+            # still tells two links apart without revealing either token.
+            token_hash = entry.get("publish_token_hash") or ""
             token = entry.get("publish_token") or ""
             rows.append(
                 {
@@ -152,7 +158,7 @@ def build_rows(docs: list[dict], *, now: datetime) -> list[dict]:
                     "published_at": entry.get("published_at"),
                     "expires_at": entry.get("publish_expires_at"),
                     "days_left": ((expires_at - now).days if expires_at is not None and state == "active" else None),
-                    "token_tail": token[-4:] if token else "",
+                    "token_tail": token[-4:] if token else (f"#{token_hash[-4:]}" if token_hash else ""),
                     "legacy_flat": bool(entry.get("_legacy_flat")),
                     "display_time_selector": bool(entry.get("display_time_selector")),
                 }

@@ -9,7 +9,7 @@
         "breakdown": "meta.overall_status.keyword",
         "chart_id": "c59da733-dc2c-457f-8972-9804287d23ea",
         "chart_type": "metric",
-        "data_view": "disciple-tools",
+        "data_view": "*_disciple_tools",
         "filters": [],
         "height": "200px",
         "title": "Contact Status",
@@ -22,7 +22,7 @@
         "breakdown": "meta.faith_status.keyword",
         "chart_id": "f6c4c4b5-59f2-487d-a3f7-5e98c871b370",
         "chart_type": "metric",
-        "data_view": "disciple-tools",
+        "data_view": "*_disciple_tools",
         "filters": [],
         "height": "200px",
         "title": "Faith Status",
@@ -32,10 +32,10 @@
       },
       {
         "aggregation": "count",
-        "breakdown": "meta.milestone.formatted.keyword",
+        "breakdown": "meta.milestones.keyword",
         "chart_id": "89b14172-bae6-4f39-be2c-ea181c9bdc92",
         "chart_type": "metric",
-        "data_view": "disciple-tools",
+        "data_view": "*_disciple_tools",
         "filters": [],
         "height": "200px",
         "title": "Faith Milestones",
@@ -56,5 +56,5 @@
     "disciple_tools"
   ],
   "template_id": "disciple_tools",
-  "updated_at": "2026-05-25T17:26:27.248440+00:00"
+  "updated_at": "2026-10-19T14:56:02.641754+00:00"
 }

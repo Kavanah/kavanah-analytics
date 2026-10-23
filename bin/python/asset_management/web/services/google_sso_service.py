@@ -54,6 +54,10 @@ from typing import Any
 sys.path.insert(0, "/app/python")
 
 from lib.es_helpers import get_elasticsearch_client, get_es_admin_client  # noqa: E402
+from asset_management.web.services.onboarding_email_verification_service import (  # noqa: E402
+    SSO_UNVERIFIED_ACCOUNT_MESSAGE,
+    email_ownership_unproven,
+)
 from asset_management.web.services.user_provisioning_service import (  # noqa: E402
     UserProvisioningService,
 )
@@ -424,10 +428,26 @@ class GoogleSsoService:
                     "errors": ["This account has been suspended. Please contact your administrator."],
                     "code": "account_suspended",
                 }
+            # an address typed at self-signup and never verified
+            # proves nothing — whoever made that account (and knows its
+            # password) may not own the mailbox Google just vouched for.
+            # Handing them this login would let a pre-registered account
+            # capture the real owner's Google sign-in. Refuse; the owner of
+            # the account signs in with its password and verifies first.
+            existing_meta = existing.get("metadata") or {}
+            if email_ownership_unproven(existing_meta):
+                logging.warning(
+                    "AUDIT: action=google_sso_rejected reason=local_email_unverified username=%s",
+                    username,
+                )
+                return {
+                    "success": False,
+                    "errors": [SSO_UNVERIFIED_ACCOUNT_MESSAGE],
+                    "code": "email_unverified",
+                }
             # Stamp google_sub if not already present so future sign-ins
             # have the linkage recorded. Failure to stamp is non-fatal
             # — the user can still sign in via the email-match path.
-            existing_meta = existing.get("metadata") or {}
             if existing_meta.get("google_sub") != google_sub:
                 GoogleSsoService._stamp_google_sub(username, google_sub, existing_meta)
             logging.info(

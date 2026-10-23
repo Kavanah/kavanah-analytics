@@ -9,6 +9,9 @@ from lib.es_helpers import (
     get_document_by_id,
     get_elasticsearch_client,
 )
+from lib.org_title_restamp import sync_and_restamp_team
+from lib.publish_scope_rename import rename_publish_snapshots
+from lib.team_title_restamp import restamp_team_title
 
 INDEX_NAME = "de_asset_teams"
 
@@ -409,17 +412,56 @@ def edit(team_id):
 
         if edit_document(INDEX_NAME, team_id, updated_document):
             print("Team updated successfully!")
+            if es is not None and _extract_org_esids(updated_document) != _extract_org_esids(team):
+                # importers copy organization_title from the team record.
+                result = sync_and_restamp_team(es, team_id, wait_for_completion=True)
+                if result is None:
+                    print("Could not resolve the team's organization name(s); its data was not updated.")
+                else:
+                    print(f"Updated the organization name on the team's imported data: {result.get('updated', 0)} doc(s).")
+            new_title = updated_document["team_title"].strip()
+            if es is not None and new_title != (team.get("team_title") or "").strip():
+                # Dashboards filter imported data on its stored team_title.
+                result = restamp_team_title(es, team_id, new_title, wait_for_completion=True)
+                print(f"Renamed the team's imported data: {result.get('updated', 0)} doc(s).")
+                # public links are scoped by team name.
+                moved = rename_publish_snapshots(
+                    es, kind="team", esid=team_id, old_title=team.get("team_title") or "", new_title=new_title
+                )
+                if moved:
+                    print(f"Moved the team's public report links to the new name on {moved} dashboard(s).")
         else:
             print("Failed to update team.")
     else:
         print("Operation canceled.")
 
 
+def _record_purge_request(team_id, team_doc):
+    """the team's data is purged 7 days from now, not now."""
+    import getpass
+
+    from asset_management.web.services.team_purge_service import GRACE_DAYS, record_team_purge_tombstones
+
+    written = record_team_purge_tombstones(
+        get_elasticsearch_client(),
+        [{**team_doc, "esid": team_id}],
+        requested_by=f"cli:{getpass.getuser()}",
+        reason="cli_team_delete",
+    )
+    if written:
+        print(f"Its data indices and raw files will be purged after {GRACE_DAYS} days unless the team is restored.")
+    else:
+        print("WARNING: the data purge request was not recorded; the team's data indices remain (see the log).")
+
+
 def delete(team_id):
     confirmation = input(f"Are you sure you want to delete the Team? (y/n): ").strip().lower()
     if confirmation == "y":
+        # read the doc before it goes, for the purge request below.
+        team_doc = get_document_by_id(INDEX_NAME, team_id) or {}
         if delete_asset_with_cleanup(INDEX_NAME, team_id):
             print("Team deleted successfully.")
+            _record_purge_request(team_id, team_doc)
         else:
             print("Failed to delete Team.")
     else:

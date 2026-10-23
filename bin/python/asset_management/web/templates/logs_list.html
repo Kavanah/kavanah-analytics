@@ -65,9 +65,10 @@ tbody tr:last-child td { border-bottom:none; }
                     <div class="actions">
                         <a href="{{ url_for('view_log', filename=log.name) }}"
                            class="btn btn-sm">View</a>
-                        <button onclick="saveLog('{{ log.name }}', '{{ url_for('download_log', filename=log.name) }}')"
+                        <button data-filename="{{ log.name }}" data-download-url="{{ url_for('download_log', filename=log.name) }}"
+                                onclick="saveLog(this.dataset.filename, this.dataset.downloadUrl)"
                                 class="btn btn-sm btn-secondary">Save As</button>
-                        <button onclick="deleteLog('{{ log.name }}')"
+                        <button data-filename="{{ log.name }}" onclick="deleteLog(this.dataset.filename)"
                                 class="btn btn-sm btn-danger">Delete</button>
                     </div>
                 </td>

@@ -1014,10 +1014,12 @@
                 <button class="cs-btn cs-btn-primary" id="de-ask-btn" onclick="deRunQuery()">
                     Ask <i class="fas fa-arrow-right" style="margin-left:4px;font-size:11px;"></i>
                 </button>
+                {% if nlq_model_choice %}
                 <select class="de-model-sel" id="de-model-sel" title="Select AI model">
-                    <option value="haiku">Haiku 4.5 (fast)</option>
-                    <option value="sonnet">Sonnet 4 (smart)</option>
+                    <option value="haiku">Haiku (fast)</option>
+                    <option value="sonnet">Sonnet (smart)</option>
                 </select>
+                {% endif %}
                 <span class="de-memory-badge" id="de-memory-badge" title="Queries learned by Kavanah">
                     <i class="fas fa-brain"></i> <span id="de-mem-count">0</span>
                 </span>
@@ -1488,7 +1490,7 @@
                 organizations: orgs.length ? orgs : null,
                 teams: teams.length ? teams : null,
                 date_range: dateRange,
-                model: document.getElementById('de-model-sel').value,
+                model: (document.getElementById('de-model-sel') || {}).value || 'haiku',
             }),
             signal: activeAbort.signal,
         })

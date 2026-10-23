@@ -161,7 +161,8 @@ def main(params):
     try:
         from lib.import_lock_service import ImportLockService
 
-        lock_id = ImportLockService.acquire("bitly", scope_id=lock_scope)
+        # progress_run_id: queue position + cancel while waiting for a global slot.
+        lock_id = ImportLockService.acquire("bitly", scope_id=lock_scope, progress_run_id=progress_run_id)
         if lock_id is None:
             logging.warning("bitly lock: another bitly importer holds the lock; exiting cleanly.")
             # resolve our progress doc IFF it's a true orphan (the

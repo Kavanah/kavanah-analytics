@@ -75,6 +75,8 @@ INDEX_TEAM_SUBSCRIPTION = "de_billing_team_subscription"
 INDEX_ORG_BILLING = "de_billing_org"
 
 ORGANIZATION_INDEX = "de_asset_organization"
+TEAMS_INDEX = "de_asset_teams"  # comp cancel walks the org's teams
+PLAN_KEY = "plan_key"  # "business" | "nonprofit" after a superuser plan change
 WORKSPACE_INDEX = "de_asset_workspace"
 
 ORG_BILLING_MAPPING = {
@@ -85,6 +87,8 @@ ORG_BILLING_MAPPING = {
         "workspace_esid": {"type": "keyword"},
         "stripe_customer_id": {"type": "keyword"},
         "paid_tier": {"type": "boolean"},
+        # the plan a superuser moved the org onto; absent until then.
+        "plan_key": {"type": "keyword"},
         "comped_active": {"type": "boolean"},
         "comped_by": {"type": "keyword"},
         "comped_at": {"type": "date"},
@@ -413,6 +417,7 @@ class OrgBillingService:
         owner_name: str = "",
         owner_address: dict | None = None,
         company: str = "",
+        trial_end: int | None = None,
         sdk=None,
     ) -> dict:
         """License a team: ensure the org's Stripe Customer exists, then create
@@ -458,6 +463,7 @@ class OrgBillingService:
             promotion_code=promotion_code,
             metadata={"team_esid": team_esid, "workspace_esid": workspace_esid},
             payment_method_id=payment_method_id,
+            trial_end=trial_end,
             sdk=sdk,
         )
         OrgBillingService.upsert_team_subscription(
@@ -905,3 +911,382 @@ class OrgBillingService:
         ]
         out.sort(key=lambda r: (r["org_title"] or "").lower())
         return out
+
+    # ── comp stops the money ───────────────────────────────────
+    @staticmethod
+    def list_team_esids_for_org(org_esid: str) -> list[str]:
+        """Every team whose PRIMARY org is ``org_esid``.
+
+        ``de_asset_teams.organization_esid`` is a multi-select list; the bare
+        ``term`` (explicit keyword) narrows server-side to teams
+        that carry the esid in ANY position, and the post-filter keeps only
+        those whose FIRST org is this one — the same primary-org rule
+        ``connector_status_service.list_teams_for_org`` applies, so
+        a team that lists the org as a secondary org is never billed/un-billed
+        through it. Fail-soft → [].
+        """
+        if not org_esid:
+            return []
+        es = get_elasticsearch_client()
+        if es is None:
+            return []
+        try:
+            resp = es.search(
+                index=TEAMS_INDEX,
+                body={
+                    "query": {"term": {"organization_esid": org_esid}},
+                    "_source": ["organization_esid"],
+                    "size": 1000,
+                },
+            )
+            hits = resp.get("hits", {}).get("hits", [])
+        except Exception as e:  # noqa: BLE001 — boundary; fail soft
+            logging.warning("OrgBillingService.list_team_esids_for_org(%r): %s", org_esid, e)
+            return []
+        out: list[str] = []
+        for h in hits:
+            orgs = (h.get("_source") or {}).get("organization_esid")
+            if isinstance(orgs, str):
+                orgs = [orgs]
+            if orgs and orgs[0] == org_esid and h.get("_id"):
+                out.append(h["_id"])
+        return sorted(out)
+
+    @staticmethod
+    def _cancel_team_subscriptions(team_subs: list[dict], *, reason: str) -> dict:
+        """Cancel every LIVE team subscription in ``team_subs`` immediately and
+        stamp each team doc ``canceled``. Shared by the org and the
+        workspace comp paths. Caller has already checked the live-payments
+        gate. Never raises; returns ``{"subscription_ids": [...], "errors": [...]}``.
+        """
+        from asset_management.web.config import config
+        from asset_management.web.services.stripe_service import StripeService, StripeError
+
+        canceled: list[str] = []
+        errors: list[str] = []
+        for sub in team_subs:
+            sub_id = (sub or {}).get("stripe_subscription_id") or ""
+            team_esid = (sub or {}).get("team_esid") or ""
+            status = ((sub or {}).get("stripe_status") or "").strip().lower()
+            if not sub_id or status in ("canceled", "incomplete_expired"):
+                continue
+            try:
+                StripeService.cancel_subscription(
+                    secret_key=config.STRIPE_SECRET_KEY, subscription_id=sub_id, at_period_end=False
+                )
+            except StripeError as exc:
+                logging.warning(
+                    "%s: Stripe cancel FAILED for team=%s sub=%s — customer may still be charged: %s",
+                    reason,
+                    team_esid,
+                    sub_id,
+                    exc,
+                )
+                errors.append(f"{sub_id}: {str(exc)[:120]}")
+                continue
+            except Exception as exc:  # noqa: BLE001 — best-effort; never break the comp
+                logging.warning("%s: unexpected error cancelling sub=%s: %s", reason, sub_id, exc)
+                errors.append(f"{sub_id}: {str(exc)[:120]}")
+                continue
+            canceled.append(sub_id)
+            # Stamp now rather than wait for the customer.subscription.deleted
+            # webhook, so the Current Plan page never shows a live team sub
+            # on a comped org between the cancel and the webhook.
+            if team_esid:
+                OrgBillingService.set_team_subscription_status(team_esid, "canceled")
+        return {"subscription_ids": canceled, "errors": errors}
+
+    @staticmethod
+    def _cancel_mode(subscription_ids: list, errors: list) -> str:
+        if subscription_ids and errors:
+            return "partial"
+        if subscription_ids:
+            return "canceled"
+        if errors:
+            return "error"
+        return "no_sub"
+
+    @staticmethod
+    def cancel_stripe_for_org(org_esid: str) -> dict:
+        """Stop charging an org that is being comped.
+
+        Restores the comping a paying customer cancels their
+        Stripe subscription IMMEDIATELY, before the comp is written — which was
+        lost when comp moved from the user/workspace to the ORG (/
+        ): ``set_org_comp`` only ever wrote the comp flag, so a comped
+        org kept being invoiced while the app showed it as sponsored.
+
+        Two places a live subscription can sit:
+
+        * **per-team**: every
+          team whose primary org is this one is cancelled and its doc stamped
+          ``canceled``;
+        * **workspace-level** (the legacy single subscription on the org's
+          Stripe Customer, which is per WORKSPACE): cancelled through the
+          dormant ``WorkspaceBillingService.cancel_stripe_for_workspace`` ONLY
+          when the workspace holds exactly this org. That helper picks the
+          customer's most recent subscription, which on a multi-org workspace
+          could belong to a sibling org — so for those the workspace-level
+          sub is left alone and logged.
+
+        Gated on live payments; best-effort; never raises. Returns
+        ``{"mode": canceled|partial|error|no_sub, "subscription_ids", "errors",
+        "detail"}``.
+        """
+        from asset_management.web.config import config
+
+        empty = {"mode": "no_sub", "subscription_ids": [], "errors": []}
+        if not config.STRIPE_LIVE_PAYMENTS or not config.STRIPE_SECRET_KEY:
+            return {**empty, "detail": "live payments off"}
+        if not org_esid:
+            return {**empty, "detail": "no org"}
+
+        team_subs = [
+            s
+            for s in (OrgBillingService.get_team_subscription(t) for t in OrgBillingService.list_team_esids_for_org(org_esid))
+            if s
+        ]
+        result = OrgBillingService._cancel_team_subscriptions(team_subs, reason=f"org comp org={org_esid}")
+        subscription_ids = list(result["subscription_ids"])
+        errors = list(result["errors"])
+
+        workspace_esid = OrgBillingService._workspace_for_org(org_esid)
+        detail = ""
+        if workspace_esid:
+            siblings = OrgBillingService.list_orgs_for_workspace(workspace_esid)
+            if len(siblings) <= 1:
+                ws = WorkspaceBillingService.cancel_stripe_for_workspace(workspace_esid)
+                if ws.get("mode") == "canceled" and ws.get("subscription_id"):
+                    subscription_ids.append(ws["subscription_id"])
+                elif ws.get("mode") == "error":
+                    errors.append(f"workspace {workspace_esid}: {ws.get('detail') or 'cancel failed'}")
+            else:
+                detail = f"workspace {workspace_esid} holds {len(siblings)} orgs; workspace-level subscription left alone"
+                logging.info("org comp org=%s: %s", org_esid, detail)
+
+        return {
+            "mode": OrgBillingService._cancel_mode(subscription_ids, errors),
+            "subscription_ids": subscription_ids,
+            "errors": errors,
+            "detail": detail,
+        }
+
+    @staticmethod
+    def cancel_stripe_for_workspace_comp(workspace_esid: str) -> dict:
+        """Stop charging a whole workspace that is being comped (the
+        cascade path of ``/billing/comp``): every live team subscription under
+        the workspace, then the workspace-level subscription. Same contract as
+        ``cancel_stripe_for_org``.
+        """
+        from asset_management.web.config import config
+
+        empty = {"mode": "no_sub", "subscription_ids": [], "errors": []}
+        if not config.STRIPE_LIVE_PAYMENTS or not config.STRIPE_SECRET_KEY:
+            return {**empty, "detail": "live payments off"}
+        if not workspace_esid:
+            return {**empty, "detail": "no workspace"}
+
+        result = OrgBillingService._cancel_team_subscriptions(
+            OrgBillingService.list_team_subscriptions(workspace_esid), reason=f"workspace comp ws={workspace_esid}"
+        )
+        subscription_ids = list(result["subscription_ids"])
+        errors = list(result["errors"])
+        ws = WorkspaceBillingService.cancel_stripe_for_workspace(workspace_esid)
+        if ws.get("mode") == "canceled" and ws.get("subscription_id"):
+            subscription_ids.append(ws["subscription_id"])
+        elif ws.get("mode") == "error":
+            errors.append(f"workspace {workspace_esid}: {ws.get('detail') or 'cancel failed'}")
+        return {
+            "mode": OrgBillingService._cancel_mode(subscription_ids, errors),
+            "subscription_ids": subscription_ids,
+            "errors": errors,
+            "detail": "",
+        }
+
+    @staticmethod
+    def _workspace_for_org(org_esid: str) -> str:
+        """The org's workspace: the org billing record's stamp first (set by
+        the cascade), else the org asset doc's ``workspace_esid``.
+        "" when neither knows (an orphan org — see the warning in
+        ``list_orgs_for_workspace``). Fail-soft."""
+        es = get_elasticsearch_client()
+        if es is None:
+            return ""
+        ws = (OrgBillingService._get_org_billing_doc(es, org_esid) or {}).get("workspace_esid") or ""
+        if ws:
+            return ws
+        try:
+            doc = es.get(index=ORGANIZATION_INDEX, id=org_esid)
+            return (doc.get("_source") or {}).get("workspace_esid") or ""
+        except Exception:  # noqa: BLE001
+            return ""
+
+    # ── superuser plan change (Business ↔ Nonprofit) ───────────
+    @staticmethod
+    def live_team_subscriptions_for_org(org_esid: str) -> list[dict]:
+        """The team-subscription docs of the org's PRIMARY teams that still
+        carry a live Stripe status — i.e. the subscriptions a plan change
+        must move. A doc with no subscription id, no status, or a
+        terminal status (``canceled`` / ``incomplete_expired``) is skipped.
+        Fail-soft → []."""
+        out: list[dict] = []
+        for team_esid in OrgBillingService.list_team_esids_for_org(org_esid):
+            sub = OrgBillingService.get_team_subscription(team_esid) or {}
+            status = (sub.get("stripe_status") or "").strip().lower()
+            if sub.get("stripe_subscription_id") and status and status not in ("canceled", "incomplete_expired"):
+                out.append(sub)
+        return out
+
+    @staticmethod
+    def workspace_level_subscription_for_org(org_esid: str) -> tuple[str, str]:
+        """The legacy WORKSPACE-level subscription an org may still bill
+        through (one Stripe Customer per workspace, one subscription on it),
+        as ``(subscription_id, detail)``.
+
+        Looked up ONLY when the workspace holds exactly this org — on a
+        multi-org workspace the customer's subscription could be a sibling's
+        (the same guard ``cancel_stripe_for_org`` applies), so it is left
+        alone and ``detail`` says so. ``("", detail)`` when there is none,
+        it is terminal, or Stripe fails. Caller has already checked the
+        live-payments gate. Never raises."""
+        from asset_management.web.config import config
+        from asset_management.web.services.stripe_service import StripeService, StripeError
+
+        workspace_esid = OrgBillingService._workspace_for_org(org_esid)
+        if not workspace_esid:
+            return "", ""
+        siblings = OrgBillingService.list_orgs_for_workspace(workspace_esid)
+        if len(siblings) > 1:
+            return "", f"workspace {workspace_esid} holds {len(siblings)} orgs; workspace-level subscription left alone"
+        es = get_elasticsearch_client()
+        if es is None:
+            return "", ""
+        customer_id = (WorkspaceBillingService._get_billing_doc(es, workspace_esid) or {}).get(STRIPE_CUSTOMER_ID_KEY) or ""
+        if not customer_id:
+            return "", ""
+        try:
+            summary = StripeService.get_subscription_summary(secret_key=config.STRIPE_SECRET_KEY, customer_id=customer_id)
+        except StripeError as exc:
+            return "", f"workspace {workspace_esid}: {str(exc)[:120]}"
+        except Exception as exc:  # noqa: BLE001 — best-effort lookup
+            return "", f"workspace {workspace_esid}: {str(exc)[:120]}"
+        sub_id = (summary or {}).get("subscription_id") or ""
+        status = ((summary or {}).get("status") or "").strip().lower()
+        if not sub_id or status in ("canceled", "incomplete_expired"):
+            return "", ""
+        return sub_id, ""
+
+    @staticmethod
+    def change_plan_for_org(org_esid: str, plan_key: str) -> dict:
+        """Move a paying org between the Business and Nonprofit plans in
+        Stripe (; a teammate's 2026-10-16 ask — "change it … to the $20
+        option after they have started").
+
+        Every live subscription the org holds — each PRIMARY team's (
+        O3) and the legacy workspace-level one when the workspace holds that
+        one org — gets its BASE plan item swapped onto the plan's configured
+        price with ``proration_behavior="none"`` (next invoice at the new
+        price, nothing charged today; add-on items untouched). Price ids come
+        from config (``STRIPE_PRICE_BUSINESS`` / ``STRIPE_PRICE_NONPROFIT``),
+        never from the caller.
+
+        Gated on live payments; best-effort per subscription; never raises.
+        Returns ``{"mode": changed|partial|unchanged|error|no_sub,
+        "subscription_ids" (changed), "unchanged", "errors", "detail"}``.
+        ``unchanged`` means the subscription already carried that price — the
+        route refuses the request when nothing else moved.
+        """
+        from asset_management.web.config import config
+        from asset_management.web.services.stripe_service import StripeService, StripeError
+
+        empty = {"mode": "no_sub", "subscription_ids": [], "unchanged": [], "errors": []}
+        if not config.STRIPE_LIVE_PAYMENTS or not config.STRIPE_SECRET_KEY:
+            return {**empty, "detail": "live payments off"}
+        if not org_esid or plan_key not in ("business", "nonprofit"):
+            return {**empty, "detail": "bad arguments"}
+        base_ids = {config.STRIPE_PRICE_BUSINESS, config.STRIPE_PRICE_NONPROFIT}
+        new_price_id = config.STRIPE_PRICE_NONPROFIT if plan_key == "nonprofit" else config.STRIPE_PRICE_BUSINESS
+        if not new_price_id:
+            return {**empty, "detail": f"no Stripe price configured for the {plan_key} plan"}
+
+        targets = [
+            (s.get("stripe_subscription_id") or "", s.get("team_esid") or "")
+            for s in OrgBillingService.live_team_subscriptions_for_org(org_esid)
+        ]
+        ws_sub_id, detail = OrgBillingService.workspace_level_subscription_for_org(org_esid)
+        if ws_sub_id:
+            targets.append((ws_sub_id, ""))
+        if detail:
+            logging.info("plan change org=%s: %s", org_esid, detail)
+        if not targets:
+            return {**empty, "detail": detail or "no live subscription"}
+
+        changed: list[str] = []
+        unchanged: list[str] = []
+        errors: list[str] = []
+        for sub_id, team_esid in targets:
+            try:
+                res = StripeService.change_subscription_price(
+                    secret_key=config.STRIPE_SECRET_KEY,
+                    subscription_id=sub_id,
+                    new_price_id=new_price_id,
+                    base_price_ids=base_ids,
+                )
+            except StripeError as exc:
+                logging.warning(
+                    "plan change org=%s team=%s sub=%s FAILED — finish in Stripe: %s",
+                    org_esid,
+                    team_esid or "-",
+                    sub_id,
+                    exc,
+                )
+                errors.append(f"{sub_id}: {str(exc)[:120]}")
+                continue
+            except Exception as exc:  # noqa: BLE001 — best-effort; never break the admin action
+                logging.warning("plan change org=%s: unexpected error on sub=%s: %s", org_esid, sub_id, exc)
+                errors.append(f"{sub_id}: {str(exc)[:120]}")
+                continue
+            (changed if res.get("changed") else unchanged).append(sub_id)
+
+        if changed and errors:
+            mode = "partial"
+        elif changed:
+            mode = "changed"
+        elif errors:
+            mode = "error"
+        else:
+            mode = "unchanged"
+        return {"mode": mode, "subscription_ids": changed, "unchanged": unchanged, "errors": errors, "detail": detail}
+
+    @staticmethod
+    def set_org_plan(org_esid: str, plan_key: str, *, workspace_esid: str = "") -> dict:
+        """Record the plan a superuser moved the org onto: stores
+        ``plan_key`` and marks the org ``paid_tier`` (both plans are paid).
+        Never touches the comp fields — a comped org has no live subscription
+        to move, so the route refuses before getting here. Creates the org
+        billing record if absent. Returns ``{"ok", "error"}``."""
+        if not org_esid or plan_key not in ("business", "nonprofit"):
+            return {"ok": False, "error": "bad arguments"}
+        es = get_elasticsearch_client()
+        if es is None:
+            return {"ok": False, "error": "elasticsearch unavailable"}
+        b = OrgBillingService._get_org_billing_doc(es, org_esid)
+        if workspace_esid and not b.get("workspace_esid"):
+            b["workspace_esid"] = workspace_esid
+        b["created_at"] = b.get("created_at") or SubscriptionStateService._now().isoformat()
+        b[PAID_TIER_KEY] = True
+        b[PLAN_KEY] = plan_key
+        ok = OrgBillingService._put_org_billing_doc(es, org_esid, b)
+        return {"ok": ok, "error": "" if ok else "write failed"}
+
+    @staticmethod
+    def get_org_plan_key(org_esid: str) -> str:
+        """The plan key stored by ``set_org_plan`` ("" when never changed —
+        the Current Plan page then derives the plan from the live Stripe
+        price, else shows Business). Fail-soft → ""."""
+        if not org_esid:
+            return ""
+        es = get_elasticsearch_client()
+        if es is None:
+            return ""
+        return (OrgBillingService._get_org_billing_doc(es, org_esid) or {}).get(PLAN_KEY) or ""

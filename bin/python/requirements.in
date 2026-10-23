@@ -111,13 +111,13 @@ geopy
 tzdata
 
 # AI / NLQ
-anthropic>=1.11.0
+anthropic>=1.12.1
 
 # Report generation
 fpdf2>=2.8.9
 
 # AWS S3 access (backup listing)
-boto3>=1.43.102
+boto3>=1.43.110
 
 # Billing — Stripe subscriptions + webhook. Imported
 # lazily inside the live payment/webhook paths (guarded ImportError), so

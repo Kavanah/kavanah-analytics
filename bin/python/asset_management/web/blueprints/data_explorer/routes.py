@@ -16,6 +16,7 @@ try:
     from web.services.nlq_service import (
         chat as nlq_chat,
         get_available_data_views,
+        model_choices_distinct,
         structured_query as nlq_structured_query,
         resolve_memory_tenant_keys,
     )
@@ -32,6 +33,7 @@ except ImportError:
     from ...services.nlq_service import (
         chat as nlq_chat,
         get_available_data_views,
+        model_choices_distinct,
         structured_query as nlq_structured_query,
         resolve_memory_tenant_keys,
     )
@@ -98,7 +100,13 @@ def index() -> str:
     except Exception:
         pass
 
-    return render_template("data_explorer.html", nlq_model=config.NLQ_MODEL, user_orgs=user_orgs)
+    # hide the haiku/sonnet selector when both choices resolve to one model.
+    return render_template(
+        "data_explorer.html",
+        nlq_model=config.NLQ_MODEL,
+        nlq_model_choice=model_choices_distinct(),
+        user_orgs=user_orgs,
+    )
 
 
 # ── API routes ────────────────────────────────────────────────────────────────

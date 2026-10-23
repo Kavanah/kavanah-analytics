@@ -4,63 +4,146 @@
 Automated Reporting
 ====================
 
-.. note::
+The **Report Scheduler** runs your reports on a schedule. It can do two
+things:
 
-   Automated email / PDF reporting on a schedule is **not in v1.0**.
-   It's tracked for **Phase 2** (target Q3 2026) per
-   :doc:`/release-notes/release-roadmap`. This page is a placeholder
-   that documents the planned shape of the feature so admins can plan
-   accordingly.
+- **Scheduled imports** pull fresh data from a connector for the teams
+  you choose, then save a snapshot of a dashboard for that period.
+- **Scheduled emails** send one or more dashboards to a list of
+  recipients as a summary with a link, inline tables, or an Excel or
+  PDF attachment.
 
-----
-
-Planned feature outline
------------------------
-
-When the feature ships, you'll be able to schedule a recurring email
-report from the Management Console with these knobs:
-
-- **Recipients** — one or more email addresses (typically a list of
-  internal stakeholders or supporters).
-- **Cadence** — weekly (day of week + time) or monthly (day of month
-  + time).
-- **Date range covered** — a rolling window: prior 7 days, prior 30
-  days, prior month, or a custom rolling expression.
-- **Charts to include** — pick from your saved Dashboard Builder
-  dashboards (in particular Digital Impact Reports).
-- **Format** — inline HTML email digest, PDF attachment, or a public
-  URL to a published Impact Report.
-
-Subscription tiers as advertised on the marketing pages:
-
-.. list-table::
-   :header-rows: 1
-   :widths: 30 70
-
-   * - Tier
-     - Automated reporting
-   * - Free
-     - Not included
-   * - Pro
-     - Included — weekly email digests
-   * - Enterprise
-     - Included — custom schedule, PDF, priority delivery
+Scheduled reporting is included on every subscription tier. See
+*Subscription Tiers* on the :doc:`/index` page.
 
 ----
 
-What you can do today instead
------------------------------
+Opening the Report Scheduler
+----------------------------
 
-Until the scheduled-delivery feature ships, the closest alternatives:
+Select **Report Scheduler** (the clock icon) in the sidebar, or go to
+``/report-scheduler/``.
 
-1. **Public Impact Report URLs** *(shipped)* — publish a
-   Digital Impact Report and include the link in your own newsletter
-   tooling. The report data updates automatically every time someone
-   opens it. See :doc:`/guide-dashboards/sharing-reports`.
-2. **Manual Excel / PDF export** from the dashboard toolbar — see
-   :doc:`/guide-dashboards/overview`.
-3. **Browser-driven PDF** — use *Print* on a published Impact Report
-   URL for a clean, paginated PDF.
+The Report Scheduler is available to organization owners and admins.
+Other users see *"The Report Scheduler is available to organization
+owners and admins."*
 
-For high-volume recurring reports during the interim, contact your
-Kavanah Media account manager.
+The page has two lists: **Scheduled imports** and **Scheduled emails**.
+
+----
+
+Scheduling an import
+--------------------
+
+1. Under **1. Choose organizations & teams**, check the teams to include
+   (**Select all** / **Clear all** are there for convenience).
+2. Under **2. Pick a connector to schedule**, click a connector tile.
+   Each tile shows how many of the selected teams use it. If none show,
+   set up a connector on the **Data Connectors** page first.
+3. Fill in the form and click **Save schedule**:
+
+   - **Report name** (required) and **Description**.
+   - **Scope** — the teams this schedule covers.
+   - **Dashboard to report on** — one of the connector's dashboards, or
+     **No report (import only)** to refresh the data without a snapshot.
+   - **Frequency** — *Daily*, *Weekly*, *Every 2 weeks*, or *Monthly*,
+     with **Day of week** or **Day of month** (1–28) as needed. A daily
+     schedule also has **Days to pull** (1–7, default 1).
+   - **Time** and **Timezone** — defaults to 06:00 in your profile's
+     timezone.
+   - **Save a snapshot for dashboard viewing** and **Number to keep**
+     (1–100, default 7). Older snapshots are removed as new ones are
+     saved.
+
+The period each run covers follows the frequency: a daily run covers
+the previous *N* days, a weekly run the previous calendar week, an
+every-2-weeks run the previous 14 days, and a monthly run the previous
+calendar month.
+
+When a scheduled import runs, it imports the connector's data for the
+selected teams first and then builds the snapshot. On the dashboard,
+the **Reports** dialog lists the saved snapshots and applies a
+snapshot's date range when you pick it.
+
+----
+
+Scheduling an email
+-------------------
+
+Click **New email schedule** and fill in:
+
+- **Report name** (required) and **Description**.
+- **Dashboards to email** (required) — up to 10. The email includes a
+  link to each.
+- **Teams** — all your teams are included by default.
+- **Frequency**, **Day**, **Time** and **Timezone** — as for imports.
+- **Date range** — *Previous 7 days* (default), *Previous 14 days*,
+  *Previous 30 days*, *Previous calendar week*, *Previous calendar
+  month*, or *Month to date*.
+- **Recipients (comma-separated)** (required).
+- **Format**:
+
+  - *Summary + link* (default) — a short summary with a **View the full
+    report** link to a saved snapshot.
+  - *Inline HTML* — the report's tables in the email body.
+  - *Excel attachment* or *PDF attachment* — the tables as a file. A
+    report that contains only charts cannot be attached; the email says
+    so instead.
+
+- **Subject template** — defaults to
+  ``{{report_name}} — {{date_range}}``.
+
+Scheduled emails send the data already in Kavanah Analytics; they do
+not run an import first. Pair one with a scheduled import if you want
+the data refreshed just before it goes out.
+
+Recipients outside your workspace
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+People in your workspace always receive the email. An address outside
+your workspace first gets a *"Confirm your address to receive scheduled
+reports"* email with a **Confirm this address** link, and receives
+reports only after confirming. The link expires in 7 days; saving the
+schedule again sends a fresh one. When you save, the form lists any
+outside recipients who have not confirmed yet.
+
+----
+
+Managing schedules
+------------------
+
+Each import card shows its **Cadence**, **Last run**, **Next run**,
+**Delivery**, **Scope** and **Connector**, with these actions:
+
+- **Run now** — runs the schedule immediately, even if it is paused.
+  Progress shows on the card, with a **Cancel** link to stop the
+  in-progress import.
+- **History** — the **Report history** of past runs, filterable by
+  date. **View** opens a snapshot; **CSV** and **Excel** export its
+  tables.
+- **Errors** — shown when the last run had errors.
+- **Edit**, **Pause** / **Resume**, and **Delete**. Deleting a schedule
+  keeps its past snapshots.
+- **Backfill** — imports a historical date range once (up to 365 days,
+  defaulting to the last 30). For Meta, **Overwrite existing data**
+  replaces what is stored, and a backfill that hits Meta's rate limit
+  stops gracefully, keeping what it imported; run it again to continue.
+
+Email cards show **Cadence**, **Date range**, **Teams**, **Recipients**,
+**Last run** and **Next run**, with **Edit**, **Pause** / **Resume**
+and **Delete**.
+
+If a run is skipped because the subscription is inactive, the
+**Errors** list says *"Your subscription is inactive — re-subscribe
+under Billing to resume imports."*
+
+----
+
+Other ways to share reports
+---------------------------
+
+- **Public Impact Report URLs** — publish a Digital Impact Report to a
+  public link that always shows current data. See
+  :doc:`/guide-dashboards/sharing-reports`.
+- **Excel / PDF export** from the dashboard toolbar — see
+  :doc:`/guide-dashboards/overview`.

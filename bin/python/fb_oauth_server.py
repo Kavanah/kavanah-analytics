@@ -25,13 +25,14 @@ install_package("requests")
 install_package("elasticsearch")
 
 # Import Flask and other modules after ensuring they are installed
-from flask import Flask, request, jsonify, abort
+from flask import Flask, request, jsonify, abort, make_response
 from markupsafe import escape as html_escape
 from werkzeug.exceptions import HTTPException
 from lib.es_helpers import get_elasticsearch_client
 from lib.encryption import decrypt, encrypt
 from lib.google_oauth_client import load_google_oauth_client
 from lib.fb_constants import FB_GRAPH_URL, FB_OAUTH_DIALOG_URL
+import lib.oauth_state as oauth_state_lib
 from lib.oauth_state import new_oauth_state, oauth_state_expired, oauth_state_expiry
 from lib.tiktok_client import (
     TikTokError,
@@ -461,6 +462,66 @@ def _consume_oauth_state(source, state_field):
     source[f"{state_field}_expires_at"] = None
 
 
+# ── the attempt is bound to the browser that started it ───────────
+#
+# See lib.oauth_state for the threat (consent phishing) and the cookie design.
+# Every initiate leg returns its authorize link through _bound_initiate_response,
+# which sets the per-state binding cookie; every callback calls
+# _unbound_browser_response first and refuses a state the presenting browser
+# never received. Checked BEFORE the state lookup, so a refused callback spends
+# neither the provider code nor the state (the browser that did start the flow
+# can still finish it).
+
+_BIND_RETRY_HINT = (
+    "Open the authorization link again in this browser and finish it here. "
+    "If someone sent you a sign-in link for this page, do not use it &mdash; "
+    "start from Data Connectors in your own account instead."
+)
+
+
+def _token_error_summary(response, response_data):
+    """the loggable part of a failed token-endpoint response: the
+    HTTP status and the provider's error CODE fields only. The body can carry
+    access_token / id_token material next to the error, so it is never logged
+    or echoed whole."""
+    status = getattr(response, "status_code", None)
+    data = response_data if isinstance(response_data, dict) else {}
+    error = data.get("error")
+    if isinstance(error, dict):  # Graph API: {"error": {"code", "type", "error_subcode", ...}}
+        return (
+            f"status={status} error_code={error.get('code')} "
+            f"error_subcode={error.get('error_subcode')} error_type={error.get('type')}"
+        )
+    return f"status={status} error={error if isinstance(error, str) else None}"
+
+
+def _bound_initiate_response(body, state):
+    """The initiate leg's HTML response, with the binding cookie for ``state``."""
+    response = make_response(body, 200)
+    response.set_cookie(
+        oauth_state_lib.oauth_bind_cookie_name(state),
+        oauth_state_lib.oauth_bind_cookie_value(state),
+        max_age=oauth_state_lib.OAUTH_STATE_TTL_SECONDS,
+        path="/",
+        secure=True,
+        httponly=True,
+        samesite="Lax",
+    )
+    return response
+
+
+def _unbound_browser_response(state, label):
+    """``(page, 403)`` when this browser did not start the attempt for ``state``, else ``None``."""
+    if oauth_state_lib.oauth_browser_bound(state, request.cookies):
+        return None
+    logger.warning(f"{label}: state '{state[:8]}...' presented by a browser that did not start it — refusing")
+    return _oauth_error_page(
+        "This authorization was not started in this browser, so it was not saved.",
+        status=403,
+        hint=_BIND_RETRY_HINT,
+    )
+
+
 # ============================================================
 # YouTube OAuth Routes
 # ============================================================
@@ -475,6 +536,10 @@ def youtube_auth_callback():
     if not code or not state:
         logger.error("YouTube Callback: Missing code or state parameter")
         return jsonify({"error": "Missing code or state."}), 400
+
+    unbound = _unbound_browser_response(state, "YouTube Callback")
+    if unbound is not None:
+        return unbound
 
     logger.info(f"YouTube Callback: Token exchange started for state '{state[:8]}...'")
 
@@ -541,14 +606,10 @@ def youtube_auth_callback():
         response_data = response.json()
 
         if "refresh_token" not in response_data:
-            logger.error(f"YouTube Callback: No refresh_token in response: {response_data}")
+            # status + error code only, in the log and never in the body.
+            logger.error(f"YouTube Callback: No refresh_token in response ({_token_error_summary(response, response_data)})")
             return (
-                jsonify(
-                    {
-                        "error": "No refresh token received. Try re-authorizing — the consent screen must be shown.",
-                        "details": response_data,
-                    }
-                ),
+                jsonify({"error": "No refresh token received. Try re-authorizing — the consent screen must be shown."}),
                 400,
             )
 
@@ -757,9 +818,10 @@ def youtube_auth_initiate(youtube_account_auth_url):
         oauth_url = f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
 
         logger.info(f"YouTube OAuth: Generated auth URL for '{doc.get('youtube_account_title')}'")
-        return (
+        # bind this attempt to the browser that opened it.
+        return _bound_initiate_response(
             f"<html><body><p><a href='{oauth_url}'>Authorize YouTube Account</a></p></body></html>",  # nosemgrep: raw-html-format - oauth_url built from hardcoded Google endpoint + config params
-            200,
+            state,
         )
 
     except HTTPException:
@@ -796,6 +858,10 @@ def ga4_auth_callback():
     if not code or not state:
         logger.error("GA4 Callback: Missing code or state parameter")
         return jsonify({"error": "Missing code or state."}), 400
+
+    unbound = _unbound_browser_response(state, "GA4 Callback")
+    if unbound is not None:
+        return unbound
 
     logger.info(f"GA4 Callback: Token exchange started for state '{state[:8]}...'")
 
@@ -859,14 +925,10 @@ def ga4_auth_callback():
         response_data = response.json()
 
         if "refresh_token" not in response_data:
-            logger.error(f"GA4 Callback: No refresh_token in response: {response_data}")
+            # status + error code only, in the log and never in the body.
+            logger.error(f"GA4 Callback: No refresh_token in response ({_token_error_summary(response, response_data)})")
             return (
-                jsonify(
-                    {
-                        "error": "No refresh token received. Try re-authorizing — the consent screen must be shown.",
-                        "details": response_data,
-                    }
-                ),
+                jsonify({"error": "No refresh token received. Try re-authorizing — the consent screen must be shown."}),
                 400,
             )
 
@@ -958,9 +1020,10 @@ def ga4_auth_initiate(ga4_account_auth_url):
         oauth_url = f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
 
         logger.info(f"GA4 OAuth: Generated auth URL for '{doc.get('ga4_account_title')}'")
-        return (
+        # bind this attempt to the browser that opened it.
+        return _bound_initiate_response(
             f"<html><body><p><a href='{oauth_url}'>Authorize Google Analytics Account</a></p></body></html>",  # nosemgrep: raw-html-format - oauth_url built from hardcoded Google endpoint + config params
-            200,
+            state,
         )
 
     except HTTPException:
@@ -1056,9 +1119,10 @@ def google_ads_auth_initiate(google_ads_auth_url):
         oauth_url = f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
 
         logger.info(f"Google Ads OAuth: generated auth URL for connection '{doc.get('label', '')}'")
-        return (
+        # bind this attempt to the browser that opened it.
+        return _bound_initiate_response(
             f"<html><body><p><a href='{oauth_url}'>Authorize Google Ads Account</a></p></body></html>",  # nosemgrep: raw-html-format - oauth_url built from hardcoded Google endpoint + config params
-            200,
+            state,
         )
 
     except HTTPException:
@@ -1085,6 +1149,10 @@ def google_ads_auth_callback():
     if not code or not state:
         logger.error("Google Ads Callback: Missing code or state parameter")
         return jsonify({"error": "Missing code or state."}), 400
+
+    unbound = _unbound_browser_response(state, "Google Ads Callback")
+    if unbound is not None:
+        return unbound
 
     logger.info(f"Google Ads Callback: token exchange started for state '{state[:8]}...'")
 
@@ -1314,9 +1382,10 @@ def tiktok_auth_initiate(tiktok_auth_url):
         oauth_url = f"{TIKTOK_AUTHORIZE_URL}?{urlencode(params)}"
 
         logger.info(f"TikTok OAuth: generated auth URL for connection '{hits[0]['_id']}'")
-        return (
+        # bind this attempt to the browser that opened it.
+        return _bound_initiate_response(
             f"<html><body><p><a href='{html_escape(oauth_url)}'>Authorize TikTok Account</a></p></body></html>",  # nosemgrep: raw-html-format - oauth_url escaped; built from a hardcoded TikTok endpoint + config params
-            200,
+            state,
         )
 
     except HTTPException:
@@ -1371,6 +1440,10 @@ def tiktok_auth_callback():
     if not code or not state:
         logger.error("TikTok Callback: missing code or state parameter")
         return jsonify({"error": "Missing code or state."}), 400
+
+    unbound = _unbound_browser_response(state, "TikTok Callback")
+    if unbound is not None:
+        return unbound
 
     logger.info(f"TikTok Callback: token exchange started for state '{state[:8]}...'")
 
@@ -1625,7 +1698,8 @@ def handle_auth_url(auth_url_app, auth_url_user):
             logger.info(f"OAuth: Generated URL for '{doc.get('fb_app_user_title')}'")
             # nosemgrep: raw-html-format - oauth_url is escaped via markupsafe.escape, and the only request-derived input is auth_url_app which is the URL path segment.
             oauth_url_html = f"<html><body><p>" f"<a href='{html_escape(oauth_url)}'>Authorize FB</a>" f"</p></body></html>"
-            return oauth_url_html, 200
+            # bind this attempt to the browser that opened it.
+            return _bound_initiate_response(oauth_url_html, state)
 
         else:
             logger.warning(f"OAuth: No user found for auth_url '{auth_url_user}'")
@@ -1650,6 +1724,10 @@ def facebook_callback():
     if not code or not state:
         logger.error("Callback: Missing code or state parameter")
         return jsonify({"error": "Resource 04 not found."}), 400
+
+    unbound = _unbound_browser_response(state, "Callback")
+    if unbound is not None:
+        return unbound
 
     logger.info(f"Callback: Token exchange started for state '{state[:8]}...'")
 
@@ -1756,16 +1834,9 @@ def facebook_callback():
 
                 # Check if the debug response contains an error
                 if "error" in debug_data:
-                    logger.error(f"Callback: debug_token error: {debug_data['error']}")
-                    return (
-                        jsonify(
-                            {
-                                "error": "Resource 09 not found.",
-                                "details": debug_data["error"],
-                            }
-                        ),
-                        400,
-                    )
+                    # error code fields only; the body stays generic.
+                    logger.error(f"Callback: debug_token error ({_token_error_summary(debug_response, debug_data)})")
+                    return jsonify({"error": "Resource 09 not found."}), 400
 
                 # Extract 'expires_at' and 'user_id' from the debug data
                 debug_info = debug_data.get("data", {})
@@ -1807,11 +1878,9 @@ def facebook_callback():
 
         else:
             # Handle error response from Facebook
-            logger.error(f"Callback: Token exchange failed: {response_data}")
-            return (
-                jsonify({"error": "Resource 12 not found.", "details": response_data}),
-                400,
-            )
+            # status + error code only, in the log and never in the body.
+            logger.error(f"Callback: Token exchange failed ({_token_error_summary(response, response_data)})")
+            return jsonify({"error": "Resource 12 not found."}), 400
 
     except Exception as e:
         # don't echo exception text in the response body.

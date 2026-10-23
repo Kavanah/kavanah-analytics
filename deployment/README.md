@@ -64,6 +64,49 @@ container (`docker compose -f deployment/docker-compose.yml up -d --force-recrea
 | `PROD_HOSTNAMES` | optional | Comma-separated extra hostnames the refuse-prod guards treat as production, on top of the built-in `kavanahanalytics.com`. |
 | `APP_PUBLIC_HOSTNAME` | optional | Public hostname `scripts/check_oauth_tokens.py` uses to print full refresh URLs. step3 defaults it to `reporting.hostname`; blank prints relative paths. |
 
+### Global import queue
+
+The per-scope import locks only stop
+two runs of the *same* scope; nothing capped how many importers run at once.
+`lib/import_slots.py` adds that cap at the one call every locked importer makes,
+`ImportLockService.acquire`: after a run wins its scope lock it takes one of
+`IMPORT_GLOBAL_CAP` slots. A slot is an exclusive `flock` on
+`/app/data/import_slots/slot-<i>.lock`, so the kernel frees it when the process
+exits for any reason (SIGKILL and OOM included) — there is nothing to reap.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `IMPORT_GLOBAL_CAP` | blank = off | Max importer processes running at once. Blank or `0` turns the queue off entirely (no files, no ES writes): that is the rollback. measured ~4 as safe on 2 vCPU, so prod (4 vCPU / 16 GB) runs `8`. |
+| `IMPORT_QUEUE_MAX_WAIT_SECONDS` | `43200` (12 h) | How long a run waits for a slot before it is failed with "queued for global import slot longer than N s (cap=K)". |
+| `IMPORT_QUEUE_POLL_SECONDS` | `5` | How often a waiting run re-checks the queue and re-stamps its progress doc. |
+
+How a run behaves over the cap:
+
+- It waits first-in, first-out. Its `de_import_progress` doc has status `queued` with
+  `queued_at` and `queue_position` (1 = next). The dashboards banner and the Report
+  Scheduler bar show `queued (#N)`. When it gets a slot the status goes back to
+  `running`.
+- It keeps its scope lock while it waits, and renews the lock's TTL on every poll. A
+  duplicate run of the same scope still gets the instant "already in progress" skip.
+  A side effect: a queued connector-*global* run (a legacy Facebook cohort, for
+  example) blocks every scoped run of that connector until it finishes.
+- Cancel works while it is queued. The Report Scheduler's Cancel kills the process,
+  and the onboarding banner's Cancel flag is picked up on the next poll.
+- The reaper treats `queued` like `running`. A live waiter re-stamps
+  `updated_at` every poll, so only a waiter that died in the queue gets reaped.
+- A run without a progress doc (the ESID migration script) queues on a local ticket
+  file in the same directory instead.
+
+**Not capped:** importers that take no import lock (chatwoot, the disciple_tools
+pull, the standalone instagram wrapper the Import Data page launches) and TikTok
+(its lock is a token-refresh mutex, so it opts out with `global_slot=False`).
+YouTube is capped: it takes a per-team-set lock (`youtube::<team esids>`). A Facebook run's page and Instagram sub-importers are
+child processes of that run and share its one slot.
+
+To turn it on: set `IMPORT_GLOBAL_CAP=8` in `deployment/.env`, then
+`docker compose -f deployment/docker-compose.yml up -d --force-recreate imports_container`.
+To turn it off: blank the value and recreate the container the same way.
+
 Also: the Testing page's load-test target now defaults to the app's own host
 (`request.host_url`). It used to default to the staging URL, so a prod run
 now hits prod itself unless `LOAD_TEST_TARGET_URL` says otherwise.
@@ -128,6 +171,20 @@ in `master-config.yaml`) into the image at build time, which makes it
 non-portable. nginx is built and managed per-VM by
 `deployment/step6-nginx-setup.sh`. A future refactor to runtime-mount
 `.htpasswd` would let 01 build it too — tracked as a follow-up.
+
+### `prune-docker-build-cache.sh` — Bound the build cache
+
+Every image build on a VM (`start-secrets-container.sh`, `step6-nginx-setup.sh`,
+this script) leaves BuildKit cache and an untagged previous `:latest` behind;
+prod had 19.5 GB of it by 2026-10-12. Each build step now ends by calling this
+script, which keeps the most recent ≤2 GB of cache (`PRUNE_KEEP_STORAGE`) and
+removes dangling images only. Tagged images, running containers and volumes
+are never touched. A failure is a warning, not a failed deploy.
+
+```bash
+bash deployment/prune-docker-build-cache.sh
+PRUNE_KEEP_STORAGE=4GB bash deployment/prune-docker-build-cache.sh
+```
 
 ### `02_deploy_stack.sh` — Reconcile stack + wait for health
 

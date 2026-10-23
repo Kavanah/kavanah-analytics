@@ -13,16 +13,20 @@ import anthropic
 
 try:
     from web.config import config
-    from lib.es_helpers import get_elasticsearch_client, merge_index_mapping_properties
+    from lib.es_helpers import _EMPTY_SCOPE_PATTERN, get_elasticsearch_client, merge_index_mapping_properties
     from web.services.es_query_builder import build_query
+    from web.services.nlq_query_guard import validate_query, validate_search_body
     from web.services.echarts_transformer import transform as echarts_transform
     from web.services.nlq_memory_service import store_query_memory, find_similar_queries
+    from web.services.nlq_usage_service import _LONG_PROMPT_TOKENS, CREDIT_EXHAUSTED_ERROR, _estimate_cost, is_credit_exhausted
 except ImportError:
     from ..config import config
-    from lib.es_helpers import get_elasticsearch_client, merge_index_mapping_properties
+    from lib.es_helpers import _EMPTY_SCOPE_PATTERN, get_elasticsearch_client, merge_index_mapping_properties
     from ..services.es_query_builder import build_query
+    from ..services.nlq_query_guard import validate_query, validate_search_body
     from ..services.echarts_transformer import transform as echarts_transform
     from ..services.nlq_memory_service import store_query_memory, find_similar_queries
+    from ..services.nlq_usage_service import _LONG_PROMPT_TOKENS, CREDIT_EXHAUSTED_ERROR, _estimate_cost, is_credit_exhausted
 
 
 # ── Provider abstraction ───────────────────────────────────────────────────────
@@ -57,6 +61,17 @@ def _create_client() -> anthropic.Anthropic:
         return anthropic.Anthropic(api_key=api_key)
 
 
+def model_choices_distinct() -> bool:
+    """Whether the Data Explorer's haiku / sonnet choice changes the model.
+
+    on the direct API both routes default to Haiku 5.5 (a teammate,
+    2026-10-22), so the page hides its model selector when the two choices
+    resolve to the same id — offering a "smart" option that is the same
+    model would mislead.
+    """
+    return _resolve_model("haiku") != _resolve_model("sonnet")
+
+
 def _resolve_model(choice: str = "haiku") -> str:
     """Resolve a model choice ('haiku' or 'sonnet') to the actual model ID.
 
@@ -71,6 +86,27 @@ def _resolve_model(choice: str = "haiku") -> str:
         if choice == "sonnet":
             return config.NLQ_MODEL_SONNET
         return config.NLQ_MODEL
+
+
+# ── Prompt caching ────────────────────────────────────────────────
+# The tool loop re-sends tools + system + the whole conversation on every
+# step at full price. One explicit breakpoint on the system block caches the
+# ~4K-token static prefix (tools render before system, so they ride along),
+# and the top-level ``cache_control`` auto-places a moving breakpoint on the
+# latest block, so step N reads steps 1..N-1 from cache at a tenth of the
+# input rate. Haiku 5.5's minimum cacheable prefix is 512 tokens; this
+# prefix is about 4,000. Per-query text (few-shot examples) goes in a
+# second system block AFTER the breakpoint so it never invalidates it.
+_CACHE_EPHEMERAL: dict[str, str] = {"type": "ephemeral"}
+
+
+def _cached_system(prompt: str, tail: str = "") -> list[dict[str, Any]]:
+    """System blocks: the rendered prompt with a cache breakpoint, then any
+    per-query tail outside the cached prefix."""
+    blocks: list[dict[str, Any]] = [{"type": "text", "text": prompt, "cache_control": dict(_CACHE_EPHEMERAL)}]
+    if tail:
+        blocks.append({"type": "text", "text": tail})
+    return blocks
 
 
 # ── Data view + field discovery (reused from dashboard builder) ───────────────
@@ -164,7 +200,11 @@ def get_fields_for_data_view(data_view_id: str) -> list[dict]:
     if es is None:
         return []
     try:
-        mapping = es.indices.get_mapping(index=data_view_id)
+        # callers pass the caller's scoped comma-list of concrete
+        # team indices; a team with no import yet for this source has no index,
+        # which must read as "no fields there", not 404 the whole lookup
+        # (same posture as the builder's fix).
+        mapping = es.indices.get_mapping(index=data_view_id, ignore_unavailable=True, allow_no_indices=True)
         # deep-union across indices (see get_fields in the
         # dashboard_builder blueprint); shallow first-index-wins made
         # dynamic-object sub-fields a per-request coin flip.
@@ -434,6 +474,114 @@ def _deny_index(index: str, allowed_indices: set[str]) -> str:
     )
 
 
+# ── Layer-1 index scope + body allowlist ──────────────────────────
+#
+# The data-view allowlist above holds cluster-wide wildcards (``*_fb_insights``)
+# filter wraps only ``body["query"]``. A model-built body could
+# therefore read past the filter (a ``global`` aggregation ignores the query)
+# across every tenant's index. Two independent fixes:
+#   1. every NLQ ES call runs against the caller's own team indices
+#      (RoleFilterService.scoped_index_pattern), never the bare wildcard;
+#   2. the model-built body must pass nlq_query_guard's allowlist first.
+
+
+def _caller_index_scope(pattern: str) -> str | None:
+    """Narrow a data-view wildcard to the caller's own team indices.
+
+    Returns the explicit comma-list of indices, or None when the caller may read
+    nothing here. ``RoleFilterService.scoped_index_pattern`` deliberately passes
+    the pattern through unchanged when there is no request context or no
+    username (CLI / healthcheck semantics). Every NLQ entry point is an
+    authenticated Data Explorer request, so on this surface both cases deny
+    rather than hand ES a cluster-wide wildcard.
+    """
+    try:
+        from web.services.role_filter_service import RoleFilterService
+    except ImportError:
+        from ..services.role_filter_service import RoleFilterService
+    from flask import has_request_context, session
+
+    if not has_request_context():
+        logging.warning("NLQ: index scope for %r requested outside a request; denying", pattern)
+        return None
+    if not session.get("username"):
+        logging.warning("NLQ: index scope for %r requested without a signed-in user; denying", pattern)
+        return None
+    try:
+        scoped = RoleFilterService.scoped_index_pattern(pattern)
+    except Exception:
+        # Fail closed on any resolver error (ES outage, bad config): no scope,
+        # no query. Logged with the traceback for diagnosis.
+        logging.exception("NLQ: index scope resolution failed for %r; failing closed", pattern)
+        return None
+    if not scoped or scoped == _EMPTY_SCOPE_PATTERN:
+        return None
+    if "*" in scoped:
+        # The resolver only ever returns explicit names; a wildcard here means
+        # something passed the pattern through. Refuse rather than widen.
+        logging.warning("NLQ: scoped index pattern still contains a wildcard (%r); denying", scoped)
+        return None
+    return scoped
+
+
+def _out_of_scope_result(tool_name: str, index: str) -> str:
+    """Tool result when the caller has no indices behind ``index``.
+    No ES call is made. Search / count answer truthfully with zero; the others
+    say there is nothing to show."""
+    note = f"No data in '{index}' is available in your scope."
+    if tool_name == "search_elasticsearch":
+        return json.dumps({"hits": {"total": {"value": 0}, "hits": []}, "aggregations": {}, "note": note})
+    if tool_name == "count_documents":
+        return json.dumps({"count": 0, "note": note})
+    return json.dumps({"error": note})
+
+
+_QUERY_SHAPE_HINT = (
+    "Use only query, size, from, sort, _source, aggs and track_total_hits, with standard aggregations "
+    "(terms, date_histogram, histogram, range, date_range, filter, filters, sum, avg, min, max, value_count, "
+    "cardinality, stats, extended_stats, percentiles) and no scripts. Simplify the query and try again."
+)
+
+
+def _reject_query(tool_name: str, reason: str) -> str:
+    """Tool error for a model-built body that failed the allowlist.
+    Nothing is sent to ES; the model reads the reason and can retry."""
+    logging.warning("NLQ: rejected model-built %s body: %s", tool_name, reason)
+    return json.dumps({"error": f"Query rejected: {reason}. {_QUERY_SHAPE_HINT}"})
+
+
+# ── Tool-result serialization ─────────────
+# Every tool result is re-sent on every later step of the loop, so bytes here
+# are paid for repeatedly. Two changes that cannot alter an answer: compact
+# JSON (no separator whitespace), and dropping the Elasticsearch envelope the
+# model never reads — timings, shard counts, scores, routing. Hit documents,
+# totals and aggregations are passed through whole.
+_ES_HIT_NOISE = frozenset({"_index", "_type", "_score", "_ignored", "_node", "_shard", "_routing", "sort"})
+
+
+def _tool_json(obj: Any) -> str:
+    """Serialize a tool result without separator whitespace."""
+    return json.dumps(obj, default=str, separators=(",", ":"))
+
+
+def _strip_search_envelope(result: dict, max_hits: int | None = None) -> dict:
+    """Keep hits.total, the hit documents (minus per-hit scoring/routing
+    fields) and aggregations; drop took / timed_out / _shards / max_score."""
+    hits_block = result.get("hits", {}) or {}
+    hits = hits_block.get("hits", []) or []
+    if max_hits is not None:
+        hits = hits[:max_hits]
+    stripped: dict[str, Any] = {
+        "hits": {
+            "total": hits_block.get("total"),
+            "hits": [{k: v for k, v in hit.items() if k not in _ES_HIT_NOISE} for hit in hits],
+        }
+    }
+    if result.get("aggregations"):
+        stripped["aggregations"] = result["aggregations"]
+    return stripped
+
+
 def _execute_tool(tool_name: str, tool_input: dict, scope_clause: dict, allowed_indices: set[str]) -> str:
     """Execute a tool call and return the result as a JSON string.
 
@@ -443,60 +591,78 @@ def _execute_tool(tool_name: str, tool_input: dict, scope_clause: dict, allowed_
     a model-chosen index/data_view is rejected unless the value is in the set, so
     the model can't target system indices the team_title scope clause doesn't
     cover.
+
+    every ES call then runs against ``_caller_index_scope(view)`` —
+    the caller's own team indices — never the data view's cluster-wide
+    wildcard; no scope means no ES call. Model-built bodies / queries must pass
+    nlq_query_guard's allowlist BEFORE the scope wrap, or the tool
+    returns an error and nothing runs.
     """
     try:
         if tool_name == "list_data_views":
             views = get_available_data_views()
-            return json.dumps({"data_views": views}, default=str)
+            return _tool_json({"data_views": views})
 
         elif tool_name == "get_fields":
             data_view = tool_input.get("data_view", "")
             if data_view not in allowed_indices:
                 return _deny_index(data_view, allowed_indices)
-            fields = get_fields_for_data_view(data_view)
+            scoped_index = _caller_index_scope(data_view)
+            if scoped_index is None:
+                return _out_of_scope_result(tool_name, data_view)
+            fields = get_fields_for_data_view(scoped_index)
             if not fields:
                 return json.dumps({"error": f"No fields found for '{data_view}'. Check the data view ID."})
-            return json.dumps({"fields": fields, "count": len(fields)}, default=str)
+            return _tool_json({"fields": fields, "count": len(fields)})
 
         elif tool_name == "search_elasticsearch":
             index = tool_input.get("index", "")
             if index not in allowed_indices:
                 return _deny_index(index, allowed_indices)
-            query_body = _apply_scope_filter(tool_input.get("query_body", {}), scope_clause)
+            safe_body, reason = validate_search_body(tool_input.get("query_body", {}))
+            if reason:
+                return _reject_query(tool_name, reason)
+            scoped_index = _caller_index_scope(index)
+            if scoped_index is None:
+                return _out_of_scope_result(tool_name, index)
+            query_body = _apply_scope_filter(safe_body, scope_clause)
             es = get_elasticsearch_client()
             if es is None:
                 return json.dumps({"error": "Elasticsearch unavailable"})
-            result = es.search(index=index, body=query_body, ignore_unavailable=True)
-            # Trim large responses to stay within token limits
-            result_str = json.dumps(dict(result), default=str)
+            result = es.search(index=scoped_index, body=query_body, ignore_unavailable=True)
+            # envelope stripped and compact JSON (lossless); the
+            # pre-existing size cap still truncates hits to 10 on very large
+            # responses, now measured after the lossless trim.
+            result_str = _tool_json(_strip_search_envelope(dict(result)))
             if len(result_str) > 15000:
-                # Truncate hits to save tokens, keep aggregations
-                trimmed = {
-                    "hits": {
-                        "total": result.get("hits", {}).get("total"),
-                        "hits": result.get("hits", {}).get("hits", [])[:10],
-                    },
-                    "aggregations": result.get("aggregations", {}),
-                }
-                result_str = json.dumps(trimmed, default=str)
+                result_str = _tool_json(_strip_search_envelope(dict(result), max_hits=10))
             return result_str
 
         elif tool_name == "count_documents":
             index = tool_input.get("index", "")
             if index not in allowed_indices:
                 return _deny_index(index, allowed_indices)
-            query = tool_input.get("query", {"match_all": {}})
+            query = tool_input.get("query") or {"match_all": {}}
+            reason = validate_query(query)
+            if reason:
+                return _reject_query(tool_name, reason)
+            scoped_index = _caller_index_scope(index)
+            if scoped_index is None:
+                return _out_of_scope_result(tool_name, index)
             es = get_elasticsearch_client()
             if es is None:
                 return json.dumps({"error": "Elasticsearch unavailable"})
             count_body = _apply_scope_filter({"query": query}, scope_clause)
-            result = es.count(index=index, body=count_body, ignore_unavailable=True)
-            return json.dumps({"count": result.get("count", 0)}, default=str)
+            result = es.count(index=scoped_index, body=count_body, ignore_unavailable=True)
+            return _tool_json({"count": result.get("count", 0)})
 
         elif tool_name == "render_chart":
             data_view = tool_input.get("data_view", "")
             if data_view not in allowed_indices:
                 return _deny_index(data_view, allowed_indices)
+            scoped_index = _caller_index_scope(data_view)
+            if scoped_index is None:
+                return _out_of_scope_result(tool_name, data_view)
             chart_config = {
                 "data_view": data_view,
                 "chart_type": tool_input.get("chart_type", "bar"),
@@ -509,12 +675,20 @@ def _execute_tool(tool_name: str, tool_input: dict, scope_clause: dict, allowed_
                 "breakdown": tool_input.get("breakdown"),
                 "calendar_interval": tool_input.get("calendar_interval", "day"),
             }
+            built = build_query(chart_config)
+            # The builder writes the aggs (its ratio bucket_scripts come from a
+            # server-side registry), but the model's filter values land verbatim
+            # in the query — e.g. an "in" filter whose value is
+            # {"index", "id", "path"} becomes a terms lookup into another index.
+            reason = validate_query(built.get("query") or {"match_all": {}})
+            if reason:
+                return _reject_query(tool_name, reason)
             es = get_elasticsearch_client()
             if es is None:
                 return json.dumps({"error": "Elasticsearch unavailable"})
-            query_body = _apply_scope_filter(build_query(chart_config), scope_clause)
+            query_body = _apply_scope_filter(built, scope_clause)
             es_response = es.search(
-                index=chart_config["data_view"],
+                index=scoped_index,
                 body=query_body,
                 ignore_unavailable=True,
             )
@@ -522,7 +696,7 @@ def _execute_tool(tool_name: str, tool_input: dict, scope_clause: dict, allowed_
             title = tool_input.get("title", "")
             if title and isinstance(echarts_option.get("title"), dict):
                 echarts_option["title"]["text"] = title
-            return json.dumps({"chart": echarts_option}, default=str)
+            return _tool_json({"chart": echarts_option})
 
         else:
             return json.dumps({"error": f"Unknown tool: {tool_name}"})
@@ -812,7 +986,9 @@ def structured_query(
     # the stored memory are both keyed on it so memory never crosses tenants.
     memory_tenant_keys = resolve_memory_tenant_keys()
 
-    # Few-shot injection: retrieve similar past queries from memory store
+    # Few-shot injection: retrieve similar past queries from memory store.
+    # kept out of the cached system block (it differs per query).
+    few_shot_text = ""
     try:
         similar = find_similar_queries(query, n=3, tenant_keys=memory_tenant_keys)
         if similar:
@@ -825,12 +1001,18 @@ def structured_query(
                     examples_text += f"**Summary:** {ex['result_summary'][:200]}\n"
                 if ex.get("chart_type"):
                     examples_text += f"**Chart:** {ex['chart_type']}\n"
-            system_prompt += examples_text
+            few_shot_text = examples_text
     except Exception as e:
         logging.warning(f"NLQ memory: few-shot retrieval failed: {e}")
 
     total_input_tokens = 0
     total_output_tokens = 0
+    # price each request as it runs. Haiku 5.5 picks its rate card
+    # per request (100K-token prompt boundary), so pricing the summed loop
+    # total would over-charge a multi-step query about five times.
+    total_cost_usd = 0.0
+    total_cache_read_tokens = 0
+    total_cache_write_tokens = 0
 
     current_messages: list[dict[str, Any]] = [
         {"role": "user", "content": query},
@@ -850,12 +1032,20 @@ def structured_query(
             response = client.messages.create(
                 model=model,
                 max_tokens=config.NLQ_MAX_TOKENS,
-                system=system_prompt,
+                system=_cached_system(system_prompt, few_shot_text),
                 tools=TOOLS,
                 messages=current_messages,
+                cache_control=dict(_CACHE_EPHEMERAL),
             )
         except anthropic.AuthenticationError:
             return {"success": False, "error": "Invalid Anthropic API key"}
+        except anthropic.BadRequestError as e:
+            # the credit-balance refusal is a planned monthly state.
+            if is_credit_exhausted(e):
+                logging.warning("NLQ: monthly AI credit exhausted; refusing until it renews")
+                return {"success": False, "error": CREDIT_EXHAUSTED_ERROR}
+            logging.exception("NLQ: Anthropic API rejected the request")
+            return {"success": False, "error": "API error — see server logs for detail"}
         except anthropic.RateLimitError:
             return {"success": False, "error": "API rate limit exceeded — try again shortly"}
         except Exception:
@@ -866,7 +1056,47 @@ def structured_query(
 
         total_input_tokens += response.usage.input_tokens
         total_output_tokens += response.usage.output_tokens
+        cache_read = getattr(response.usage, "cache_read_input_tokens", 0) or 0
+        cache_write = getattr(response.usage, "cache_creation_input_tokens", 0) or 0
+        total_cache_read_tokens += cache_read
+        total_cache_write_tokens += cache_write
+        # a single step past the long-prompt boundary costs 5x on
+        # Haiku 5.5. Observability only — nothing is truncated.
+        step_prompt_tokens = response.usage.input_tokens + cache_read + cache_write
+        if step_prompt_tokens > _LONG_PROMPT_TOKENS:
+            logging.warning(
+                "NLQ: step %d prompt of %d tokens crossed the %d-token long-prompt card (model=%s)",
+                iteration + 1,
+                step_prompt_tokens,
+                _LONG_PROMPT_TOKENS,
+                model,
+            )
+        total_cost_usd += _estimate_cost(
+            model,
+            response.usage.input_tokens,
+            response.usage.output_tokens,
+            cache_read_tokens=cache_read,
+            cache_write_tokens=cache_write,
+        )
         stop_reason = response.stop_reason
+
+        # the direct-API models can decline a request (HTTP 200,
+        # stop_reason "refusal", no text) — surface it, never parse nothing.
+        if stop_reason == "refusal":
+            logging.warning("NLQ structured query: request declined by the model (model=%s)", model)
+            return {
+                "success": False,
+                "error": "The AI declined this request — try rephrasing it.",
+                "usage": {
+                    "input_tokens": total_input_tokens,
+                    "output_tokens": total_output_tokens,
+                    "estimated_cost_usd": round(total_cost_usd, 6),
+                    "cache_read_input_tokens": total_cache_read_tokens,
+                    "cache_creation_input_tokens": total_cache_write_tokens,
+                    "model": model,
+                    "tool_iterations": iteration + 1,
+                },
+            }
 
         if stop_reason == "tool_use":
             current_messages.append({"role": "assistant", "content": response.content})
@@ -903,6 +1133,9 @@ def structured_query(
         usage = {
             "input_tokens": total_input_tokens,
             "output_tokens": total_output_tokens,
+            "estimated_cost_usd": round(total_cost_usd, 6),
+            "cache_read_input_tokens": total_cache_read_tokens,
+            "cache_creation_input_tokens": total_cache_write_tokens,
             "model": model,
             "tool_iterations": iteration + 1,
         }
@@ -955,6 +1188,7 @@ def structured_query(
             # Merge usage from both calls
             usage["input_tokens"] += structured.pop("_input_tokens", 0)
             usage["output_tokens"] += structured.pop("_output_tokens", 0)
+            usage["estimated_cost_usd"] = round(usage.get("estimated_cost_usd", 0.0) + structured.pop("_cost_usd", 0.0), 6)
             if last_es_index:
                 structured["es_index"] = last_es_index
             _store_memory(query, structured, indices, date_range, memory_tenant_keys)
@@ -988,6 +1222,9 @@ def structured_query(
         "usage": {
             "input_tokens": total_input_tokens,
             "output_tokens": total_output_tokens,
+            "estimated_cost_usd": round(total_cost_usd, 6),
+            "cache_read_input_tokens": total_cache_read_tokens,
+            "cache_creation_input_tokens": total_cache_write_tokens,
             "model": model,
             "tool_iterations": MAX_TOOL_ITERATIONS,
         },
@@ -1136,6 +1373,7 @@ def _format_as_structured(
             # Attach token usage for the caller to merge
             result["_input_tokens"] = response.usage.input_tokens
             result["_output_tokens"] = response.usage.output_tokens
+            result["_cost_usd"] = _estimate_cost(model, response.usage.input_tokens, response.usage.output_tokens)
             return result
 
         logging.warning(f"NLQ format call: failed to parse JSON from formatting response (len={len(raw_text)})")
@@ -1176,10 +1414,17 @@ def chat(messages: list[dict], today: str | None = None) -> dict[str, Any]:
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     system_prompt = SYSTEM_PROMPT.replace("{today}", today)
+    few_shot_text = ""
 
     # Track cumulative usage across tool-use iterations
     total_input_tokens = 0
     total_output_tokens = 0
+    # price each request as it runs. Haiku 5.5 picks its rate card
+    # per request (100K-token prompt boundary), so pricing the summed loop
+    # total would over-charge a multi-step query about five times.
+    total_cost_usd = 0.0
+    total_cache_read_tokens = 0
+    total_cache_write_tokens = 0
 
     current_messages = list(messages)
 
@@ -1195,12 +1440,20 @@ def chat(messages: list[dict], today: str | None = None) -> dict[str, Any]:
             response = client.messages.create(
                 model=model,
                 max_tokens=config.NLQ_MAX_TOKENS,
-                system=system_prompt,
+                system=_cached_system(system_prompt, few_shot_text),
                 tools=TOOLS,
                 messages=current_messages,
+                cache_control=dict(_CACHE_EPHEMERAL),
             )
         except anthropic.AuthenticationError:
             return {"success": False, "error": "Invalid Anthropic API key"}
+        except anthropic.BadRequestError as e:
+            # the credit-balance refusal is a planned monthly state.
+            if is_credit_exhausted(e):
+                logging.warning("NLQ: monthly AI credit exhausted; refusing until it renews")
+                return {"success": False, "error": CREDIT_EXHAUSTED_ERROR}
+            logging.exception("NLQ: Anthropic API rejected the request")
+            return {"success": False, "error": "API error — see server logs for detail"}
         except anthropic.RateLimitError:
             return {"success": False, "error": "API rate limit exceeded — try again shortly"}
         except Exception:
@@ -1211,6 +1464,46 @@ def chat(messages: list[dict], today: str | None = None) -> dict[str, Any]:
 
         total_input_tokens += response.usage.input_tokens
         total_output_tokens += response.usage.output_tokens
+        cache_read = getattr(response.usage, "cache_read_input_tokens", 0) or 0
+        cache_write = getattr(response.usage, "cache_creation_input_tokens", 0) or 0
+        total_cache_read_tokens += cache_read
+        total_cache_write_tokens += cache_write
+        # a single step past the long-prompt boundary costs 5x on
+        # Haiku 5.5. Observability only — nothing is truncated.
+        step_prompt_tokens = response.usage.input_tokens + cache_read + cache_write
+        if step_prompt_tokens > _LONG_PROMPT_TOKENS:
+            logging.warning(
+                "NLQ: step %d prompt of %d tokens crossed the %d-token long-prompt card (model=%s)",
+                iteration + 1,
+                step_prompt_tokens,
+                _LONG_PROMPT_TOKENS,
+                model,
+            )
+        total_cost_usd += _estimate_cost(
+            model,
+            response.usage.input_tokens,
+            response.usage.output_tokens,
+            cache_read_tokens=cache_read,
+            cache_write_tokens=cache_write,
+        )
+
+        # a declined request (stop_reason "refusal") carries no
+        # text — surface it instead of returning an empty response.
+        if response.stop_reason == "refusal":
+            logging.warning("NLQ chat: request declined by the model (model=%s)", model)
+            return {
+                "success": False,
+                "error": "The AI declined this request — try rephrasing it.",
+                "usage": {
+                    "input_tokens": total_input_tokens,
+                    "output_tokens": total_output_tokens,
+                    "estimated_cost_usd": round(total_cost_usd, 6),
+                    "cache_read_input_tokens": total_cache_read_tokens,
+                    "cache_creation_input_tokens": total_cache_write_tokens,
+                    "model": model,
+                    "tool_iterations": iteration + 1,
+                },
+            }
 
         # Check if Claude wants to use tools
         if response.stop_reason == "tool_use":
@@ -1243,6 +1536,9 @@ def chat(messages: list[dict], today: str | None = None) -> dict[str, Any]:
         usage = {
             "input_tokens": total_input_tokens,
             "output_tokens": total_output_tokens,
+            "estimated_cost_usd": round(total_cost_usd, 6),
+            "cache_read_input_tokens": total_cache_read_tokens,
+            "cache_creation_input_tokens": total_cache_write_tokens,
             "model": model,
             "tool_iterations": iteration + 1,
         }
@@ -1260,6 +1556,9 @@ def chat(messages: list[dict], today: str | None = None) -> dict[str, Any]:
         "usage": {
             "input_tokens": total_input_tokens,
             "output_tokens": total_output_tokens,
+            "estimated_cost_usd": round(total_cost_usd, 6),
+            "cache_read_input_tokens": total_cache_read_tokens,
+            "cache_creation_input_tokens": total_cache_write_tokens,
             "model": model,
             "tool_iterations": MAX_TOOL_ITERATIONS,
         },

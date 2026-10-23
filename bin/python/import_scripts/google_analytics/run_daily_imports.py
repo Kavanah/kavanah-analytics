@@ -336,7 +336,8 @@ def main(params):
         from lib.import_lock_service import ImportLockService
 
         lock_scope = ImportLockService.scope_key_for_ids(property_ids)
-        lock_id = ImportLockService.acquire("google_analytics", scope_id=lock_scope)
+        # progress_run_id: queue position + cancel while waiting for a global slot.
+        lock_id = ImportLockService.acquire("google_analytics", scope_id=lock_scope, progress_run_id=progress_run_id)
         if lock_id is None:
             logging.warning("lock: another google_analytics importer holds the lock; exiting cleanly.")
             # resolve our progress doc IFF it's a true orphan (the lock

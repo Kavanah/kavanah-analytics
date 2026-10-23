@@ -498,8 +498,11 @@ check_url() {
     fi
 }
 
-check_url "Elasticsearch"     "https://$VM_HOST_IP:9200"  "234"  # 401 = reachable, auth required
-check_url "Kibana"             "http://$VM_HOST_IP:5601"
+# Elasticsearch and Kibana are loopback-bound like the Flask ports
+# below — reach ES from inside the VM at https://localhost:9200 (401 = up,
+# auth required), Kibana through nginx at /kibana or http://localhost:5601.
+echo -e "  ${YELLOW}[NOTE]${NC} Elasticsearch :9200 is loopback-bound; check from inside the VM"
+echo -e "  ${YELLOW}[NOTE]${NC} Kibana :5601 is loopback-bound; use https://<server>/kibana or check from inside the VM"
 # the Flask ports (8083/8084/8085) are loopback-bound on the VM —
 # no longer published on all interfaces — so they are not reachable from the
 # host running this script. Check them from inside the VM if needed:
@@ -511,7 +514,7 @@ echo ""
 echo -e "${GREEN}============================================================${NC}"
 echo -e "${GREEN}  Step 4 — Test Data & Validation Complete${NC}"
 echo -e "${GREEN}============================================================${NC}"
-echo -e "  Kibana URL (open in browser): http://$VM_HOST_IP:5601"
+echo -e "  Kibana URL (open in browser): https://<server name>/kibana (or ssh -L 5601:localhost:5601 to the VM)"
 echo -e "  Login:  elastic / \$(yq e '.elk-01.es01.admin_pass' $MASTER_CONFIG)"
 echo ""
 echo -e "${YELLOW}Next steps in Kibana:${NC}"

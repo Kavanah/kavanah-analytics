@@ -7,4 +7,4 @@ pytest-flask==1.3.0
 # without tzdata, every continent-prefixed zone like "America/New_York"
 # fails with ZoneInfoNotFoundError → the sanitiser falls back to UTC
 # defaults and the test asserting the round-trip then fails on Windows.
-tzdata>=2026.4
+tzdata>=2026.5

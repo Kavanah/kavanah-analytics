@@ -717,6 +717,8 @@
         youtube_archive: "Finishing up YouTube import",
     };
     function liveProgressLabel(p, isBackfill, omitDays) {
+        // waiting for a global import slot: "queued (#2)".
+        if (p.status === "queued") return p.status_label || "queued";
         // a backfill with no specific importer phase reads as
         // "Backfilling historical data" rather than the scheduled-run wording.
         const base = IMPORT_PHASE_LABEL[p.phase] || (isBackfill ? "Backfilling historical data" : "Importing fresh data");
@@ -753,7 +755,7 @@
                 // percentage-only label (omitDays): the day counter
                 // maps ad-account progress onto the day scale, so a day number
                 // would jump on a single-account backfill. The % is honest.
-                label = liveProgressLabel(p, isBackfill, true) + " — " + pct + "%";
+                label = liveProgressLabel(p, isBackfill, true) + (p.status === "queued" ? "" : " — " + pct + "%");
                 indeterminate = false;
             } else {
                 label = isBackfill ? "Backfilling historical data…" : "Importing fresh data…";

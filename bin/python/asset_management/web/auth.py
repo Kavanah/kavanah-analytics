@@ -536,6 +536,8 @@ _CSRF_EXEMPT_ENDPOINTS = frozenset(
         "analytics.onboarding_step5_page",
         "analytics.onboarding_step5_post",  # validates csrf_token from form
         "analytics.onboarding_step5_slug_check",  # GET-only JSON probe, session-authenticated
+        "analytics.onboarding_plan_page",  # optional "Your plan" screen
+        "analytics.onboarding_plan_post",  # validates csrf_token from form
         "analytics.onboarding_step6_page",
         "analytics.onboarding_step6_post",  # validates csrf_token from form
         "analytics.onboarding_step7_page",
@@ -1701,6 +1703,12 @@ def check_route_authorization():
         # superuser bypass at the route layer handles the admin path.
         "analytics.onboarding_start_page",
         "analytics.onboarding_start_post",
+        # the domain-match join prompt now follows account
+        # creation (the start POST signs the new user in first, so no
+        # password is parked in the session), so its GET/POST are reached
+        # by the bare ``kibana_user`` role assigned at signup.
+        "analytics.onboarding_join_prompt_page",
+        "analytics.onboarding_join_prompt_post",
         # wizard steps 2-6 run with the bare ``kibana_user`` role
         # OnboardingSignupService assigns at step 1 — they must be reachable
         # before step 3's OnboardingService.provision_* elevates the user.
@@ -1714,6 +1722,11 @@ def check_route_authorization():
         # inline slug-availability JSON probe consumed by step-3's
         # client script. Same pre-elevation rationale as the page route.
         "analytics.onboarding_step5_slug_check",
+        # optional "Your plan" screen after Workspace. Reached by
+        # the same pre-elevation session as step-5 (step-5's provisioning
+        # is fail-soft, so the role may still be the bare ``kibana_user``).
+        "analytics.onboarding_plan_page",
+        "analytics.onboarding_plan_post",
         # connector tile-grid screen. Selection persists to
         # wizard_session and never calls provision_*, so the user is
         # still on the bare ``kibana_user`` role assigned at signup.

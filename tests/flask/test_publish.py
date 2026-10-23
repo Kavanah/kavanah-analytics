@@ -507,6 +507,8 @@ class TestPublicReportQuery:
         # Forced team filter must be injected from stored scope.
         assert ("team_title", "match_phrase", "Alpha") in field_ops
 
+    # the org scope resolves to its teams by ESID (the search is pinned to them).
+    @mock.patch(f"{_R}.RoleFilterService.get_teams_by_organization_esids", return_value=[("AcmeT1", "Acme Team")])
     @mock.patch(f"{_PR}.transform")
     @mock.patch(f"{_PR}.build_query")
     @mock.patch(f"{_PR}.get_elasticsearch_client")
@@ -519,6 +521,7 @@ class TestPublicReportQuery:
         mock_es_fn,
         mock_build,
         mock_transform,
+        _mock_org_teams,
         client,
     ):
         mock_lookup.return_value = ("dash-1", _eligible_source())
@@ -541,3 +544,4 @@ class TestPublicReportQuery:
         )
         assert resp.status_code == 200
         assert resp.get_json()["value"] == 123
+        assert es_mock.search.call_args.kwargs["index"] == "acmet1__echo_conversations"

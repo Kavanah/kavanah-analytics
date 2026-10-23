@@ -8,6 +8,8 @@ Decisions (a teammate, 2026-09-08, the private docs):
   month: conversation count, the outcome-flag sums, message sums, distinct
   clients), so the Summary Report's all-time tiles keep their history.
 * Raw JSON on disk is purged once its document has been indexed for 7 days.
+  this includes the Disciple.Tools staging dir and its legacy
+  ``raw_imported`` archive (a file is indexed when every id in it is).
 * Raw Echo JSON that Echo could not attribute to any team (``team_esid`` and
   ``team_title`` both ``unknown``) is purged once its file is 90 days old
   : no team can ever index it, and a conversation
@@ -132,11 +134,19 @@ FAMILIES: dict[str, dict[str, Any]] = {
 # stem (send_json_to_elastic uses ``data["id"]``); ``chatwoot`` ids are
 # ``{chatwoot_account_esid}_{conversation_id}`` (make_doc_id), with the
 # account esid read from the file and the parent directory as fallback.
+# ``dt``: one file per (team, post_type) holding many documents —
+# ``docs`` (current) or raw REST ``posts`` (earlier files and the
+# ``raw_imported`` archives); a file counts as indexed only when EVERY id in it
+# is in that team's own ``{team_esid}__disciple_tools`` index (DT ids repeat
+# across sites, so a cross-index lookup would be wrong). Its family is
+# ``DT_SOURCE``, which is not a rollup family.
 RAW_JSON_ROOTS: tuple[tuple[str, str, str], ...] = (
     ("/app/data/echo/conversations", "echo_conversations", "echo"),
     ("/app/data/echo/conversations_closed", "echo_conversations", "echo"),
     ("/app/data/echo/conversations_expired", "echo_conversations", "echo"),
     ("/app/data/chatwoot/conversations", "chatwoot_conversations", "chatwoot"),
+    ("/app/data/disciple_tools/raw", "disciple_tools", "dt"),
+    ("/app/data/disciple_tools/raw_imported", "disciple_tools", "dt"),
 )
 
 DT_SOURCE = "disciple_tools"
@@ -473,6 +483,12 @@ def purge_raw_json(es, *, now: datetime, apply: bool, roots: tuple[tuple[str, st
     team_cache: dict | None = None
     team_cache_tried = False
     for root, family_key, style in roots:
+        if style == "dt":
+            row = _purge_dt_root(es, root, now=now, apply=apply)
+            if row.get("lookup_failed"):
+                report["ok"] = False
+            report["roots"].append(row)
+            continue
         family = FAMILIES[family_key]
         row: dict[str, Any] = {
             "root": root,
@@ -537,6 +553,80 @@ def purge_raw_json(es, *, now: datetime, apply: bool, roots: tuple[tuple[str, st
         row["status"] = "purged" if apply else "dry_run"
         report["roots"].append(row)
     return report
+
+
+def _dt_file_ids(path: str) -> tuple[str, list[str]] | None:
+    """``(team_esid, ids)`` of a DT staging / archive file, or None if unreadable.
+
+    Reads ``docs`` or ``posts`` (older files). Only the ids
+    and the team are taken; nothing else in the file is looked at or logged.
+    """
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except Exception:  # noqa: BLE001 — unreadable: not provably indexed, so keep it
+        return None
+    team_esid = str((data or {}).get("team_esid") or "").strip() if isinstance(data, dict) else ""
+    if not team_esid:
+        return None
+    rows = data.get("docs") if "docs" in data else data.get("posts")
+    ids = sorted({str(r.get("ID")) for r in rows or [] if isinstance(r, dict) and r.get("ID") not in (None, "")})
+    return team_esid, ids
+
+
+def _purge_dt_root(es, root: str, *, now: datetime, apply: bool) -> dict:
+    """purge Disciple.Tools raw / archived files under ``root``.
+
+    Same rule as the conversation roots — ≥7 days old AND indexed — with the DT
+    meaning of indexed: every id in the file is present in the file's own team
+    index. A file with no ids holds nothing to lose and is purged. A file whose
+    team index no longer exists is kept and counted (``team_index_missing``);
+    an ES lookup error keeps the file and marks the run not-ok.
+    """
+    row: dict[str, Any] = {
+        "root": root,
+        "candidates": 0,
+        "indexed": 0,
+        "not_indexed": 0,
+        "deleted": 0,
+        "not_indexed_by_reason": {},
+    }
+    files = _candidate_files(root, min_mtime_age=timedelta(days=RAW_JSON_MIN_AGE_DAYS), now=now)
+    row["candidates"] = len(files)
+    by = row["not_indexed_by_reason"]
+    for path in files:
+        parsed = _dt_file_ids(path)
+        if parsed is None:
+            row["not_indexed"] += 1
+            by["unclassified"] = by.get("unclassified", 0) + 1
+            continue
+        team_esid, ids = parsed
+        if ids:
+            index = build_data_index_name(team_esid, DT_SOURCE)
+            try:
+                if not es.indices.exists(index=index):
+                    row["not_indexed"] += 1
+                    by["team_index_missing"] = by.get("team_index_missing", 0) + 1
+                    continue
+                present = _indexed_ids(es, index, ids)
+            except Exception as exc:  # noqa: BLE001 — unknown is not "indexed": keep the file
+                row["lookup_failed"] = row.get("lookup_failed", 0) + 1
+                row["error"] = type(exc).__name__
+                continue
+            if set(ids) - present:
+                row["not_indexed"] += 1
+                by["ids_missing"] = by.get("ids_missing", 0) + 1
+                continue
+        row["indexed"] += 1
+        if apply:
+            try:
+                os.remove(path)
+                row["deleted"] += 1
+            except OSError as exc:
+                row["remove_errors"] = row.get("remove_errors", 0) + 1
+                logging.warning("%s: could not remove %s: %s", LOG_PREFIX, path, type(exc).__name__)
+    row["status"] = "purged" if apply else "dry_run"
+    return row
 
 
 # ── Disciple.Tools reconciliation ─────────────────────────────────────────────

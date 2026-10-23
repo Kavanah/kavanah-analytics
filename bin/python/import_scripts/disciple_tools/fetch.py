@@ -3,9 +3,16 @@
 Action: ``python3 import.py disciple_tools fetch [--days_to_pull=N] [--team_ids=a,b]``
 
 For every active ``dt_site`` connection, authenticates via Site-to-Site Link and
-writes one raw file per (team, post_type) to ``/app/data/disciple_tools/raw/``.
-The send step maps + indexes those files. Splitting fetch from index mirrors the
+writes one staging file per (team, post_type) to ``/app/data/disciple_tools/raw/``.
+The send step indexes those files. Splitting fetch from index mirrors the
 FB/Echo importer shape (network vs. ES failures stay isolated).
+
+the staging file holds the MAPPED documents (``docs``), never the DT
+REST payload: each post goes through ``mapping.map_post`` (the
+minimisation, with the street reduced to a coarse place by ``lib.geocoding``)
+BEFORE anything is written, so a convert's name, street, phone, age, gender and
+faith status never reach disk. ``send_json_to_elastic`` only adds ``team_title``
+and indexes.
 
 ``--days_to_pull=N`` limits to posts modified in the last N days (incremental);
 omitted = full sync. Upsert-by-ID downstream makes either safe to re-run.
@@ -26,9 +33,11 @@ import os
 from datetime import datetime, timezone
 
 import lib.logging
+from import_scripts.disciple_tools import mapping
 from import_scripts.disciple_tools.client import DTAuthError, DTSiteClient
 from import_scripts.disciple_tools.connections import list_dt_site_configs
 from lib.es_helpers import build_data_index_name, get_elasticsearch_client
+from lib.geocoding import coarse_location_for_address
 from lib.import_scope import scope_resolution_error
 
 RAW_DIR = "/app/data/disciple_tools/raw"
@@ -79,6 +88,23 @@ def _effective_since(es, team_esid: str, since_ts: int | None) -> int | None:
     return since_ts
 
 
+def minimise_posts(posts: list[dict], team_esid: str) -> list[dict]:
+    """map DT REST posts to the stored document shape before any disk write.
+
+    ``mapping.map_post`` is the minimisation (no contact name, age,
+    gender, faith status or street; the street becomes ``meta.contact_place`` /
+    ``meta.contact_country`` via ``coarse_location_for_address``, which never
+    sends the street off the box). ``team_title`` is filled in by the send step.
+    Unsupported post types map to None and are dropped, as the send step did.
+    """
+    docs = []
+    for post in posts:
+        doc = mapping.map_post(post, team_esid, geocode=coarse_location_for_address)
+        if doc is not None:
+            docs.append(doc)
+    return docs
+
+
 def main(params):
     lib.logging.define("dt-fetch")
     os.makedirs(RAW_DIR, exist_ok=True)
@@ -124,17 +150,19 @@ def main(params):
                 logging.error("DT fetch: %s @ %s failed: %s", post_type, cfg.dt_domain, e)
                 continue
 
+            # minimise BEFORE the write; the REST payload never reaches disk.
+            docs = minimise_posts(posts, cfg.team_esid)
             out_path = os.path.join(RAW_DIR, f"{cfg.team_esid}__{post_type}.json")
             payload = {
                 "team_esid": cfg.team_esid,
                 "dt_domain": cfg.dt_domain,
                 "post_type": post_type,
                 "fetched_at": datetime.now(timezone.utc).isoformat(),
-                "posts": posts,
+                "docs": docs,
             }
             with open(out_path, "w", encoding="utf-8") as f:
                 json.dump(payload, f, ensure_ascii=False)
-            total_written += len(posts)
-            logging.info("DT fetch: wrote %d %s for team %s", len(posts), post_type, cfg.team_esid)
+            total_written += len(docs)
+            logging.info("DT fetch: wrote %d %s for team %s", len(docs), post_type, cfg.team_esid)
 
     logging.info("DT fetch: complete — %d post(s) across %d site(s)", total_written, len(configs))

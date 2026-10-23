@@ -169,7 +169,7 @@
 
     function escHtml(s) {
       if (!s) return '';
-      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
     }
 
     const DASHBOARD_ID = {{ dashboard_id | tojson }};
@@ -298,7 +298,7 @@
     }
 
   </script>
-  <script src="{{ url_for('static', filename='dashboard_builder/charts.js') }}?v=20261007a"></script>
+  <script src="{{ url_for('static', filename='dashboard_builder/charts.js') }}?v=20261019a"></script>
   <script nonce="{{ csp_nonce }}">
     document.addEventListener('DOMContentLoaded', async () => {
       wireTimeRangeControls();

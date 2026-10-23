@@ -176,6 +176,32 @@ def _redirect_if_wizard_done(username: str):
     return None
 
 
+def _redirect_unless_email_verified(username: str):
+    """refuse wizard provisioning until the email is verified.
+
+    Only the verify-email step's Continue POST checked the flag, so a
+    session could POST straight to step-4 / step-5 (and on) and provision a
+    workspace, or consume an invite, on an address nobody had proven. Called
+    at the top of every wizard handler that provisions or grants anything.
+    Returns a 302 back to the verify-email step (same shape as that step's
+    own "not yet verified" bounce) or ``None`` to proceed.
+
+    ``is_email_verified`` fails closed: an ES error reads as unverified.
+    """
+    from asset_management.web.services.onboarding_email_verification_service import (
+        OnboardingEmailVerificationService,
+    )
+
+    if OnboardingEmailVerificationService.is_email_verified(username):
+        return None
+    logging.warning(
+        "AUDIT: action=onboarding_step_refused reason=email_unverified username=%s endpoint=%s",
+        username,
+        request.endpoint,
+    )
+    return redirect(url_for("analytics.onboarding_verify_email_step_page", not_yet_verified=1))
+
+
 def _safe_redirect_url(url: str | None, default: str = "/") -> str:
     """Validate a redirect URL to prevent open redirect attacks.
 
@@ -2524,6 +2550,7 @@ def onboarding_start_page():
     grant = session.get("signup_grant") or {}
     return render_template(
         "onboarding_start.html",
+        hcaptcha_site_key=config.HCAPTCHA_SITE_KEY,
         csrf_token=csrf_token,
         errors=errors,
         form_data={"email": grant.get("email", "")} if grant else {},
@@ -2672,6 +2699,11 @@ def onboarding_invite_team_picker_page():
     username = session.get("username", "") or ""
     if not username:
         return redirect(url_for("analytics.login_page"))
+
+    # the picker re-enters the invite consume (a role grant).
+    _unverified_redirect = _redirect_unless_email_verified(username)
+    if _unverified_redirect is not None:
+        return _unverified_redirect
 
     try:
         from asset_management.web.services.wizard_session_service import (
@@ -2832,6 +2864,63 @@ def onboarding_resume_restart():
     return redirect(url_for("analytics.onboarding_start_page"))
 
 
+def _hcaptcha_refusal(captcha_response: str) -> str | None:
+    """hCaptcha check for the wizard signup POST.
+
+    Same verification and posture as the legacy ``/signup`` handler
+    (``signup_post``): skipped when the hCaptcha keys are not configured;
+    when they are, a missing or failed response is refused, and so is an
+    unreachable verifier. Returns the user-facing
+    error, or ``None`` to proceed.
+    """
+    if not (config.HCAPTCHA_SITE_KEY and config.HCAPTCHA_SECRET_KEY):
+        return None
+    if not captcha_response:
+        return "Please complete the captcha"
+    import requests as http_requests
+
+    try:
+        verify_resp = http_requests.post(
+            "https://api.hcaptcha.com/siteverify",
+            data={"secret": config.HCAPTCHA_SECRET_KEY, "response": captcha_response},
+            timeout=10,
+        )
+        if not verify_resp.json().get("success"):
+            return "Captcha verification failed. Please try again."
+    except Exception:  # noqa: BLE001 — an unreachable verifier refuses, same as /signup
+        logging.warning("hCaptcha verification request failed, rejecting onboarding signup")
+        return "Captcha verification service unavailable. Please try again later."
+    return None
+
+
+def _verification_send_allowed(username: str, email: str) -> bool:
+    """cap wizard verification emails per account and per address.
+
+    Resend and change-email each fire an email with no limit, so a session
+    could mail-bomb any address (or burn the SES quota). Reuses the legacy
+    registration limiter (``RegistrationService.check_rate_limit`` /
+    ``record_attempt``: 5 per key per rolling hour, in-process) with one key
+    for the account and one for the target address; both must have room,
+    and a permitted send counts against both.
+    """
+    keys = (
+        f"onboarding-verify-send:user:{(username or '').strip().lower()}",
+        f"onboarding-verify-send:email:{(email or '').strip().lower()}",
+    )
+    if not all(RegistrationService.check_rate_limit(key) for key in keys):
+        logging.warning("AUDIT: action=onboarding_verify_send_rate_limited username=%s", username)
+        return False
+    for key in keys:
+        RegistrationService.record_attempt(key)
+    return True
+
+
+def _pending_invite_matches(email: str) -> bool:
+    """True when the session holds an invite sent to ``email``."""
+    invitee = ((session.get("pending_invite") or {}).get("invitee_email") or "").strip().lower()
+    return bool(invitee) and (email or "").strip().lower() == invitee
+
+
 def _claim_grant_after_sso(grant: dict, result: dict, *, auth_method: str) -> None:
     """an SSO sign-up just used a personal signup link. Claim the
     grant (email-bound, so a second attempt with this email is a sign-in, not
@@ -2862,6 +2951,23 @@ def _claim_grant_after_sso(grant: dict, result: dict, *, auth_method: str) -> No
         user_agent=request.headers.get("User-Agent", ""),
         detail=f"jti={grant.get('jti', '')} sponsored={bool(grant.get('sponsored'))} via={auth_method}",
     )
+
+
+def _notify_signup(result: dict, *, via: str, invited: bool) -> None:
+    """email staff that a new account was just created. The send runs
+    on a daemon thread; nothing here may block or fail the signup."""
+    try:
+        from asset_management.web.services.signup_notification_service import SignupNotificationService
+
+        SignupNotificationService.dispatch_signup_notification(
+            username=result.get("username") or "",
+            full_name=result.get("full_name") or "",
+            email=result.get("email") or "",
+            via=via,
+            invited=invited,
+        )
+    except Exception as e:  # noqa: BLE001 — never let the staff notice break signup
+        logging.warning("signup notice dispatch failed for %r: %s", result.get("username"), e)
 
 
 @analytics_bp.route("/onboarding/start", methods=["POST"])
@@ -2897,9 +3003,27 @@ def onboarding_start_post():
     form_data = {"username": username, "full_name": full_name, "email": email}
     signup_grant_email = (signup_grant or {}).get("email", "")
 
+    # the wizard POST had no captcha, so it could be scripted to
+    # mass-create accounts or probe which emails already have one. Enforced
+    # exactly like the legacy /signup form (only when hCaptcha is configured).
+    captcha_error = _hcaptcha_refusal(request.form.get("h-captcha-response", ""))
+    if captcha_error:
+        return render_template(
+            "onboarding_start.html",
+            hcaptcha_site_key=config.HCAPTCHA_SITE_KEY,
+            csrf_token=auth_module.refresh_csrf_token(),
+            errors=[captcha_error],
+            form_data=form_data,
+            google_sso_enabled=config.GOOGLE_SSO_ENABLED,
+            microsoft_sso_enabled=config.MICROSOFT_SSO_ENABLED,
+            invite_banner=_resolve_pending_invite_banner(session.get("pending_invite")),
+            signup_grant_email=signup_grant_email,
+        )
+
     if signup_grant and email != signup_grant_email:
         return render_template(
             "onboarding_start.html",
+            hcaptcha_site_key=config.HCAPTCHA_SITE_KEY,
             csrf_token=auth_module.refresh_csrf_token(),
             errors=[
                 f"This signup link is for {signup_grant_email}. Create the account with that address, "
@@ -2909,6 +3033,26 @@ def onboarding_start_post():
             google_sso_enabled=config.GOOGLE_SSO_ENABLED,
             microsoft_sso_enabled=config.MICROSOFT_SSO_ENABLED,
             invite_banner=None,
+            signup_grant_email=signup_grant_email,
+        )
+
+    # an invite opens the (otherwise closed) signup door only for
+    # the address it was sent to — the link is a bearer token and may have
+    # been forwarded. Same rule as the signup link above, without echoing
+    # the invitee's address to whoever holds the link.
+    if session.get("pending_invite") and not _pending_invite_matches(email):
+        return render_template(
+            "onboarding_start.html",
+            hcaptcha_site_key=config.HCAPTCHA_SITE_KEY,
+            csrf_token=auth_module.refresh_csrf_token(),
+            errors=[
+                "This invite was sent to a different email address. Create the account with the address "
+                "the invite was sent to, or ask for an invite for the address you want to use."
+            ],
+            form_data=form_data,
+            google_sso_enabled=config.GOOGLE_SSO_ENABLED,
+            microsoft_sso_enabled=config.MICROSOFT_SSO_ENABLED,
+            invite_banner=_resolve_pending_invite_banner(session.get("pending_invite")),
             signup_grant_email=signup_grant_email,
         )
 
@@ -2932,6 +3076,7 @@ def onboarding_start_post():
         signed_in_as = session.get("full_name") or session.get("username") or "another account"
         return render_template(
             "onboarding_start.html",
+            hcaptcha_site_key=config.HCAPTCHA_SITE_KEY,
             csrf_token=auth_module.refresh_csrf_token(),
             errors=[
                 f"This browser is already signed in as {signed_in_as} in "
@@ -2959,10 +3104,13 @@ def onboarding_start_post():
         if existing is not None:
             return render_template(
                 "onboarding_start.html",
+                hcaptcha_site_key=config.HCAPTCHA_SITE_KEY,
                 csrf_token=auth_module.refresh_csrf_token(),
                 errors=["You already have an account — sign in instead."],
                 form_data=form_data,
-                existing_username=existing.get("username", ""),
+                # a flag for the "Sign in instead" link, never the
+                # existing account's username.
+                email_taken=True,
                 google_sso_enabled=config.GOOGLE_SSO_ENABLED,
                 microsoft_sso_enabled=config.MICROSOFT_SSO_ENABLED,
                 invite_banner=_resolve_pending_invite_banner(session.get("pending_invite")),
@@ -2993,6 +3141,7 @@ def onboarding_start_post():
                 suggestion = UserProvisioningService.suggest_unique_username(username)
                 return render_template(
                     "onboarding_start.html",
+                    hcaptcha_site_key=config.HCAPTCHA_SITE_KEY,
                     csrf_token=auth_module.refresh_csrf_token(),
                     errors=[f"Username '{username}' is already taken. " f"Try '{suggestion}' instead."],
                     form_data=form_data,
@@ -3015,44 +3164,22 @@ def onboarding_start_post():
     # 1. ``session['pending_invite']`` — an invite token already
     #      names the target org/team/role, so domain-match must never
     #      override it. The user is here because someone invited them.
-    #   2. ``session['auto_join_declined']`` — the user already saw the
-    #      prompt and clicked "Create my own", so we skip the matcher to
-    #      avoid an infinite redirect loop and respect their choice.
-    #   3. ``AutoJoinDomainService.find_match(email)`` — exact-match on the
-    #      domain, free-mail domains skipped. On hit: stash the candidate
-    #      + form payload on the session and redirect to the prompt
-    #      before signup_step1 runs (we don't want to half-create an ES
-    #      Security user only to immediately bounce away from this page).
-    if not session.get("pending_invite") and not signup_grant and not session.get("auto_join_declined") and email:
+    #   2. ``AutoJoinDomainService.find_match(email)`` — exact-match on the
+    #      domain, free-mail domains skipped.
+    #
+    # a hit no longer diverts to the prompt BEFORE the account
+    # exists. That flow parked the typed password in the session cookie
+    # (signed, not encrypted — readable by anyone holding the cookie) so the
+    # prompt's Accept could run signup_step1 later. The account is now
+    # created below like any other signup; the prompt is shown afterwards to
+    # the signed-in user, and only the matched org rides in the session.
+    auto_join_match = None
+    if not session.get("pending_invite") and not signup_grant and email:
         from asset_management.web.services.auto_join_domain_service import (
             AutoJoinDomainService,
         )
 
-        match = AutoJoinDomainService.find_match(email)
-        if match:
-            session["auto_join_candidate"] = {
-                "org_esid": match["org_esid"],
-                "org_title": match["org_title"],
-                "domain": match["domain"],
-                # Round-trip the form so the prompt's Accept branch can
-                # complete signup_step1 without re-prompting for password.
-                # The Flask session cookie is server-signed-and-encrypted;
-                # storing the password here for the lifetime of one click
-                # is acceptable. The candidate is cleared on either branch.
-                "form": {
-                    "username": username,
-                    "full_name": full_name,
-                    "email": email,
-                    "password": password,
-                    "confirm_password": confirm_password,
-                    "detected_time_zone": detected_time_zone,
-                },
-            }
-            return redirect(url_for("analytics.onboarding_join_prompt_page"))
-
-    # No domain match (or precedence kicked in) — clear the one-shot
-    # "declined" flag so a future signup attempt re-evaluates cleanly.
-    session.pop("auto_join_declined", None)
+        auto_join_match = AutoJoinDomainService.find_match(email) or None
 
     from asset_management.web.services.onboarding_signup_service import (
         OnboardingSignupService,
@@ -3076,6 +3203,7 @@ def onboarding_start_post():
             )
             return render_template(
                 "onboarding_start.html",
+                hcaptcha_site_key=config.HCAPTCHA_SITE_KEY,
                 csrf_token=auth_module.refresh_csrf_token(),
                 errors=["This signup link has already been used or is no longer valid. Sign in, or ask for a new link."],
                 form_data=form_data,
@@ -3100,15 +3228,15 @@ def onboarding_start_post():
     if not result.get("success"):
         return render_template(
             "onboarding_start.html",
+            hcaptcha_site_key=config.HCAPTCHA_SITE_KEY,
             csrf_token=auth_module.refresh_csrf_token(),
             errors=result.get("errors", ["Could not create account."]),
             form_data=form_data,
-            # pass existing_username through unconditionally;
-            # the template's existing_username-AND-message conjunction
+            # the template's email_taken-AND-message conjunction
             # is the single source of truth for surfacing the
-            # Sign-in-instead link. A non-collision failure has no
-            # existing_username key on the result and defaults to "".
-            existing_username=result.get("existing_username", ""),
+            # Sign-in-instead link. only the boolean reaches the
+            # page — the existing account's username is never rendered.
+            email_taken=result.get("code") == "email_taken",
             google_sso_enabled=config.GOOGLE_SSO_ENABLED,
             microsoft_sso_enabled=config.MICROSOFT_SSO_ENABLED,
             invite_banner=_resolve_pending_invite_banner(session.get("pending_invite")),
@@ -3237,6 +3365,19 @@ def onboarding_start_post():
             e,
         )
 
+    _notify_signup(result, via="password", invited=bool(pending_invite or claimed_grant))
+
+    # the email's domain matched an opted-in org — offer
+    # the join now that the account exists. Only the org rides in the
+    # session; the prompt parks the join, applied after verification.
+    if auto_join_match:
+        session["auto_join_candidate"] = {
+            "org_esid": auto_join_match["org_esid"],
+            "org_title": auto_join_match["org_title"],
+            "domain": auto_join_match["domain"],
+        }
+        return redirect(url_for("analytics.onboarding_join_prompt_page"))
+
     # Phase 1 (2026-05-20): redirect to the new verify-email
     # step (logical step 2 of 7) instead of straight to step-2
     # (Account type, now logical step 3). The verify-email step
@@ -3248,19 +3389,40 @@ def onboarding_start_post():
 # ONBOARDING DOMAIN-MATCH AUTO-JOIN PROMPT
 # ============================================
 # When a signup email's domain has been listed on an org's
-# ``auto_join_email_domains`` allowlist, the start POST stashes the
-# match + form payload in ``session['auto_join_candidate']`` and
-# redirects here. The user picks Accept (join the matched org) or
-# Create-my-own (fall back to the normal org_owner flow). The prompt
-# is the only place the matched org's existence is surfaced, and only
-# to a user whose own email is at that domain — see the
+# ``auto_join_email_domains`` allowlist, the start POST creates the account
+# as usual, stashes the matched org in ``session['auto_join_candidate']``
+# and redirects here. The user picks Accept (join the matched org once the
+# email is verified) or Create-my-own (carry on with the normal org_owner
+# flow). The prompt is the only place the matched org's existence is
+# surfaced, and only to a user whose own email is at that domain — see the
 # DECISIONS.md entry for the privacy reasoning.
+#
+# the prompt used to come BEFORE the account existed, so the
+# start POST parked the typed password in the session cookie for Accept to
+# replay into signup_step1. Flask's cookie is signed, not encrypted: the
+# plaintext password sat in the browser (and anything that logs cookies)
+# until the next click. The account is now created first and the prompt
+# only ever sees the org.
+
+
+def _join_prompt_candidate():
+    """the stashed join offer, or ``None`` when it can't be used.
+
+    Usable only by the signed-in account the start POST just created. A
+    candidate carrying a ``form`` was stashed by the earlier flow and
+    holds a plaintext password: it is discarded, never replayed.
+    """
+    candidate = session.get("auto_join_candidate")
+    if not candidate or "form" in candidate or not session.get("authenticated") or not session.get("username"):
+        session.pop("auto_join_candidate", None)
+        return None
+    return candidate
 
 
 @analytics_bp.route("/onboarding/join-prompt")
 def onboarding_join_prompt_page():
     """Wizard step 1.5 — render the 'Join {OrgName} on Kavanah?' prompt."""
-    candidate = session.get("auto_join_candidate")
+    candidate = _join_prompt_candidate()
     if not candidate:
         return redirect(url_for("analytics.onboarding_start_page"))
     csrf_token = auth_module.refresh_csrf_token()
@@ -3276,45 +3438,41 @@ def onboarding_join_prompt_page():
 def onboarding_join_prompt_post():
     """Accept or decline the domain-match auto-join offer.
 
-    Two branches:
+    The account already exists and is signed in (the start POST created it
+    before redirecting here). Two branches, both ending on the verify-email
+    step the start POST would otherwise have sent the user to:
 
-    * ``action=join`` — run ``signup_step1`` with the stashed form data,
-      log the user in (same session shape as the regular signup), then
-      park the join on the wizard session. The org membership
-      + Viewer role are written only after the email is verified, by
-      ``OnboardingService.apply_pending_domain_join`` from the verify
-      handlers. Audit-logged as ``onboarding_domain_join``. Redirects to
-      the verify-email step.
-    * ``action=create_own`` — set ``session['auto_join_declined']`` so
-      the next ``/onboarding/start`` POST skips the matcher, and bounce
-      back to the signup form. Audit-logged as ``onboarding_domain_join_declined``.
+    * ``action=join`` — park the join on the wizard session. The
+      org membership + Viewer role are written only after the email is
+      verified, by ``OnboardingService.apply_pending_domain_join`` from the
+      verify handlers. Audit-logged as ``onboarding_domain_join``.
+    * ``action=create_own`` — drop the offer; the user continues the normal
+      wizard and creates their own workspace. Audit-logged as
+      ``onboarding_domain_join_declined``.
     """
 
     csrf_token = request.form.get("csrf_token", "")
     if not auth_module.validate_csrf_token(csrf_token):
         return redirect(url_for("analytics.onboarding_join_prompt_page"))
 
-    candidate = session.get("auto_join_candidate")
+    candidate = _join_prompt_candidate()
     if not candidate:
-        # The candidate expired or the user navigated here directly.
-        # Bounce to step 1 — no harm done, no signup attempted.
+        # The candidate expired, the user navigated here directly, or it
+        # was a earlier stash. Bounce to step 1 — nothing written.
         return redirect(url_for("analytics.onboarding_start_page"))
 
+    username = session["username"]
+    org_esid = candidate.get("org_esid", "")
+    org_title = candidate.get("org_title", "")
     action = request.form.get("action", "")
 
     if action == "create_own":
-        # The user explicitly declined the join offer. Mark the session
-        # so the next start POST skips the matcher (prevents an infinite
-        # prompt loop), audit-log the decline (so org owners can later
-        # see how many domain matches were rejected if a reporting UI
-        # ever ships), and bounce back to the signup form with the
-        # already-typed form data prefilled.
-        org_esid = candidate.get("org_esid", "")
-        form = candidate.get("form") or {}
-        session["auto_join_declined"] = True
+        # The user explicitly declined the join offer. Audit-log the
+        # decline (so org owners can later see how many domain matches were
+        # rejected if a reporting UI ever ships) and continue the wizard.
         session.pop("auto_join_candidate", None)
         AuditLogService.log_event(
-            form.get("username", "") or "(anonymous)",
+            username,
             "onboarding_domain_join_declined",
             True,
             ip_address=request.remote_addr,
@@ -3322,86 +3480,13 @@ def onboarding_join_prompt_post():
             detail=f"matched_org_esid={org_esid}",
             matched_org_esid=org_esid,
         )
-        return render_template(
-            "onboarding_start.html",
-            csrf_token=auth_module.refresh_csrf_token(),
-            errors=[],
-            form_data={
-                "username": form.get("username", ""),
-                "full_name": form.get("full_name", ""),
-                "email": form.get("email", ""),
-            },
-            google_sso_enabled=config.GOOGLE_SSO_ENABLED,
-            microsoft_sso_enabled=config.MICROSOFT_SSO_ENABLED,
-            invite_banner=_resolve_pending_invite_banner(session.get("pending_invite")),
-        )
+        return redirect(url_for("analytics.onboarding_verify_email_step_page"))
 
     if action != "join":
         # Unknown action — re-render the prompt rather than guessing.
         return redirect(url_for("analytics.onboarding_join_prompt_page"))
 
     # ── Accept branch ────────────────────────────────────────────────
-    form = candidate.get("form") or {}
-    org_esid = candidate.get("org_esid", "")
-    org_title = candidate.get("org_title", "")
-
-    from asset_management.web.services.onboarding_signup_service import (
-        OnboardingSignupService,
-    )
-
-    result = OnboardingSignupService.signup_step1(
-        username=form.get("username", ""),
-        email=form.get("email", ""),
-        password=form.get("password", ""),
-        confirm_password=form.get("confirm_password", ""),
-        full_name=form.get("full_name", ""),
-        detected_time_zone=form.get("detected_time_zone", ""),
-    )
-
-    if not result.get("success"):
-        # signup_step1 failed (username collision, weak password, etc.).
-        # Drop the candidate and re-render the prompt's underlying form
-        # with the surfaced errors so the user can fix and retry.
-        session.pop("auto_join_candidate", None)
-        return render_template(
-            "onboarding_start.html",
-            csrf_token=auth_module.refresh_csrf_token(),
-            errors=result.get("errors", ["Could not create account."]),
-            form_data={
-                "username": form.get("username", ""),
-                "full_name": form.get("full_name", ""),
-                "email": form.get("email", ""),
-            },
-            google_sso_enabled=config.GOOGLE_SSO_ENABLED,
-            microsoft_sso_enabled=config.MICROSOFT_SSO_ENABLED,
-            invite_banner=_resolve_pending_invite_banner(session.get("pending_invite")),
-        )
-
-    # Mirror onboarding_start_post's auto-login shape so the user lands
-    # on step 2 as a logged-in session. Kept identical (not extracted)
-    # because the two flows will diverge once additional -adjacent
-    # steps land — premature extraction would couple them.
-    session.pop("logged_out", None)
-    session["authenticated"] = True
-    session["username"] = result["username"]
-    session["roles"] = result.get("roles", [])
-    session["is_admin"] = "superuser" in result.get("roles", []) or config.REQUIRED_ROLE in result.get("roles", [])
-    session["full_name"] = result.get("full_name") or result["username"]
-    session["email"] = result.get("email", "")
-    session["auth_timestamp"] = time.time()
-    session["last_activity"] = time.time()
-    session["auth_method"] = "onboarding_signup"
-    session.permanent = True
-
-    AuditLogService.log_event(
-        result["username"],
-        "login",
-        True,
-        auth_method="onboarding_signup",
-        ip_address=request.remote_addr,
-        user_agent=request.headers.get("User-Agent", ""),
-    )
-
     # do NOT write the org role here. The match came from the
     # email the user TYPED, which is unverified, so provisioning now let
     # anyone who typed ``x@victim-domain`` into an opted-in org's tenant.
@@ -3416,27 +3501,27 @@ def onboarding_join_prompt_post():
         )
 
         if not OnboardingService.record_pending_domain_join(
-            result["username"],
+            username,
             org_esid=org_esid,
             org_title=org_title,
             domain=candidate.get("domain", ""),
-            email=result.get("email", ""),
+            email=session.get("email", ""),
         ):
             logging.warning(
                 "record_pending_domain_join failed for '%s' org=%s",
-                result["username"],
+                username,
                 org_esid,
             )
     except Exception as e:  # noqa: BLE001 — never let the stash break signup
         logging.warning(
             "record_pending_domain_join exception for '%s' org=%s: %s",
-            result["username"],
+            username,
             org_esid,
             e,
         )
 
     AuditLogService.log_event(
-        result["username"],
+        username,
         "onboarding_domain_join",
         True,
         ip_address=request.remote_addr,
@@ -3445,32 +3530,10 @@ def onboarding_join_prompt_post():
         matched_org_esid=org_esid,
     )
 
-    # fire the verification email on the same daemon-thread
-    # path as the regular signup. Kept here rather than extracted so the
-    # join branch isn't a special case for verification semantics.
-    try:
-        from asset_management.web.services.onboarding_email_verification_service import (
-            OnboardingEmailVerificationService,
-        )
-
-        OnboardingEmailVerificationService.dispatch_verification_email(
-            username=result["username"],
-            email=result.get("email", ""),
-            full_name=result.get("full_name", ""),
-            secret_key=current_app.secret_key,
-            app_base_url=public_base_url(),
-        )
-    except Exception as e:  # noqa: BLE001 — never let SMTP wiring break signup
-        logging.warning(
-            "dispatch_verification_email failed for '%s': %s",
-            result["username"],
-            e,
-        )
-
-    # Clear the candidate and any stale "declined" marker before the
-    # user lands on step 2 — both are step-1-scoped state.
     session.pop("auto_join_candidate", None)
-    session.pop("auto_join_declined", None)
+    # The start POST set this when it signed the account in; restated so the
+    # wizard confinement in verify_auth can never be skipped on this path.
+    session["wizard_pending"] = True
 
     # Phase 1 (2026-05-20): redirect to verify-email step
     # instead of step-2 (Account type). Hard-block on email
@@ -3518,6 +3581,41 @@ def _apply_pending_domain_join(username: str) -> None:
     )
 
 
+def _refuse_invite_and_continue(username: str, invite: dict, reason: str):
+    """drop an invite that may not be accepted and carry on.
+
+    Removes the invite (and any team-picker stash) from the wizard session
+    so step-4 stops auto-consuming it, audit-logs the refusal, and lands the
+    user on step-4 with an explanation. Nothing is provisioned.
+    """
+    try:
+        from asset_management.web.services.wizard_session_service import (
+            WizardSessionService,
+        )
+
+        active = WizardSessionService.get_active(username, "onboarding") or {}
+        state = dict(active.get("state") or {})
+        state.pop("invite", None)
+        state.pop("invite_team_picker", None)
+        WizardSessionService.save(
+            user_id=username,
+            wizard_type="onboarding",
+            current_step="step-4",
+            state=state,
+        )
+    except Exception as e:  # noqa: BLE001 — the refusal itself must still hold
+        logging.warning("invite drop failed for %r: %s", username, e)
+    AuditLogService.log_event(
+        username,
+        "onboarding_invite_refused",
+        False,
+        ip_address=request.remote_addr if request else None,
+        user_agent=request.headers.get("User-Agent", "") if request else "",
+        detail=f"reason={reason} workspace_esid={invite.get('org_esid') or ''} jti={invite.get('jti') or ''}",
+    )
+    return redirect(url_for("analytics.onboarding_step4_page", invite_refused=1))
+
+
 def _consume_invite_and_handoff(username: str, invite: dict):
     """consume the invite + route the invited user.
 
@@ -3562,6 +3660,18 @@ def _consume_invite_and_handoff(username: str, invite: dict):
 
     Returns a Flask response (a redirect). Caller just returns it.
     """
+    # the invite JWT is a bearer token. Before it grants anything,
+    # the accepting account's VERIFIED address must be the invitee's, and
+    # the invite doc must still be pending (not cancelled, accepted,
+    # expired or superseded by a resend).
+    from asset_management.web.services.onboarding_email_verification_service import (
+        OnboardingEmailVerificationService,
+    )
+
+    refusal = InviteService.accept_refusal(invite, OnboardingEmailVerificationService.verified_email(username))
+    if refusal:
+        return _refuse_invite_and_continue(username, invite, refusal)
+
     workspace_esid = invite.get("org_esid") or None
     team_esid = invite.get("team_esid") or None
     role_esid = invite.get("role_esid") or ""
@@ -3995,6 +4105,9 @@ def onboarding_verify_email_step_resend():
     user_email = session.get("email", "") or ""
     full_name = session.get("full_name", "") or username
 
+    if user_email and not _verification_send_allowed(username, user_email):
+        return redirect(url_for("analytics.onboarding_verify_email_step_page", rate_limited=1))
+
     if user_email:
         # Same fire-and-forget pattern as the signup hop — the
         # service spawns a background thread for SMTP.
@@ -4057,6 +4170,11 @@ def onboarding_verify_email_step_change_email():
     from asset_management.web.services.onboarding_email_verification_service import (
         OnboardingEmailVerificationService,
     )
+
+    # every change sends an email to the new address; counted
+    # (per account and per address) before anything is written.
+    if not _verification_send_allowed(username, new_email):
+        return redirect(url_for("analytics.onboarding_verify_email_step_page", rate_limited=1))
 
     result = OnboardingEmailVerificationService.update_email(username, new_email)
     if not result.get("success"):
@@ -4363,10 +4481,17 @@ def onboarding_mfa_setup_step_post():
 #   /onboarding/mfa-setup-step        Step 3 of 8      Set up two-factor
 #   /onboarding/step-4                Step 4 of 8      Account type
 #   /onboarding/step-5                Step 5 of 8      Workspace
+# /onboarding/plan Step 5 of 8 * Your plan
 #   /onboarding/step-6                Step 6 of 8      Connect a source
 #   /onboarding/step-7                Step 7 of 8      Review permissions
 #   /onboarding/step-8                Step 8 of 8      Pick your accounts
 #   /onboarding/step7/building        (post-wizard)    Backfill animation
+#
+# * (2026-10-17): the optional "Your plan" screen between
+#     Workspace and Connect a source renders in step-5's progress slot
+#     via ``_STEP_NUMBER_OVERRIDES`` — the same way invite-team-picker
+#     shares step-4's — so no URL was renumbered. It is skipped for
+# invited users and sponsored signups.
 #
 # Three constants must stay in lockstep with this table:
 #   * ``wizard_progress_service._STEP_ORDER`` — the canonical sequence
@@ -4417,6 +4542,11 @@ def onboarding_step4_page():
     _done_redirect = _redirect_if_wizard_done(username)
     if _done_redirect is not None:
         return _done_redirect
+    # nothing past the verify-email step provisions until the
+    # address is verified.
+    _unverified_redirect = _redirect_unless_email_verified(username)
+    if _unverified_redirect is not None:
+        return _unverified_redirect
     invite = _step2_invite_from_session(username)
     # invited variant auto-advances the step-2 choice screen.
     # An invited user has no decision to make on this page (the invite
@@ -4491,7 +4621,14 @@ def onboarding_step4_page():
         full_name=session.get("full_name", ""),
         invite=invite,
         selected=default,
-        error=None,
+        # _refuse_invite_and_continue lands here after dropping an
+        # invite this account may not accept.
+        error=(
+            "That invite can't be used with this account. It may have been cancelled, already "
+            "used, or sent to a different email address. Ask the person who invited you for a new invite."
+            if request.args.get("invite_refused")
+            else None
+        ),
         progress=_wizard_progress_for("step-4", username),
     )
 
@@ -4529,6 +4666,11 @@ def onboarding_step4_post():
     _done_redirect = _redirect_if_wizard_done(username)
     if _done_redirect is not None:
         return _done_redirect
+    # nothing past the verify-email step provisions until the
+    # address is verified.
+    _unverified_redirect = _redirect_unless_email_verified(username)
+    if _unverified_redirect is not None:
+        return _unverified_redirect
 
     from asset_management.web.services.user_profile_service import (
         UserProfileService,
@@ -4956,6 +5098,24 @@ def _apply_grant_sponsorship(state: dict, username: str) -> None:
     )
 
 
+# "Your plan" is the optional wizard screen between Workspace
+# (step-5) and Connect a source (step-6). A sponsored signup (
+# comped the workspace) has nothing to decide and skips it.
+PLAN_STEP_SLUG = "plan"
+
+
+def _signup_is_sponsored(state: dict) -> bool:
+    """True when the wizard state carries a sponsored signup grant."""
+    _grant = state.get("signup_grant") or {}
+    return bool(_grant.get("sponsored") or state.get("signup_grant_sponsorship_applied"))
+
+
+def _step_after_workspace(state: dict) -> str:
+    """Slug of the screen after step-5: ``plan`` normally, ``step-6`` for a
+    sponsored signup."""
+    return "step-6" if _signup_is_sponsored(state) else PLAN_STEP_SLUG
+
+
 @analytics_bp.route("/onboarding/step-5", methods=["POST"])
 def onboarding_step5_post():
     """Persist the workspace name(s) and advance to step-4.
@@ -5000,6 +5160,11 @@ def onboarding_step5_post():
     _done_redirect = _redirect_if_wizard_done(username)
     if _done_redirect is not None:
         return _done_redirect
+    # nothing past the verify-email step provisions until the
+    # address is verified.
+    _unverified_redirect = _redirect_unless_email_verified(username)
+    if _unverified_redirect is not None:
+        return _unverified_redirect
 
     from asset_management.web.services.onboarding_branching_service import (
         OnboardingBranchingService,
@@ -5673,7 +5838,10 @@ def onboarding_step5_post():
         except ImportError:
             _Step5Lock = None  # type: ignore[assignment]
         _step5_lock_key = f"wizard_step5_provision:{username}"
-        _step5_lock_id = _Step5Lock.acquire(_step5_lock_key) if _Step5Lock is not None else None
+        # global_slot=False: this is a request-scoped provisioning
+        # mutex in a gunicorn worker, not an import. Taking a global import slot
+        # here would park the HTTP request in the import queue when the cap is full.
+        _step5_lock_id = _Step5Lock.acquire(_step5_lock_key, global_slot=False) if _Step5Lock is not None else None
         # distinguish "lock contended" from "ES outage". Both
         # paths return None from acquire,
         # but the skip-provision branch is only safe when someone
@@ -5813,11 +5981,15 @@ def onboarding_step5_post():
     # a sponsored personal signup link comps the new workspace once.
     _apply_grant_sponsorship(state, username)
 
+    # the optional "Your plan" screen comes next unless the signup
+    # was sponsored (then straight to the connector picker).
+    _next_slug = _step_after_workspace(state)
+
     try:
         WizardSessionService.save(
             user_id=username,
             wizard_type="onboarding",
-            current_step="step-6",
+            current_step=_next_slug,
             state=state,
         )
     except Exception as e:  # noqa: BLE001 — never let a session write break the wizard
@@ -5855,8 +6027,11 @@ def onboarding_step5_post():
         user_agent=request.headers.get("User-Agent", ""),
     )
 
-    # step-3 hands off to the connector tile-grid screen.
-    return redirect(url_for("analytics.onboarding_step6_page"))
+    # step-3 hands off to the connector tile-grid screen —
+    # through the optional "Your plan" screen unless sponsored.
+    if _next_slug == "step-6":
+        return redirect(url_for("analytics.onboarding_step6_page"))
+    return redirect(url_for("analytics.onboarding_plan_page"))
 
 
 @analytics_bp.route("/onboarding/step-5/slug-check")
@@ -5931,6 +6106,167 @@ def onboarding_step5_slug_check():
         "reason": result.reason,
         "suggestions": result.suggestions,
     }, 200
+
+
+@analytics_bp.route("/onboarding/plan")
+def onboarding_plan_page():
+    """"Your plan": the optional screen between Workspace (step-5)
+    and Connect a source (step-6).
+
+    Nothing is required here. The default is the free trial (no card, no
+    code — one click). Someone who already knows they will pay, or who holds
+    a promo code (100 %-off missionary / $20 ministry), goes to the regular
+    Payment page with ``?next=wizard`` and comes back here; the card is saved
+    now and first charged when the trial ends (Stripe ``trial_end``). The
+    sponsorship application link is the third path. Invited users and
+    sponsored signups never see this screen — nothing to decide.
+
+    Renders in step-5's progress slot (``_STEP_NUMBER_OVERRIDES``) so no
+    wizard URL was renumbered; see the mapping table above.
+    """
+    username = session.get("username", "")
+    if not username:
+        return redirect(url_for("analytics.login_page"))
+
+    # follow-up — block re-entry after the wizard is done.
+    _done_redirect = _redirect_if_wizard_done(username)
+    if _done_redirect is not None:
+        return _done_redirect
+
+    from asset_management.web.services.subscription_state_service import (
+        STATE_ACTIVE,
+        SubscriptionStateService,
+    )
+    from asset_management.web.services.user_profile_service import (
+        ACCOUNT_TYPE_INVITED,
+        UserProfileService,
+    )
+    from asset_management.web.services.wizard_session_service import (
+        WizardSessionService,
+    )
+
+    active = WizardSessionService.get_active(username, "onboarding") or {}
+    state = dict(active.get("state") or {})
+    account_type = state.get("account_type") or UserProfileService.get_account_type(username)
+
+    if account_type == ACCOUNT_TYPE_INVITED or _signup_is_sponsored(state):
+        return redirect(url_for("analytics.onboarding_step6_page"))
+
+    WizardAnalyticsService.emit(
+        step=PLAN_STEP_SLUG,
+        action=ACTION_ENTERED,
+        context=WizardAnalyticsService.build_context(
+            username=username,
+            wizard_session=active or None,
+            account_type=account_type,
+        ),
+        ip_address=request.remote_addr or "",
+        user_agent=request.headers.get("User-Agent", ""),
+    )
+
+    # Fail-soft: an ES blip on the billing read must not block the wizard —
+    # the screen then simply offers the three paths without the "set up"
+    # confirmation.
+    try:
+        sub_state = SubscriptionStateService.get_state(username) or {}
+    except Exception as e:  # noqa: BLE001 — see above
+        logging.warning("plan step get_state failed for %r: %s", username, e)
+        sub_state = {}
+    plan_is_active = sub_state.get("state") == STATE_ACTIVE
+    trial_end = _billing_trial_end_for(sub_state)
+
+    business = _billing_plan("business")
+    ministry = _billing_plan("nonprofit")
+    csrf_token = auth_module.refresh_csrf_token()
+    return render_template(
+        "onboarding_plan.html",
+        csrf_token=csrf_token,
+        username=username,
+        progress=_wizard_progress_for(PLAN_STEP_SLUG, username),
+        trial_days=config.FREE_TIER_TRIAL_DAYS,
+        trial_ends_display=trial_end["display"] if trial_end else "",
+        business_price=business["price_display"],
+        ministry_price=ministry["price_display"],
+        apply_url=ministry["apply_url"],
+        # Only the fixed wizard return target is ever passed to the Payment
+        # page — it never honours a caller-supplied URL.
+        payment_url=url_for("analytics.billing_payment_page", next="wizard"),
+        plan_is_active=plan_is_active,
+        plan_is_comped=bool(sub_state.get("is_comped")),
+    )
+
+
+@analytics_bp.route("/onboarding/plan", methods=["POST"])
+def onboarding_plan_post():
+    """leave the "Your plan" screen for the connector picker.
+
+    Records which path the user took (``paid`` when a subscription is already
+    active — i.e. they came back from the Payment page — else ``trial``) on
+    ``wizard_session.state.plan_choice``, audits it, advances the session to
+    step-6. There is nothing to validate: the trial needs no input, and a
+    card / code was handled by the Payment page.
+    """
+    csrf_token = request.form.get("csrf_token", "")
+    if not auth_module.validate_csrf_token(csrf_token):
+        return redirect(url_for("analytics.onboarding_plan_page"))
+
+    username = session.get("username", "")
+    if not username:
+        return redirect(url_for("analytics.login_page"))
+
+    _done_redirect = _redirect_if_wizard_done(username)
+    if _done_redirect is not None:
+        return _done_redirect
+
+    from asset_management.web.services.subscription_state_service import (
+        SubscriptionStateService,
+    )
+    from asset_management.web.services.wizard_session_service import (
+        WizardSessionService,
+    )
+
+    active = WizardSessionService.get_active(username, "onboarding") or {}
+    state = dict(active.get("state") or {})
+
+    try:
+        _is_paid = bool((SubscriptionStateService.get_state(username) or {}).get("is_paid"))
+    except Exception as e:  # noqa: BLE001 — fail-soft, the choice is informational
+        logging.warning("plan step get_state failed for %r: %s", username, e)
+        _is_paid = False
+    choice = "paid" if _is_paid else "trial"
+    state["plan_choice"] = choice
+
+    try:
+        WizardSessionService.save(
+            user_id=username,
+            wizard_type="onboarding",
+            current_step="step-6",
+            state=state,
+        )
+    except Exception as e:  # noqa: BLE001 — never block the wizard on an ES blip
+        logging.warning("plan step wizard_session save failed for %r: %s", username, e)
+
+    AuditLogService.log_event(
+        username,
+        "onboarding_plan_step",
+        True,
+        ip_address=request.remote_addr,
+        user_agent=request.headers.get("User-Agent", ""),
+        detail=f"choice={choice}",
+    )
+    WizardAnalyticsService.emit(
+        step=PLAN_STEP_SLUG,
+        action=ACTION_COMPLETED,
+        context=WizardAnalyticsService.build_context(
+            username=username,
+            wizard_session=active or None,
+            account_type=state.get("account_type", ""),
+        ),
+        ip_address=request.remote_addr or "",
+        user_agent=request.headers.get("User-Agent", ""),
+        extra={"choice": choice},
+    )
+    return redirect(url_for("analytics.onboarding_step6_page"))
 
 
 @analytics_bp.route("/onboarding/step-6")
@@ -6120,6 +6456,11 @@ def onboarding_step6_post():
     _done_redirect = _redirect_if_wizard_done(username)
     if _done_redirect is not None:
         return _done_redirect
+    # nothing past the verify-email step provisions until the
+    # address is verified.
+    _unverified_redirect = _redirect_unless_email_verified(username)
+    if _unverified_redirect is not None:
+        return _unverified_redirect
 
     from asset_management.web.services.connector_catalog_service import (
         ConnectorCatalogService,
@@ -6697,6 +7038,11 @@ def onboarding_step7_post():
     _done_redirect = _redirect_if_wizard_done(username)
     if _done_redirect is not None:
         return _done_redirect
+    # nothing past the verify-email step provisions until the
+    # address is verified.
+    _unverified_redirect = _redirect_unless_email_verified(username)
+    if _unverified_redirect is not None:
+        return _unverified_redirect
 
     action = (request.form.get("action") or "").strip().lower()
 
@@ -10206,9 +10552,10 @@ _CONNECTOR_IMPORTER_REGISTRY: dict[str, dict] = {
     # de_asset_youtube_channels / de_asset_youtube_accounts docs — it never
     # reads de_connection. The kickoff helper dispatches --team_ids for this
     # source (see the youtube branch in _kickoff_on_demand_backfill).
-    # lock_connector is nominal: the YouTube importer takes no cluster lock
-    # (same posture as report_schedule_service._LOCKED_IMPORT_SOURCES), so
-    # is_held is always False and the LOCK-001 guard is a no-op.
+    # lock_connector is nominal: gave the YouTube importer a lock, but
+    # it is per TEAM-ESID set (youtube::<esids>), never the connector-global
+    # "youtube" doc this kickoff probes, so is_held stays False and the LOCK-001
+    # guard is still a no-op; the importer's own scoped acquire is the gate.
     "youtube": {
         "importer_source": "youtube",
         "importer_action": "run_daily_imports",
@@ -11163,6 +11510,11 @@ def onboarding_step8_post():
     _done_redirect = _redirect_if_wizard_done(username)
     if _done_redirect is not None:
         return _done_redirect
+    # nothing past the verify-email step provisions until the
+    # address is verified.
+    _unverified_redirect = _redirect_unless_email_verified(username)
+    if _unverified_redirect is not None:
+        return _unverified_redirect
 
     from asset_management.web.services.connector_scope_manifest_service import (
         ConnectorScopeManifestService,
@@ -11894,25 +12246,25 @@ def _billing_plans():
         },
         {
             "key": "nonprofit",
-            "name": "Nonprofit",
+            # Display name only; the key stays "nonprofit" (Stripe price,
+            # ?plan=, stored plan_key). a teammate 2026-10-16 three-tier pricing:
+            # free for missionary teams (evangelism, discipleship, church
+            # planting), $20/team/month for any other Christian ministry,
+            # $49.95 for everyone else — the marketing /pricing page matches.
+            "name": "Christian ministry",
             "price_usd": nonprofit_price,
             "price_display": f"${nonprofit_price:,.2f}",
-            # item 2: dropped the "Discounted rate for verified
-            # 501(c)(3) organizations." second sentence entirely; the tile
-            # now shows only the "Contact us for Christian ministry pricing"
-            # contact line. Empty blurb -> the template suppresses the <p>.
-            "blurb": "",
+            "blurb": "For Christian ministries. We value the work you do, so this only covers our server costs.",
             "self_serve": False,
-            # eligibility is proven via the sponsored-license
-            # application form (manual review by Kavanah), replacing the old
-            # sales-mailto route. (automatic EIN verification) remains
-            # unbuilt; the form + manual review IS the eligibility check now.
-            "eligibility": "Apply for a sponsored license to confirm your ministry's eligibility.",
-            "show_name_eyebrow": False,
-            "show_price": False,
-            # item 2 kept the "Christian ministry" framing;
-            # swaps "contact us" for the application-form language.
-            "price_contact_text": "Sponsored license for Christian ministries",
+            # eligibility is proven via the sponsorship application
+            # form (manual review by Kavanah); the review sets the rate (free
+            # or $20). (automatic EIN verification) remains unbuilt.
+            "eligibility": "Apply for sponsorship and we'll confirm which rate fits.",
+            "show_name_eyebrow": True,
+            # 2026-10-16: the $20 price shows again (it was hidden behind a
+            # contact line); still not self-serve.
+            "show_price": True,
+            "price_contact_text": "",
             "apply_url": apply_form_url,
         },
     ]
@@ -11932,6 +12284,35 @@ def _billing_plan_price_id(plan_key):
     if plan_key == "nonprofit":
         return config.STRIPE_PRICE_NONPROFIT
     return config.STRIPE_PRICE_BUSINESS
+
+
+def _billing_plan_for_price_ids(price_ids):
+    """The plan key whose configured Stripe price appears in ``price_ids``
+    (the subscription's item prices), or "" when none matches.
+    Lets the Current Plan page name the plan from the live subscription
+    after a superuser moved the org, instead of always saying Business."""
+    ids = {p for p in (price_ids or []) if p}
+    if not ids:
+        return ""
+    for key in ("nonprofit", "business"):
+        pid = _billing_plan_price_id(key)
+        if pid and pid in ids:
+            return key
+    return ""
+
+
+def _billing_stored_plan_key(username):
+    """The plan key a superuser plan change stored on the user's primary org
+    billing record, or "" (never changed / any error)."""
+    try:
+        from asset_management.web.services.org_billing_service import OrgBillingService
+        from asset_management.web.services.subscription_state_service import SubscriptionStateService
+
+        org_esid = SubscriptionStateService.resolve_primary_org_esid(username)
+        return OrgBillingService.get_org_plan_key(org_esid) if org_esid else ""
+    except Exception as exc:  # noqa: BLE001 — never break the page
+        logging.warning("stored plan lookup failed for %r: %s", username, exc)
+        return ""
 
 
 _BILLING_COUNTRIES = None  # lazily-loaded, cached list of (code, name) pairs
@@ -12006,6 +12387,47 @@ def _billing_payment_summary(plan_key=_BILLING_DEFAULT_PLAN):
     }
 
 
+# a card added during the free trial is charged when the trial
+# ends, not today. The trial end is the LOCAL window (``trial_started_at`` +
+# FREE_TIER_TRIAL_DAYS) that get_state already computes, so Stripe's
+# ``trial_end`` and the wizard copy agree. A trial ending within
+# ``_BILLING_TRIAL_MIN_DAYS`` is not deferred (charge now): too short to be
+# worth a Stripe trial, and it keeps a stale stamp from producing an end
+# that is already in the past.
+_BILLING_TRIAL_MIN_DAYS = 2
+
+
+def _billing_date_display(dt) -> str:
+    """``October 31, 2026`` — no ``%-d`` (not portable to Windows)."""
+    return f"{dt.strftime('%B')} {dt.day}, {dt.year}"
+
+
+def _billing_trial_end_for(state):
+    """``{"unix": int, "iso": str, "display": "October 31, 2026"}`` when a
+    subscription created now should start charging at the end of the
+    caller's free trial, else None (paid / comped / lapsed / unknown / the
+    trial ends too soon)."""
+    from datetime import timedelta
+
+    from asset_management.web.services.subscription_state_service import (
+        STATE_TRIAL,
+        SubscriptionStateService,
+    )
+
+    if not state or state.get("state") != STATE_TRIAL:
+        return None
+    ends_at = SubscriptionStateService._parse_iso(state.get("trial_ends_at") or "")
+    if ends_at is None:
+        return None
+    if ends_at - SubscriptionStateService._now() < timedelta(days=_BILLING_TRIAL_MIN_DAYS):
+        return None
+    return {
+        "unix": int(ends_at.timestamp()),
+        "iso": ends_at.isoformat(),
+        "display": _billing_date_display(ends_at),
+    }
+
+
 @analytics_bp.route("/billing/payment")
 def billing_payment_page():
     """Billing → Payment sub-page.
@@ -12058,6 +12480,16 @@ def billing_payment_page():
     # a discount line (so it matches the Current Plan page on refresh, not just
     # after clicking Apply). Fail-soft: no discount info just shows list price.
     summary = _billing_payment_summary(plan_key)
+    # during the free trial the card is saved now and charged when
+    # the trial ends; say so next to the price. Nothing to defer for a paid /
+    # comped / lapsed caller.
+    _trial_end = None if paid_active else _billing_trial_end_for(_pay_state)
+    if _trial_end:
+        summary["trial_ends_display"] = _trial_end["display"]
+    # reached from the wizard's "Your plan" screen (?next=wizard):
+    # Back and the post-payment redirect both return there. Only the fixed
+    # wizard target is honoured — never a caller-supplied URL.
+    _wizard_url = url_for("analytics.onboarding_plan_page") if request.args.get("next", "") == "wizard" else ""
     # a paid-active subscriber whose active subscription is 100%-off
     # ($0 total) is charged nothing, so the "Update payment method" card form is
     # pointless — there's no upcoming charge to put a card behind. Treat them
@@ -12084,7 +12516,8 @@ def billing_payment_page():
         summary=summary,
         stripe_enabled=config.STRIPE_ENABLED,
         stripe_publishable_key=config.STRIPE_PUBLISHABLE_KEY,
-        back_url=_billing_back_url(),
+        back_url=_wizard_url or _billing_back_url(),
+        next_url=_wizard_url,
         already_active=already_active,
         paid_active=paid_active,
         # True when the active sub is 100%-off ($0) — hide the
@@ -12340,7 +12773,8 @@ def billing_create_subscription():
     # double-charge the moment the retry succeeds. The Payment page shows the
     # update-card form for past_due, so this guard should never be hit from
     # the UI — it stops stale tabs / direct POSTs.
-    if SubscriptionStateService.get_state(username)["state"] in (STATE_ACTIVE, STATE_PAST_DUE):
+    _sub_state = SubscriptionStateService.get_state(username)
+    if _sub_state["state"] in (STATE_ACTIVE, STATE_PAST_DUE):
         AuditLogService.log_event(
             username,
             "billing_payment_blocked_active",
@@ -12505,6 +12939,12 @@ def billing_create_subscription():
     if not payment_method_id and not zero_total:
         return jsonify({"status": "error", "message": "Missing payment method."}), 400
 
+    # a card added during the free trial is charged when the trial
+    # ends, not today — the local trial end becomes Stripe's ``trial_end``.
+    # A $0 (100%-off) order has nothing to defer and starts at once.
+    _trial_end = None if zero_total else _billing_trial_end_for(_sub_state)
+    _trial_end_unix = _trial_end["unix"] if _trial_end else None
+
     # Option B (O2, flag-gated): when ORG_BILLING_PER_TEAM is on, buy a
     # TEAM license — one subscription per team under the org's single Stripe
     # customer (the buyer licenses their PRIMARY team). When off, the existing
@@ -12550,6 +12990,7 @@ def billing_create_subscription():
                 owner_name=billing_name,
                 owner_address=billing_address,
                 company=billing_company,
+                trial_end=_trial_end_unix,
             )
             result = {
                 "customer_id": _team_res.get("customer_id", ""),
@@ -12567,6 +13008,7 @@ def billing_create_subscription():
                 company=billing_company,
                 coupon=resolved_coupon,
                 promotion_code=resolved_promotion_code,
+                trial_end=_trial_end_unix,
             )
     except StripeUnavailableError:
         return (
@@ -12623,12 +13065,16 @@ def billing_create_subscription():
         True,
         ip_address=request.remote_addr,
         user_agent=request.headers.get("User-Agent", ""),
-        detail=f"workspace={_ws_esid} customer={result.get('customer_id')} status={result.get('status')}",
+        detail=(
+            f"workspace={_ws_esid} customer={result.get('customer_id')} status={result.get('status')} "
+            f"trial_end={_trial_end['iso'] if _trial_end else '-'}"
+        ),
     )
-    return (
-        jsonify({"status": "active", "message": "Payment successful. Your subscription is now active."}),
-        200,
-    )
+    _msg = "Payment successful. Your subscription is now active."
+    if _trial_end:
+        _when = _trial_end["display"]
+        _msg = f"Card saved. Nothing is charged until your free trial ends on {_when}; your plan starts then."
+    return jsonify({"status": "active", "message": _msg}), 200
 
 
 # Stripe → our state mapping for the webhook lives in
@@ -12797,6 +13243,47 @@ def _maybe_send_payment_receipt(invoice, ws_esid, username):
         logging.warning("payment receipt email failed (ws=%r user=%r): %s", ws_esid, username, exc)
 
 
+def _ka_stripe_price_ids():
+    """the Kavanah Analytics price allowlist for the webhook."""
+    from asset_management.web.services.stripe_webhook_filter import ka_price_ids
+
+    return ka_price_ids(
+        config.STRIPE_PRICE_BUSINESS,
+        config.STRIPE_PRICE_NONPROFIT,
+        config.STRIPE_PRICE_ADDON_CONNECTION,
+    )
+
+
+def _ignore_non_ka_stripe_event(event, obj, reason, price_ids):
+    """ack (200) a verified event that is not Kavanah Analytics
+    billing, with no state change and no email. A 200 stops Stripe retrying;
+    the event is someone else's (Chat/Social via kavanah-billing), not an
+    error. Logs ids and price ids only: no customer, email or amount.
+    """
+    from flask import jsonify
+
+    from asset_management.web.services.stripe_webhook_filter import (
+        REASON_KA_PRICE_REMOVED,
+        REASON_NO_KA_PRICES_CONFIGURED,
+    )
+
+    event_type = event.get("type", "")
+    msg = "webhook: ignored non-KA %s event=%s object=%s reason=%s prices=%s"
+    args = (event_type, event.get("id") or "", (obj or {}).get("id") or "", reason, ",".join(price_ids) or "-")
+    if reason == REASON_NO_KA_PRICES_CONFIGURED:
+        # A host receiving webhooks with no KA prices configured drops every
+        # event, KA's included: a config error worth an ERROR line.
+        logging.error(msg + " (set STRIPE_PRICE_BUSINESS / _NONPROFIT / _ADDON_CONNECTION)", *args)
+    elif reason == REASON_KA_PRICE_REMOVED:
+        # A subscription moved off every KA price. Not auto-canceled in KA
+        # (the subscription may still be live for another product); needs a
+        # human look at the KA workspace.
+        logging.warning(msg + " (KA price removed from subscription; KA state left unchanged)", *args)
+    else:
+        logging.info(msg, *args)
+    return jsonify({"status": "ignored", "type": event_type, "reason": reason}), 200
+
+
 @analytics_bp.route("/billing/stripe/webhook", methods=["POST"])
 def billing_stripe_webhook():
     """Stripe webhook receiver.
@@ -12814,6 +13301,11 @@ def billing_stripe_webhook():
     ``SubscriptionStateService.apply_stripe_status`` (deleted → canceled).
     Unknown event types are acknowledged (200) and ignored so Stripe
     doesn't retry. An event whose customer maps to no user is also acked.
+
+    the same Stripe account bills Kavanah Chat and Social, so a
+    subscription or invoice event is applied only when it is on a Kavanah
+    Analytics price (``stripe_webhook_filter``). Anything else is acked 200
+    as ``ignored`` with a reason, before any lookup, state change or email.
     """
     from flask import jsonify
 
@@ -12825,6 +13317,12 @@ def billing_stripe_webhook():
     from asset_management.web.services.subscription_state_service import (
         SubscriptionStateService,
         STATE_CANCELED,
+    )
+    from asset_management.web.services.stripe_webhook_filter import (
+        classify_invoice,
+        classify_subscription,
+        invoice_price_ids,
+        subscription_price_ids,
     )
 
     payload = request.get_data()  # raw bytes — signature is over the exact body
@@ -12855,6 +13353,11 @@ def billing_stripe_webhook():
             from asset_management.web.services.workspace_billing_service import WorkspaceBillingService
 
             invoice = ((event.get("data") or {}).get("object")) or {}
+            # a Chat/Social invoice on a shared customer must not
+            # send a KA receipt. Checked before any lookup.
+            is_ka, reason = classify_invoice(invoice, _ka_stripe_price_ids())
+            if not is_ka:
+                return _ignore_non_ka_stripe_event(event, invoice, reason, invoice_price_ids(invoice))
             inv_customer = invoice.get("customer") or ""
             ws = WorkspaceBillingService.find_workspace_by_stripe_customer(inv_customer)
             user = None if ws else SubscriptionStateService.find_username_by_stripe_customer(inv_customer)
@@ -12867,6 +13370,16 @@ def billing_stripe_webhook():
             return jsonify({"status": "ignored", "type": event_type}), 200
 
         subscription = ((event.get("data") or {}).get("object")) or {}
+        # only a subscription on a KA price may touch KA state or
+        # send a KA email. Filter on the payload's own items (deleted carries
+        # them too), before any customer lookup.
+        is_ka, reason = classify_subscription(
+            subscription,
+            _ka_stripe_price_ids(),
+            previous_attributes=(event.get("data") or {}).get("previous_attributes"),
+        )
+        if not is_ka:
+            return _ignore_non_ka_stripe_event(event, subscription, reason, subscription_price_ids(subscription))
         customer_id = subscription.get("customer") or ""
 
         # workspace-billing Phase 3d: subscriptions attach to a
@@ -13425,6 +13938,38 @@ def billing_current_page():
                 # instead of a bare $0.00 (which reads as a glitch). list_price
                 # still shows so the coupon's value is visible.
                 billing["is_free"] = tot_cents == 0
+        # a card saved during the free trial leaves Stripe holding a
+        # ``trialing`` subscription that converts at ``trial_end``. "Active"
+        # would be wrong (nothing has been charged yet): show a Trial badge
+        # with the conversion date, and the bill line says "first charge"
+        # instead of "next billing date". A complimentary account keeps its
+        # own headline above.
+        if billing and (billing.get("status") or "") == "trialing" and not _is_complimentary:
+            _conv = SubscriptionStateService._parse_iso(billing.get("trial_end") or billing.get("current_period_end") or "")
+            billing["is_trialing"] = True
+            billing["converts_display"] = _billing_date_display(_conv) if _conv else ""
+            display = {
+                "badge": "Trial",
+                "tone": "trial",
+                "headline": (
+                    f"Your free trial converts to a paid plan on {billing['converts_display']}"
+                    if _conv
+                    else "Your free trial converts to a paid plan when it ends"
+                ),
+            }
+
+    # a superuser can move a paying org between Business and
+    # Nonprofit. Name the plan from the subscription's live Stripe price
+    # first, then the plan key stored on the org record, so the page never
+    # says "Business" at the Nonprofit price after a change. Everything else
+    # (trial, comped, lapsed) keeps the Business copy as before.
+    plan = business
+    if state["state"] == "active" and state.get("is_paid") and not _is_complimentary:
+        _plan_key = _billing_plan_for_price_ids((billing or {}).get("price_ids") or [])
+        if not _plan_key:
+            _plan_key = _billing_stored_plan_key(username)
+        if _plan_key:
+            plan = _billing_plan(_plan_key)
 
     # Option B (O5, flag-gated) — the org's per-team subscriptions for
     # the "Team subscriptions" card. [] when the flag is off / no licensed
@@ -13474,7 +14019,9 @@ def billing_current_page():
         active="current",
         state=state,
         state_display=display,
-        plan=business,
+        plan=plan,
+        # the superuser plan control lists the catalog.
+        plans=_billing_plans(),
         connection_cap=_BILLING_CONNECTION_CAP,
         # the org's EFFECTIVE cap (included 6 + purchased add-ons),
         # in the SAME source unit as the "N of M used" counter. Drives the
@@ -13565,6 +14112,12 @@ def billing_set_comp():
     The comp metadata write (``comped_active``/``comped_by``/``comped_at``)
     lives in ``SubscriptionStateService.set_comp`` / ``clear_comp``; this
     endpoint owns the authorization + audit.
+
+    a ``set`` first cancels the target's live Stripe subscription(s)
+    immediately (the rule, lost when comp moved to the org), so a
+    comped customer is never invoiced again. Best-effort: the comp is
+    written whatever Stripe says, and the outcome is returned as
+    ``stripe_cancel`` and audited.
     """
     from flask import jsonify
 
@@ -13609,7 +14162,13 @@ def billing_set_comp():
         from asset_management.web.services.org_billing_service import OrgBillingService
         from asset_management.web.services.workspace_billing_service import WorkspaceBillingService
 
+        # stop the money BEFORE the comp lands: every
+        # live team subscription under the workspace, then the legacy
+        # workspace-level one. Best-effort; the comp is written regardless.
+        stripe_cancel = _BILLING_NO_STRIPE_CANCEL()
         if action == "set":
+            stripe_cancel = OrgBillingService.cancel_stripe_for_workspace_comp(workspace_esid_arg)
+            _billing_audit_stripe_cancel(actor, f"workspace={workspace_esid_arg}", stripe_cancel)
             ws_result = WorkspaceBillingService.set_comp(workspace_esid_arg, actor)
         else:
             ws_result = WorkspaceBillingService.clear_comp(workspace_esid_arg)
@@ -13635,7 +14194,8 @@ def billing_set_comp():
             detail=(
                 f"workspace={workspace_esid_arg} ws_ok={ws_result.get('ok')} "
                 f"orgs_ok={len(orgs_ok)} orgs_failed={len(orgs_failed)} "
-                f"failed_esids={','.join(orgs_failed) or '-'}"
+                f"failed_esids={','.join(orgs_failed) or '-'} "
+                f"stripe_cancel={_billing_stripe_cancel_label(stripe_cancel)}"
             ),
         )
         if not ws_result.get("ok"):
@@ -13651,6 +14211,7 @@ def billing_set_comp():
                     "workspace_esid": workspace_esid_arg,
                     "orgs_comped": len(orgs_ok),
                     "orgs_failed": orgs_failed,
+                    "stripe_cancel": stripe_cancel,
                 }
             ),
             200,
@@ -13687,8 +14248,14 @@ def billing_set_comp():
             # A user who resolves to no org can't be comped; otherwise proceed.
             result = {"ok": False, "error": "no_org"} if not org_esid else {"ok": True}
 
+    stripe_cancel = _BILLING_NO_STRIPE_CANCEL()
     if org_esid and result.get("ok"):
         if action == "set":
+            # cancel the org's live Stripe subscription(s) FIRST so
+            # the comp never coexists with an invoice. The
+            # comp below is written whatever Stripe answered.
+            stripe_cancel = OrgBillingService.cancel_stripe_for_org(org_esid)
+            _billing_audit_stripe_cancel(actor, f"org_esid={org_esid}", stripe_cancel)
             result = OrgBillingService.set_org_comp(org_esid, actor)
             if result.get("ok"):
                 try:
@@ -13717,7 +14284,10 @@ def billing_set_comp():
         bool(result.get("ok")),
         ip_address=request.remote_addr,
         user_agent=request.headers.get("User-Agent", ""),
-        detail=f"target={target or '-'} org_esid={org_esid_arg or '-'} ok={result.get('ok')} err={result.get('error') or ''}",
+        detail=(
+            f"target={target or '-'} org_esid={org_esid_arg or '-'} ok={result.get('ok')} "
+            f"err={result.get('error') or ''} stripe_cancel={_billing_stripe_cancel_label(stripe_cancel)}"
+        ),
     )
 
     if not result.get("ok"):
@@ -13759,7 +14329,142 @@ def billing_set_comp():
             jsonify({"status": "error", "message": "Comp update failed. Please try again."}),
             502,
         )
-    return jsonify({"status": "ok", "action": action, "target": target, "org_esid": org_esid_arg}), 200
+    return (
+        jsonify(
+            {
+                "status": "ok",
+                "action": action,
+                "target": target,
+                "org_esid": org_esid_arg,
+                "stripe_cancel": stripe_cancel,
+            }
+        ),
+        200,
+    )
+
+
+@analytics_bp.route("/billing/plan", methods=["POST"])
+def billing_set_plan():
+    """Superuser plan change — move a paying org between Business and
+    Nonprofit (; a teammate's 2026-10-16 ask: "change it … to the $20
+    option after they have started").
+
+    Superuser-ONLY (the same gate as ``billing_set_comp``); CSRF is enforced
+    by the global ``check_csrf_for_state_change`` hook. Body (JSON):
+    ``{"org_esid": "<org>", "plan": "business" | "nonprofit"}``.
+
+    ``OrgBillingService.change_plan_for_org`` swaps the BASE plan item of
+    every live subscription the org holds onto the plan's configured Stripe
+    price with no proration (next invoice at the new price; add-on items
+    untouched). Refused when live payments are off, the org has no live
+    subscription, or it is already on that plan. On success the org billing
+    record stores the plan key (+ ``paid_tier``), the change is audited as
+    ``billing_plan_change`` and the org owner gets a ``plan_changed`` email.
+    Nonprofit stays non-self-serve — this control is the only way onto it.
+    """
+    from flask import jsonify
+
+    actor = session.get("username", "")
+    if not actor:
+        return redirect(url_for("analytics.login_page"))
+    if "superuser" not in session.get("roles", []):
+        abort(403, description="Changing an organization's plan is limited to superusers.")
+
+    payload = request.get_json(silent=True) or {}
+    org_esid = (payload.get("org_esid") or "").strip()
+    plan_key = (payload.get("plan") or "").strip().lower()
+    if not org_esid:
+        return jsonify({"status": "error", "message": "Missing org_esid."}), 400
+    if plan_key not in ("business", "nonprofit"):
+        return jsonify({"status": "error", "message": "plan must be 'business' or 'nonprofit'."}), 400
+    if not config.STRIPE_LIVE_PAYMENTS or not config.STRIPE_SECRET_KEY:
+        return (
+            jsonify({"status": "error", "message": "Live payments are off — there is no Stripe subscription to change."}),
+            400,
+        )
+
+    from asset_management.web.services.org_billing_service import OrgBillingService
+
+    plan = _billing_plan(plan_key)
+    result = OrgBillingService.change_plan_for_org(org_esid, plan_key)
+    mode = result.get("mode") or "error"
+    moved = mode in ("changed", "partial")
+
+    record = {"ok": False, "error": "not attempted"}
+    if moved:
+        record = OrgBillingService.set_org_plan(org_esid, plan_key)
+        if not record.get("ok"):
+            logging.warning("plan change org=%s: Stripe moved but the org record write failed: %s", org_esid, record)
+        try:
+            from asset_management.web.services.billing_email_service import BillingEmailService
+            from asset_management.web.services.subscription_state_service import SubscriptionStateService
+
+            notify_user = OrgBillingService.find_org_owner(org_esid) or ""
+            target_email = SubscriptionStateService.get_user_email(notify_user) if notify_user else ""
+            if target_email:
+                BillingEmailService.dispatch(
+                    "plan_changed",
+                    target_email,
+                    {"full_name": "", "plan_name": plan["name"], "price_display": plan["price_display"]},
+                )
+        except Exception as mail_exc:  # noqa: BLE001 — email must never break the change
+            logging.warning("plan_changed email failed for org=%r: %s", org_esid, mail_exc)
+
+    AuditLogService.log_event(
+        actor,
+        "billing_plan_change",
+        moved and not result.get("errors"),
+        ip_address=request.remote_addr,
+        user_agent=request.headers.get("User-Agent", ""),
+        detail=(
+            f"org_esid={org_esid} plan={plan_key} mode={mode} "
+            f"changed={','.join(result.get('subscription_ids') or []) or '-'} "
+            f"unchanged={len(result.get('unchanged') or [])} errors={len(result.get('errors') or [])} "
+            f"record_ok={record.get('ok')} {result.get('detail') or ''}".rstrip()
+        ),
+    )
+
+    if mode == "no_sub":
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": "That organization has no live Stripe subscription to move. "
+                    + (result.get("detail") or "A trial, comped or lapsed org has no plan to change."),
+                }
+            ),
+            400,
+        )
+    if mode == "unchanged":
+        return jsonify({"status": "error", "message": f"That organization is already on the {plan['name']} plan."}), 400
+    if mode == "error":
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": "Stripe refused the plan change — nothing was moved. Check the audit log.",
+                    "errors": result.get("errors") or [],
+                }
+            ),
+            502,
+        )
+    return (
+        jsonify(
+            {
+                "status": "ok",
+                "org_esid": org_esid,
+                "plan": plan_key,
+                "plan_name": plan["name"],
+                "price_display": plan["price_display"],
+                "mode": mode,
+                "subscription_ids": result.get("subscription_ids") or [],
+                "unchanged": result.get("unchanged") or [],
+                "errors": result.get("errors") or [],
+                "record_ok": bool(record.get("ok")),
+            }
+        ),
+        200,
+    )
 
 
 @analytics_bp.route("/billing/cancel", methods=["POST"])
@@ -14416,6 +15121,42 @@ def _billing_addon_coupon(payload):
     # Prefer the promotion code (enforces redemption caps / expiry / eligibility);
     # fall back to the resolved coupon id.
     return (verdict.get("promotion_code") or verdict.get("coupon") or ""), None
+
+
+def _BILLING_NO_STRIPE_CANCEL():
+    """The ``stripe_cancel`` shape when no cancel was attempted."""
+    return {"mode": "no_sub", "subscription_ids": [], "errors": [], "detail": ""}
+
+
+def _billing_stripe_cancel_label(stripe_cancel):
+    """``mode:n_canceled:n_errors`` for audit detail."""
+    sc = stripe_cancel or {}
+    return f"{sc.get('mode') or 'no_sub'}:{len(sc.get('subscription_ids') or [])}:{len(sc.get('errors') or [])}"
+
+
+def _billing_audit_stripe_cancel(actor, scope, stripe_cancel):
+    """Audit a comp-driven Stripe cancel as its own event, mirroring
+    the per-user comp which audited a successful cancel. Silent when
+    nothing was attempted (no subscription / live payments off) so the
+    audit log isn't padded with no-ops."""
+    sc = stripe_cancel or {}
+    if (sc.get("mode") or "no_sub") == "no_sub":
+        return
+    try:
+        AuditLogService.log_event(
+            actor,
+            "billing_comp_stripe_cancel",
+            not sc.get("errors"),
+            ip_address=request.remote_addr,
+            user_agent=request.headers.get("User-Agent", ""),
+            detail=(
+                f"{scope} mode={sc.get('mode')} "
+                f"subs={','.join(sc.get('subscription_ids') or []) or '-'} "
+                f"errors={' | '.join(sc.get('errors') or []) or '-'}"
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001 — audit must never break the comp
+        logging.warning("stripe-cancel audit failed (%s): %s", scope, exc)
 
 
 def _billing_per_team_subscription_id(username):
@@ -15246,6 +15987,10 @@ def onboarding_backfill_progress():
         "error": surfaced_error,
         "started_at": doc.get("started_at") or "",
         "updated_at": doc.get("updated_at") or "",
+        # a run waiting for a global import slot is ``queued``;
+        # the banner shows ``status_label`` ("queued (#2)") for it.
+        "queue_position": doc.get("queue_position"),
+        "status_label": _import_status_label(surfaced_status, doc.get("queue_position")),
     }, 200
 
 
@@ -15342,6 +16087,13 @@ def onboarding_import_cancel(run_id):
         detail=f"analytics_event=import.cancel.requested run_id={run_id}",
     )
     return {"ok": True, "status": "cancelling"}, 200
+
+
+def _import_status_label(status, queue_position) -> str:
+    """``queued (#N)`` for a queued run, else the bare status."""
+    from lib.import_slots import status_label
+
+    return status_label(status, queue_position)
 
 
 def _connector_display_name(connector_id: str) -> str:
@@ -15544,7 +16296,8 @@ def _append_invite_open_param(url: str) -> str:
 # Async email verification fires from the signup POST handler; this
 # is the landing route for the link in that email. Public (the user
 # is following a link from their inbox, not necessarily authenticated
-# in this browser tab) and gated only by the JWT signature + expiry.
+# in this browser tab) and gated by the JWT signature + expiry plus
+# the address the link was mailed to and its single-use nonce.
 # Sets user.metadata.email_verified=true; future step-7 handoff will
 # consult that flag for the soft block. No CSRF because GET-only and
 # the JWT is the unforgeable token.
@@ -15587,7 +16340,28 @@ def onboarding_verify_email(token):
         )
 
     username = decoded["username"]
-    stamp = OnboardingEmailVerificationService.mark_email_verified(username)
+    # the link verifies only the address it was mailed to, and
+    # only once — see OnboardingEmailVerificationService.redeem_verification.
+    stamp = OnboardingEmailVerificationService.redeem_verification(username, decoded["email_hash"], decoded["nonce"])
+
+    if stamp.get("invalid"):
+        AuditLogService.log_event(
+            username,
+            "onboarding_email_verify_failed",
+            False,
+            ip_address=request.remote_addr,
+            user_agent=request.headers.get("User-Agent", ""),
+            detail="link_not_redeemable",
+        )
+        return (
+            render_template(
+                "onboarding_verify_email.html",
+                status="invalid",
+                message=stamp.get("error", "Verification link is invalid."),
+                username="",
+            ),
+            400,
+        )
 
     if not stamp.get("success"):
         AuditLogService.log_event(
@@ -15766,16 +16540,26 @@ def onboarding_google_callback():
         from asset_management.web.services.signup_grant_service import SignupGrantService
 
         grant_allows = SignupGrantService.is_usable_for(signup_grant, exchange.get("email") or "")
-    allow_provision = config.SELF_SIGNUP_ENABLED or bool(session.get("pending_invite")) or grant_allows
+    # a pending invite allows a NEW account only for the address
+    # it was sent to (the link is a bearer token and may be forwarded).
+    invite_allows = _pending_invite_matches(exchange.get("email") or "")
+    allow_provision = config.SELF_SIGNUP_ENABLED or invite_allows or grant_allows
     result = GoogleSsoService.sign_in_or_provision(exchange, allow_provision=allow_provision)
     if result.get("success") and result.get("user_action") == "signup" and grant_allows:
         _claim_grant_after_sso(signup_grant, result, auth_method="google_sso")
+    if result.get("success") and result.get("user_action") == "signup":
+        _notify_signup(result, via="google_sso", invited=bool(invite_allows or grant_allows))
     if not result.get("success"):
         logging.warning(
             "AUDIT: action=google_sso_provision_failed ip=%s errors=%s",
             request.remote_addr,
             result.get("errors"),
         )
+        if result.get("code") == "email_unverified":
+            # the matching account's address is unverified, so the
+            # login was refused; say why on the sign-in page, where the
+            # account's owner can sign in with its password.
+            return redirect(url_for("analytics.login_page", error=(result.get("errors") or [""])[0]))
         return redirect(failure_redirect)
 
     # Build the authenticated session shape used by both /login and
@@ -15980,16 +16764,26 @@ def onboarding_microsoft_callback():
         from asset_management.web.services.signup_grant_service import SignupGrantService
 
         grant_allows = SignupGrantService.is_usable_for(signup_grant, exchange.get("email") or "")
-    allow_provision = config.SELF_SIGNUP_ENABLED or bool(session.get("pending_invite")) or grant_allows
+    # a pending invite allows a NEW account only for the address
+    # it was sent to (the link is a bearer token and may be forwarded).
+    invite_allows = _pending_invite_matches(exchange.get("email") or "")
+    allow_provision = config.SELF_SIGNUP_ENABLED or invite_allows or grant_allows
     result = MicrosoftSsoService.sign_in_or_provision(exchange, allow_provision=allow_provision)
     if result.get("success") and result.get("user_action") == "signup" and grant_allows:
         _claim_grant_after_sso(signup_grant, result, auth_method="microsoft_sso")
+    if result.get("success") and result.get("user_action") == "signup":
+        _notify_signup(result, via="microsoft_sso", invited=bool(invite_allows or grant_allows))
     if not result.get("success"):
         logging.warning(
             "AUDIT: action=microsoft_sso_provision_failed ip=%s errors=%s",
             request.remote_addr,
             result.get("errors"),
         )
+        if result.get("code") == "email_unverified":
+            # the matching account's address is unverified, so the
+            # login was refused; say why on the sign-in page, where the
+            # account's owner can sign in with its password.
+            return redirect(url_for("analytics.login_page", error=(result.get("errors") or [""])[0]))
         return redirect(failure_redirect)
 
     # Build the authenticated session shape used by both /login and

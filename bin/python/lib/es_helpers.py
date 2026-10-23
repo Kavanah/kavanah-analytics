@@ -1236,6 +1236,20 @@ def build_data_index_name(team_esid, source):
     return f"{esid}__{str(source).strip()}".lower()
 
 
+def team_data_index_names(team_esids):
+    """every ``{team_esid}__{source}`` index name (lowercased, as
+    ``build_data_index_name`` writes them) for the given teams across
+    ``KNOWN_SOURCES`` — the Layer-1 allowlist for a scope.
+
+    Built from team ESIDs only. Team TITLES repeat across tenants (two
+    signups can both name a team "Team 1"), so no allowlist may ever be
+    derived from a title. Blank ESIDs are skipped; no teams → an empty
+    frozenset, which every caller treats as deny-all.
+    """
+    esids = {str(e).strip() for e in (team_esids or []) if e and str(e).strip()}
+    return frozenset(f"{esid}__{source}".lower() for esid in esids for source in KNOWN_SOURCES)
+
+
 def generate_es_safe_doc_id(nbytes=12):
     """Return a random URL-safe doc id whose LEADING char is alphanumeric.
 

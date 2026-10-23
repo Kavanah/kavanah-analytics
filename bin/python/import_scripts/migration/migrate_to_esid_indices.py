@@ -795,6 +795,9 @@ def main(params):
     acquired = {}
     if not dry_run:
         for connector in sorted(connectors):
+            # no progress doc here, so a global-slot wait (if the cap is
+            # on) orders by a local queue ticket. One slot covers every connector
+            # lock this process takes.
             lock_id = ImportLockService.acquire(connector)
             if lock_id is None:
                 # Someone grabbed it between the pre-flight and now. Release

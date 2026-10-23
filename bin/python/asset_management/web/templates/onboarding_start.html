@@ -11,6 +11,9 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/cloudscape.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/password-toggle.css') }}?v=20260504b">
     <script src="{{ url_for('static', filename='js/password-toggle.js') }}?v=20260504a" defer></script>
+    {% if hcaptcha_site_key %}
+    <script src="https://js.hcaptcha.com/1/api.js" async defer></script>
+    {% endif %}
     <style>
         body {
             background: var(--cs-bg-page);
@@ -268,15 +271,17 @@
                     <li>
                         {{ error }}
                         {# when the duplicate-email check fires, the
-                           route stashes the existing user's username on the
-                           render context. Surface a "Sign in instead" link
-                           that pre-fills the login form so the user lands one
-                           click + one password away from signing in. #}
-                        {% if existing_username %}
+                           route flags it on the render context. Surface a
+                           "Sign in instead" link that pre-fills the login
+                           form so the user lands one click + one password
+                           away from signing in. the flag is a
+                           boolean — the existing account's username never
+                           reaches this page. #}
+                        {% if email_taken %}
                         {# the route only passes a truthy
-                           existing_username on the duplicate-email
-                           branch (via OnboardingSignupService's
-                           code='email_taken' result), so a generic
+                           email_taken on the duplicate-email branch (via
+                           OnboardingSignupService's code='email_taken'
+                           result), so a generic
                            error path leaves this falsy and the link is
                            absent. The data shape is the load-bearing
                            guard. follow-up: pre-fill the login
@@ -379,6 +384,14 @@
                         {% with pw_target="confirm_password" %}{% include "_pw_toggle.html" %}{% endwith %}
                     </div>
                 </div>
+
+                {# same hCaptcha as the legacy /signup form; rendered
+                   (and enforced by the POST) only when hCaptcha keys are configured. #}
+                {% if hcaptcha_site_key %}
+                <div class="captcha-container">
+                    <div class="h-captcha" data-sitekey="{{ hcaptcha_site_key }}"></div>
+                </div>
+                {% endif %}
 
                 <button type="submit" class="register-btn" id="submit-btn">Continue</button>
             </form>

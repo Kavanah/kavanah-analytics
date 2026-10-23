@@ -1,10 +1,16 @@
 """
 Pre-warm the DT geocode cache used by the map dashboard.
 
-Queries all unique meta.location_grid and meta.contact_address values from
+Queries all unique meta.location_grid and meta.contact_place values from
 the disciple-tools index, resolves each one to (lat, lon, country) via
 Nominatim, and writes the results to /tmp/dt_geocode_cache.json — the same
 file the Flask map endpoint reads from.
+
+only coarse strings are ever sent or cached here — DT location-grid
+names and ``meta.contact_place`` ("City, Country"). This used to
+aggregate ``meta.contact_address`` (the street), which removed from the
+index; the map endpoint has looked up ``meta.contact_place`` keys since then,
+so the place is what must be warmed.
 
 Because this runs in the background (cron / promote_staging), the 1-req/sec
 Nominatim rate limit is acceptable.  The map endpoint itself never calls
@@ -122,12 +128,14 @@ def _geocode_one(address, cache, last_call_time):
 
 
 def _get_unique_addresses(es, index_name):
-    """Query the DT index for all unique location_grid and contact_address values."""
+    """Query the DT index for all unique location_grid and contact_place values.
+
+    the coarse place, never a street field (see module docstring)."""
     body = {
         "size": 0,
         "aggs": {
             "by_grid": {"terms": {"field": "meta.location_grid.keyword", "size": 5000}},
-            "by_address": {"terms": {"field": "meta.contact_address.keyword", "size": 5000}},
+            "by_address": {"terms": {"field": "meta.contact_place.keyword", "size": 5000}},
         },
     }
     try:

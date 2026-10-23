@@ -8,6 +8,7 @@ Setup order:
 4. Per-function fixtures provide fresh clients and clean auth state.
 """
 
+import base64
 import json
 import os
 import sys
@@ -51,6 +52,10 @@ _set_if_blank("ES01_PASSWORD", "test-password")
 _set_if_blank("SECRET_KEY", "test-secret-key-for-pytest-do-not-use-in-prod")
 _set_if_blank("SESSION_LIFETIME", "3600")
 _set_if_blank("ASSET_ADMIN_ROLE", "asset_admin")
+# publish tokens are stored Fernet-encrypted (display copy), so the
+# publish endpoints call lib.encryption.encrypt. A fixed, test-only key (built
+# from a plain label, not a secret) lets them run without master-config.yaml.
+_set_if_blank("ENC_KEY", base64.urlsafe_b64encode(b"pytest-only-enc-key-not-a-secret").decode())
 
 # ---------------------------------------------------------------------------
 # Project imports (after path / env setup)
@@ -213,14 +218,21 @@ def reset_rate_limits():
     """Clear in-memory rate limit state before and after every test.
 
     ``failed_attempts`` is LoginLockoutService's in-process username
-    fallback (same object); the IP fallback store is cleared alongside it."""
+    fallback (same object); the IP fallback store is cleared alongside it.
+
+    the registration limiter's store also counts wizard verification
+    emails per account / address, so it is cleared too — otherwise resends in
+    one test eat the hourly budget of the next."""
+    from asset_management.web.services import registration_service as _registration_mod
     from asset_management.web.services.login_lockout_service import LoginLockoutService
 
     auth_module.failed_attempts.clear()
     LoginLockoutService.local_ip_failures.clear()
+    _registration_mod._registration_attempts.clear()
     yield
     auth_module.failed_attempts.clear()
     LoginLockoutService.local_ip_failures.clear()
+    _registration_mod._registration_attempts.clear()
 
 
 @pytest.fixture(autouse=True)
@@ -274,6 +286,27 @@ def _bypass_user_exists_guard(monkeypatch):
     monkeypatch.setattr(auth_module, "_user_account_record", lambda username: ("active", None, None))
     yield
     auth_module._invalidate_user_exists_cache()
+
+
+# ---------------------------------------------------------------------------
+# OAuth browser-binding bypass
+# ---------------------------------------------------------------------------
+# Every fb_oauth_server callback now refuses a state unless the browser holds
+# the binding cookie its initiate leg set. The callback tests written before
+# call the callback directly with a made-up state and pin OTHER
+# contracts (token exchange, identity probes, expiry, scopes), so the check is
+# answered "bound" for them. The tests that pin the binding itself opt out by
+# file and exercise the real helper.
+_OAUTH_BINDING_OPT_OUT_FILES = ("test_hardening.py",)
+
+
+@pytest.fixture(autouse=True)
+def _bypass_oauth_browser_binding(request, monkeypatch):
+    if str(request.node.fspath).endswith(_OAUTH_BINDING_OPT_OUT_FILES):
+        return
+    import lib.oauth_state as _oauth_state_mod
+
+    monkeypatch.setattr(_oauth_state_mod, "oauth_browser_bound", lambda state, cookies: True)
 
 
 # ---------------------------------------------------------------------------
@@ -333,6 +366,9 @@ _WORKSPACE_GUARD_OPT_OUT_FILES = (
     "test_route_authz_medium_admin.py",
     "test_route_authz_medium_connectors.py",
     "test_route_authz_residuals.py",
+    # pins that the REAL _require_memberships_in_workspace_scope
+    # resolves multi-org and org-less teams; the stub would hide the 403.
+    "test_create_user_multi_org_team.py",
 )
 
 
@@ -361,6 +397,28 @@ def _bypass_workspace_scope_guards(request, monkeypatch):
         lambda users, **_kw: users,
     )
     monkeypatch.setattr(_rfs_mod.RoleFilterService, "get_allowed_workspaces", classmethod(lambda cls: None))
+
+
+# ---------------------------------------------------------------------------
+# wizard email-verified gate bypass
+# ---------------------------------------------------------------------------
+# refuses every wizard step past verify-email (step-4 on, and the
+# invite team picker) until ``metadata.email_verified`` is set, read live from
+# ES Security. The ~60 pre-existing wizard tests plant a session and mock the
+# step's own services, with no ES user behind it, so the real gate would
+# bounce every one of them to the verify step. This autouse fixture lets the
+# gate pass everywhere except the files that pin it, which run the real one.
+_EMAIL_VERIFIED_GATE_OPT_OUT_FILES = ("test_signup.py",)
+
+
+@pytest.fixture(autouse=True)
+def _bypass_wizard_email_verified_gate(request, monkeypatch):
+    fspath = str(request.node.fspath)
+    if fspath.endswith(_EMAIL_VERIFIED_GATE_OPT_OUT_FILES):
+        return
+    from asset_management.web.blueprints.analytics import routes as _routes_mod
+
+    monkeypatch.setattr(_routes_mod, "_redirect_unless_email_verified", lambda username: None)
 
 
 # ---------------------------------------------------------------------------

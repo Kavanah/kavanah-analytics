@@ -1127,7 +1127,9 @@ def main(params):
     try:
         from lib.import_lock_service import ImportLockService
 
-        lock_id = ImportLockService.acquire("facebook", scope_id=lock_scope)
+        # progress_run_id lets the global import queue show this run
+        # as "queued (#N)" and honour a cancel while it waits for a slot.
+        lock_id = ImportLockService.acquire("facebook", scope_id=lock_scope, progress_run_id=progress_run_id)
         if lock_id is None:
             logging.warning(
                 "lock: another facebook importer holds a conflicting "

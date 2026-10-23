@@ -150,7 +150,9 @@ def load_config():
         nlq_config = yaml_config.get("nlq", {})
         if nlq_config:
             config["NLQ_ANTHROPIC_API_KEY"] = nlq_config.get("anthropic_api_key", "")
-            config["NLQ_MODEL"] = nlq_config.get("model", "claude-haiku-4-5-20251001")
+            # Haiku 5.5 on BOTH direct-API routes (a teammate, 2026-10-22:
+            # the cheapest model for all AI usage). Bare ids, no date suffix.
+            config["NLQ_MODEL"] = nlq_config.get("model", "claude-haiku-5-5")
             config["NLQ_ENABLED"] = nlq_config.get("enabled", False)
             config["NLQ_MAX_TOKENS"] = nlq_config.get("max_tokens", 8192)
             config["NLQ_PROVIDER"] = nlq_config.get("provider", "anthropic")
@@ -167,7 +169,7 @@ def load_config():
             # the old default "claude-sonnet-4-5-20250514"
             # never existed (Sonnet 4.5 name, Sonnet 4 date) and
             # would 404 at the Anthropic API. Bare alias, no date.
-            config["NLQ_MODEL_SONNET"] = nlq_config.get("model_sonnet", "claude-sonnet-4-6")
+            config["NLQ_MODEL_SONNET"] = nlq_config.get("model_sonnet", "claude-haiku-5-5")
 
         # Canvas AI chat settings. Provider/credentials are
         # shared with the NLQ section (same per-env bedrock IAM user);
@@ -182,8 +184,10 @@ def load_config():
         # 400 ("model identifier is invalid") → 502 on the chat
         # endpoint. Switch back to global. (10% cheaper) only after
         # the post-cutover creds are verified live on prod.
-        # Override the IDs here when NLQ_PROVIDER is 'anthropic'
-        # (direct API).
+        # when NLQ_PROVIDER is 'anthropic' (direct API) the
+        # tiers resolve to the anthropic_model_* keys instead — Haiku 5.5
+        # on every tier (a teammate, 2026-10-22: the cheapest model for all AI
+        # usage); the Bedrock profiles above are never sent to the direct API.
         canvas_ai_config = yaml_config.get("canvas_ai", {})
         if canvas_ai_config:
             config["CANVAS_AI_ENABLED"] = canvas_ai_config.get("enabled", False)
@@ -195,14 +199,24 @@ def load_config():
             config["CANVAS_AI_MODEL_FAST"] = canvas_ai_config.get("model_fast", "us.anthropic.claude-haiku-4-5-20251001-v1:0")
             config["CANVAS_AI_MODEL_DEFAULT"] = canvas_ai_config.get("model_default", "us.anthropic.claude-sonnet-5")
             config["CANVAS_AI_MODEL_COMPLEX"] = canvas_ai_config.get("model_complex", "us.anthropic.claude-opus-4-8")
+            config["CANVAS_AI_ANTHROPIC_MODEL_FAST"] = canvas_ai_config.get("anthropic_model_fast", "claude-haiku-5-5")
+            config["CANVAS_AI_ANTHROPIC_MODEL_DEFAULT"] = canvas_ai_config.get("anthropic_model_default", "claude-haiku-5-5")
+            config["CANVAS_AI_ANTHROPIC_MODEL_COMPLEX"] = canvas_ai_config.get("anthropic_model_complex", "claude-haiku-5-5")
             config["CANVAS_AI_USER_DAILY_COST_CAP_USD"] = canvas_ai_config.get("user_daily_cost_cap_usd", 2.0)
-            config["CANVAS_AI_FEATURE_DAILY_COST_CAP_USD"] = canvas_ai_config.get("feature_daily_cost_cap_usd", 25.0)
+            # $6/day keeps the feature inside the $200/month
+            # Console credit (was $25/day, up to about $775/month).
+            config["CANVAS_AI_FEATURE_DAILY_COST_CAP_USD"] = canvas_ai_config.get("feature_daily_cost_cap_usd", 6.0)
 
         # Security settings (MFA enforcement, etc.) —
         security_config = yaml_config.get("security", {})
         if security_config:
             if not os.environ.get("ENFORCE_MFA"):
                 config["ENFORCE_MFA"] = security_config.get("enforce_mfa", True)
+
+        # Staff notifications — who gets the new-signup email.
+        notifications_config = yaml_config.get("notifications", {})
+        if notifications_config:
+            config["SIGNUP_NOTIFY_EMAIL"] = notifications_config.get("signup_email", "")
 
         # S3 backup settings (Restore from Backup page).
         # Bucket + prefix vary per environment; dev points at
@@ -500,6 +514,15 @@ class Config:
         return str(val).lower() == "true"
 
     @property
+    def SIGNUP_NOTIFY_EMAIL(self) -> str:
+        """Comma-separated addresses emailed when a new account signs up.
+
+        Env var SIGNUP_NOTIFY_EMAIL overrides master-config.yaml
+        ``notifications.signup_email``. Empty (the default) turns the notice off.
+        """
+        return os.environ.get("SIGNUP_NOTIFY_EMAIL") or self._config.get("SIGNUP_NOTIFY_EMAIL", "") or ""
+
+    @property
     def YUBICO_CLIENT_ID(self):
         """Yubico OTP validation API client ID (free, register at upgrade.yubico.com/getapikey/)."""
         return self._config.get("YUBICO_CLIENT_ID", "")
@@ -664,8 +687,8 @@ class Config:
 
     @property
     def NLQ_MODEL(self):
-        """Claude model ID for NLQ queries."""
-        return self._config.get("NLQ_MODEL", "claude-haiku-4-5-20251001")
+        """Direct-API model ID for the NLQ "haiku" route."""
+        return self._config.get("NLQ_MODEL", "claude-haiku-5-5")
 
     @property
     def NLQ_ENABLED(self):
@@ -731,7 +754,7 @@ class Config:
     def NLQ_MODEL_SONNET(self):
         """Direct API model ID for Sonnet (old default was a
         nonexistent ID — Sonnet 4.5 name with Sonnet 4's date)."""
-        return self._config.get("NLQ_MODEL_SONNET", "claude-sonnet-4-6")
+        return self._config.get("NLQ_MODEL_SONNET", "claude-haiku-5-5")
 
     # ── Canvas AI chat ────────────────────────────────────────────
     # Provider + AWS credentials are shared with the NLQ_* settings above
@@ -741,9 +764,21 @@ class Config:
     # global. inference profiles (Opus 4.8 on us. — the only probe-verified
     # Opus 4.8 profile).
 
+    # (a teammate, 2026-10-22): the canvas-editor AI chat is switched OFF
+    # in code for now — AI spend is reserved for the Data Explorer ("using AI
+    # to understand the data is the most important usage"). The service,
+    # routes, template, tests and config keys all stay in place, parked;
+    # this constant is the only thing to flip (plus canvas_ai.enabled in
+    # master-config) to bring the feature back. With it True, neither the
+    # yaml flag nor the CANVAS_AI_ENABLED env var can turn the feature on:
+    # the editor renders no AI button or panel and /api/ai/chat answers 503.
+    CANVAS_AI_HARD_OFF = True
+
     @property
     def CANVAS_AI_ENABLED(self):
         """Whether the canvas-editor AI chat is enabled."""
+        if self.CANVAS_AI_HARD_OFF:
+            return False
         val = self._config.get("CANVAS_AI_ENABLED", os.environ.get("CANVAS_AI_ENABLED", "false"))
         if isinstance(val, bool):
             return val
@@ -776,6 +811,25 @@ class Config:
         """Complex-tier model (opt-in "complex mode" checkbox)."""
         return self._config.get("CANVAS_AI_MODEL_COMPLEX", "us.anthropic.claude-opus-4-8")
 
+    # direct-API (NLQ_PROVIDER == 'anthropic') tier map. The
+    # CANVAS_AI_MODEL_* ids above are Bedrock inference profiles, which the
+    # direct API rejects, so each provider carries its own defaults and
+    # canvas_ai_service.resolve_model picks the set by provider.
+    @property
+    def CANVAS_AI_ANTHROPIC_MODEL_FAST(self):
+        """Fast-tier model on the direct Anthropic API (Haiku 5.5)."""
+        return self._config.get("CANVAS_AI_ANTHROPIC_MODEL_FAST", "claude-haiku-5-5")
+
+    @property
+    def CANVAS_AI_ANTHROPIC_MODEL_DEFAULT(self):
+        """Default-tier model on the direct Anthropic API (Haiku 5.5 — a teammate, 2026-10-22)."""
+        return self._config.get("CANVAS_AI_ANTHROPIC_MODEL_DEFAULT", "claude-haiku-5-5")
+
+    @property
+    def CANVAS_AI_ANTHROPIC_MODEL_COMPLEX(self):
+        """Complex-tier model on the direct Anthropic API (Haiku 5.5 — a teammate, 2026-10-22)."""
+        return self._config.get("CANVAS_AI_ANTHROPIC_MODEL_COMPLEX", "claude-haiku-5-5")
+
     @property
     def CANVAS_AI_USER_DAILY_COST_CAP_USD(self):
         """Per-user daily estimated-cost cap for canvas AI chat (USD)."""
@@ -784,7 +838,7 @@ class Config:
     @property
     def CANVAS_AI_FEATURE_DAILY_COST_CAP_USD(self):
         """Whole-feature daily estimated-cost cap for canvas AI chat (USD)."""
-        return float(self._config.get("CANVAS_AI_FEATURE_DAILY_COST_CAP_USD", 25.0))
+        return float(self._config.get("CANVAS_AI_FEATURE_DAILY_COST_CAP_USD", 6.0))
 
     @property
     def JIRA_ENABLED(self):

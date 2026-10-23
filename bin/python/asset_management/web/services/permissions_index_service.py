@@ -1005,8 +1005,11 @@ def cascade_purge_authz_for_scope(es, scope_type: str, scope_esid: str) -> dict:
 
 # cascade purge for the empty-workspace delete path on User
 # Management. Scope deliberately narrow — the membership-empty gate is
-# the safety boundary; data indices (`{team_esid}__*`) are left intact
-# (separate "delete all user data" surface, deliberately deferred).
+# the safety boundary. The child teams' data (`{team_esid}__*` indices,
+# legacy `{slug}_{source}` indices, raw files) is not deleted in the
+# request: records a purge request per child team (7-day grace)
+# and jobs/team_data_purge.py deletes the data afterwards only if the team
+# doc is still gone.
 #
 # Match shape:
 #   * de_asset_workspace            — doc id == workspace_esid
@@ -1150,12 +1153,16 @@ def count_org_members(es, workspace_esid: str) -> int:
 ORG_USER_CAP = 5
 
 
-def cascade_purge_empty_workspace(es, workspace_esid: str) -> dict:
+def cascade_purge_empty_workspace(es, workspace_esid: str, requested_by: str = "unknown") -> dict:
     """Purge an empty workspace + its orgs/teams + authz rows.
 
     Caller MUST verify ``count_workspace_memberships(...) == 0`` before
     invoking — this function does NOT re-check (separation of concerns
     keeps the count + delete each idempotent and individually testable).
+
+    the deleted child teams' data is not touched here; each gets a
+    purge request (7-day grace) written as ``requested_by``, counted under
+    ``de_team_purge_requests``.
 
     Returns ``{index: deleted_count}`` for every index touched.
     Best-effort: index_not_found is a 0-count no-op; other per-index
@@ -1170,6 +1177,9 @@ def cascade_purge_empty_workspace(es, workspace_esid: str) -> dict:
     # re-signup with the same username resumes from stale form state.
     child_org_esids: list[str] = []
     child_team_esids: list[str] = []
+    # each child team's title, read before its doc is purged, so
+    # its purge request can name the legacy ``{slug}_{source}`` indices.
+    child_team_titles: dict[str, str] = {}
     # ``de_asset_teams.workspace_esid`` was reindexed from ``text``
     # to ``keyword``, so the bare ``term:{workspace_esid: ...}`` now matches
     # hyphenated slugs and the ``.keyword`` workaround is gone.
@@ -1183,12 +1193,14 @@ def cascade_purge_empty_workspace(es, workspace_esid: str) -> dict:
                 index=index,
                 body={
                     "query": {"term": {field: workspace_esid}},
-                    "_source": False,
+                    "_source": ["team_title"] if index == "de_asset_teams" else False,
                     "size": 10000,
                 },
             )
             for hit in resp.get("hits", {}).get("hits", []):
                 sink.append(hit["_id"])
+                if index == "de_asset_teams":
+                    child_team_titles[hit["_id"]] = (hit.get("_source") or {}).get("team_title") or ""
         except Exception as e:
             err = str(e).lower()
             if "index_not_found" in err or "404" in err:
@@ -1282,6 +1294,26 @@ def cascade_purge_empty_workspace(es, workspace_esid: str) -> dict:
                 e,
             )
             counts[index] = 0
+
+    # the child teams' docs are gone (step 2); their data indices
+    # and raw files are not. Record a purge request per team — the 7-day
+    # grace and the still-deleted re-check live in jobs/team_data_purge.py.
+    if child_team_esids and counts.get("de_asset_teams", 0) > 0:
+        try:
+            from asset_management.web.services.team_purge_service import record_team_purge_tombstones
+
+            counts["de_team_purge_requests"] = record_team_purge_tombstones(
+                es,
+                [
+                    {"esid": esid, "team_title": child_team_titles.get(esid, ""), "workspace_esid": workspace_esid}
+                    for esid in child_team_esids
+                ],
+                requested_by=requested_by,
+                reason="workspace_delete",
+            )
+        except Exception as e:  # noqa: BLE001 — best-effort, like every leg of this cascade
+            logging.warning("purge requests failed for workspace %s: %s", workspace_esid, e)
+            counts["de_team_purge_requests"] = 0
 
     # Step 3: child-keyed purges (terms over the enumerated org/team
     # esids). Empty enumeration => no-op for that index.

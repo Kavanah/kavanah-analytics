@@ -1960,7 +1960,7 @@
     // remains top-right (per the AC's "no behavior change unless they
     // choose to move it") — applying a saved position only happens
     // when localStorage carries a non-default value.
-    var DRAG_STORAGE_KEY = 'note_3.dashboardChecklist.pos';
+    var DRAG_STORAGE_KEY = 'note_4.dashboardChecklist.pos';
     var DRAG_VIEWPORT_PAD = 8;
     // the card's only drag handle is its top edge
     // (.cs-checklist-head / the collapsed .cs-checklist-header). Two
@@ -3868,6 +3868,11 @@
                 _setMetaImportBanner('Canceling import… ' + percent + '%', 'cancelling');
                 return;
             }
+            // waiting for a global import slot ("queued (#2)").
+            if (status === 'queued') {
+                _setMetaImportBanner(progress.status_label || 'queued', 'progress');
+                return;
+            }
             if (status === 'cancelled') {
                 clearInterval(_metaRangePoller);
                 _metaRangePoller = null;
@@ -3925,13 +3930,18 @@
             // moment and the dashboards already reflect whatever
             // succeeded. Only pending / running fires the banner +
             // poller.
-            if (status !== 'pending' && status !== 'running') return;
+            // a run queued for a global import slot is in flight too.
+            if (status !== 'pending' && status !== 'running' && status !== 'queued') return;
             const percent = (typeof progress.percent === 'number') ? progress.percent : 0;
             // items 2/4 — capture the run_id so the Cancel
             // button is wired up immediately on arrival, and drop the
             // "Importing Meta data" prefix from the text.
             if (progress.run_id) _metaImportActiveRunId = progress.run_id;
-            _setMetaImportBanner(percent + '% complete', 'progress');
+            if (status === 'queued') {
+                _setMetaImportBanner(progress.status_label || 'queued', 'progress');
+            } else {
+                _setMetaImportBanner(percent + '% complete', 'progress');
+            }
             _startMetaRangePolling();
         } catch (e) {
             // Network blip on arrival is not worth bothering the user

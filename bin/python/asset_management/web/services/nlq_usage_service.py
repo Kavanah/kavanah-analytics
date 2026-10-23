@@ -15,18 +15,42 @@ except ImportError:
 
 NLQ_USAGE_INDEX = "nlq_usage_log"
 
-# Pricing per million tokens (as of 2025 — update if pricing changes)
+# Pricing per million tokens, USD (Anthropic list prices, re-checked
+# 2026-10-22 for update if pricing changes). Keys are the exact
+# ``model`` strings the two AI features send on EITHER provider: the direct
+# Anthropic API uses bare ids (``claude-haiku-5-5``), Bedrock uses inference
+# profiles (``us.anthropic.…``). A model missing here is charged
+# _DEFAULT_PRICING, which undercounts Opus about five times and starves the
+# daily caps — PRICING-002 pins every id the features can resolve.
+#
+# ``long_input`` / ``long_output`` (Haiku 5.5 only): the rate card for a
+# prompt longer than _LONG_PROMPT_TOKENS.
+_LONG_PROMPT_TOKENS = 100_000
+# prompt caching (Anthropic pricing page, 2026-10-22): a 5-minute
+# cache write costs 1.25x the input rate; a cache read 0.1x, except Opus 5.5
+# and Sonnet 5.5 at 0.05x (a pricing row may carry "cache_read_multiplier").
+_CACHE_WRITE_MULTIPLIER = 1.25
+_CACHE_READ_MULTIPLIER = 0.10
 _PRICING = {
-    # Anthropic direct API
-    "claude-haiku-4-5-20251001": {"input": 0.80, "output": 4.00},
+    # ── Anthropic direct API ─────────────────────────────────────────────
+    # current generation: NLQ haiku/sonnet routes, canvas tiers.
+    "claude-haiku-5-5": {"input": 0.10, "output": 0.50, "long_input": 0.50, "long_output": 2.50},
+    "claude-sonnet-5-5": {"input": 2.00, "output": 10.00, "cache_read_multiplier": 0.05},
+    "claude-opus-5-5": {"input": 4.00, "output": 20.00, "cache_read_multiplier": 0.05},
+    # Previous generation, still valid direct-API ids (master-config overrides).
+    "claude-sonnet-5": {"input": 2.00, "output": 10.00},
+    "claude-opus-4-8": {"input": 5.00, "output": 25.00},
+    # Haiku 4.5 is $1 / $5 (the old $0.80 / $4 rows were Haiku 3.5's).
+    "claude-haiku-4-5": {"input": 1.00, "output": 5.00},
+    "claude-haiku-4-5-20251001": {"input": 1.00, "output": 5.00},
     "claude-sonnet-4-20250514": {"input": 3.00, "output": 15.00},
     "claude-sonnet-4-5-20250514": {"input": 3.00, "output": 15.00},
     "claude-sonnet-4-6-20250627": {"input": 3.00, "output": 15.00},
     # real direct-API alias (no date suffix)
     "claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
-    # AWS Bedrock (same on-demand pricing)
-    "us.anthropic.claude-haiku-4-5-20251001-v1:0": {"input": 0.80, "output": 4.00},
-    "us.anthropic.claude-haiku-4-5-v1-20251001": {"input": 0.80, "output": 4.00},
+    # ── AWS Bedrock (same on-demand pricing) ─────────────────────────────
+    "us.anthropic.claude-haiku-4-5-20251001-v1:0": {"input": 1.00, "output": 5.00},
+    "us.anthropic.claude-haiku-4-5-v1-20251001": {"input": 1.00, "output": 5.00},
     "us.anthropic.claude-sonnet-4-20250514-v1:0": {"input": 3.00, "output": 15.00},
     "us.anthropic.claude-sonnet-4-5-v2-20250514": {"input": 3.00, "output": 15.00},
     "us.anthropic.claude-sonnet-4-6-v1-20250627": {"input": 3.00, "output": 15.00},
@@ -38,19 +62,34 @@ _PRICING = {
     # inference profiles.
     "us.anthropic.claude-sonnet-4-5-20250929-v1:0": {"input": 3.00, "output": 15.00},
     "us.anthropic.claude-opus-4-5-20251101-v1:0": {"input": 5.00, "output": 25.00},
-    "global.anthropic.claude-haiku-4-5": {"input": 0.80, "output": 4.00},
+    "global.anthropic.claude-haiku-4-5": {"input": 1.00, "output": 5.00},
     # (superseded): the bare us. Haiku alias is NOT an active Bedrock
     # inference profile in us-west-2 (it 400s "provided model identifier is
     # invalid"), unlike the bare Sonnet 5 / Opus 4.8 aliases which DO resolve.
-    # The fast-tier default is now the versioned profile priced on line 28
-    # (us.anthropic.claude-haiku-4-5-20251001-v1:0). Kept here only so any
-    # already-logged rows carrying the bare id still price correctly.
-    "us.anthropic.claude-haiku-4-5": {"input": 0.80, "output": 4.00},
+    # The fast-tier default is the versioned profile above. Kept here only so
+    # any already-logged rows carrying the bare id still price correctly.
+    "us.anthropic.claude-haiku-4-5": {"input": 1.00, "output": 5.00},
     "us.anthropic.claude-sonnet-5": {"input": 3.00, "output": 15.00},
     "global.anthropic.claude-sonnet-5": {"input": 2.70, "output": 13.50},
     "us.anthropic.claude-opus-4-8": {"input": 5.00, "output": 25.00},
 }
 _DEFAULT_PRICING = {"input": 1.00, "output": 5.00}
+
+# once the prepaid Console credit is spent the direct API refuses
+# every call with HTTP 400 invalid_request_error ("Your credit balance is too
+# low to access the Anthropic API …"). a teammate chose a hard stop (no backup card,
+# the credit renews monthly), so this is an expected end-of-month state, not
+# a bug — the services say so instead of "API error — see server logs".
+CREDIT_EXHAUSTED_ERROR = "The monthly AI credit is used up — AI features return when it renews."
+
+
+def is_credit_exhausted(err: Exception) -> bool:
+    """True when a provider error is the Anthropic credit-balance refusal."""
+    return "credit balance" in str(err).lower()
+
+
+# models charged at the default rate are logged once per process.
+_unpriced_models_seen: set[str] = set()
 
 NLQ_USAGE_MAPPING = {
     "properties": {
@@ -71,6 +110,9 @@ NLQ_USAGE_MAPPING = {
         "model": {"type": "keyword"},
         "input_tokens": {"type": "integer"},
         "output_tokens": {"type": "integer"},
+        # prompt-cache activity per logged call (0 before caching shipped).
+        "cache_read_input_tokens": {"type": "integer"},
+        "cache_creation_input_tokens": {"type": "integer"},
         "total_tokens": {"type": "integer"},
         "estimated_cost_usd": {"type": "float"},
         "success": {"type": "boolean"},
@@ -106,10 +148,43 @@ def ensure_usage_index() -> None:
         logging.warning(f"NLQ: could not update usage-index mapping: {e}")
 
 
-def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
-    """Calculate estimated USD cost for a query."""
-    pricing = _PRICING.get(model, _DEFAULT_PRICING)
-    cost = (input_tokens * pricing["input"] / 1_000_000) + (output_tokens * pricing["output"] / 1_000_000)
+def _estimate_cost(
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    cache_read_tokens: int = 0,
+    cache_write_tokens: int = 0,
+) -> float:
+    """Calculate estimated USD cost for a query.
+
+    ``input_tokens`` is the UNCACHED remainder (what the API reports);
+    cache writes bill at 1.25x and cache reads at 0.1x the input rate. The
+    rate card is chosen on the whole prompt (uncached + cached tokens).
+
+    a model with no pricing row is charged _DEFAULT_PRICING and
+    logged once, because the fallback silently under-meters the daily caps.
+    A model with a long-prompt card (Haiku 5.5) moves to it when
+    ``input_tokens`` exceeds _LONG_PROMPT_TOKENS. The card is chosen per
+    REQUEST, so callers must price each request's own tokens (the NLQ tool
+    loop does, and passes the total through ``usage["estimated_cost_usd"]``)
+    rather than a summed loop total.
+    """
+    pricing = _PRICING.get(model)
+    if pricing is None:
+        if model not in _unpriced_models_seen:
+            _unpriced_models_seen.add(model)
+            logging.warning("NLQ usage: model %r has no pricing row; charging the default rate", model)
+        pricing = _DEFAULT_PRICING
+    in_rate, out_rate = pricing["input"], pricing["output"]
+    prompt_tokens = input_tokens + cache_read_tokens + cache_write_tokens
+    if prompt_tokens > _LONG_PROMPT_TOKENS and "long_input" in pricing:
+        in_rate, out_rate = pricing["long_input"], pricing["long_output"]
+    cost = (
+        input_tokens * in_rate
+        + cache_write_tokens * in_rate * _CACHE_WRITE_MULTIPLIER
+        + cache_read_tokens * in_rate * pricing.get("cache_read_multiplier", _CACHE_READ_MULTIPLIER)
+        + output_tokens * out_rate
+    ) / 1_000_000
     return round(cost, 6)
 
 
@@ -190,6 +265,15 @@ def log_query(
     input_tokens = usage.get("input_tokens", 0)
     output_tokens = usage.get("output_tokens", 0)
     model = usage.get("model", "unknown")
+    # a caller that priced each request as it ran (the NLQ tool
+    # loop) passes the total. Pricing the summed tokens here would put a
+    # multi-step query on Haiku 5.5's long-prompt card that no single
+    # request reached (seen 2026-10-22: $0.07 logged, $0.01 billed).
+    cache_read_tokens = usage.get("cache_read_input_tokens", 0) or 0
+    cache_write_tokens = usage.get("cache_creation_input_tokens", 0) or 0
+    cost = usage.get("estimated_cost_usd")
+    if cost is None:
+        cost = _estimate_cost(model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens)
 
     doc = {
         "@timestamp": datetime.now(timezone.utc).isoformat(),
@@ -200,8 +284,10 @@ def log_query(
         "model": model,
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
+        "cache_read_input_tokens": cache_read_tokens,
+        "cache_creation_input_tokens": cache_write_tokens,
         "total_tokens": input_tokens + output_tokens,
-        "estimated_cost_usd": _estimate_cost(model, input_tokens, output_tokens),
+        "estimated_cost_usd": cost,
         "success": success,
     }
     if error:
@@ -354,6 +440,7 @@ def get_usage_stats() -> dict[str, Any]:
                 "aggs": {
                     "total_tokens": {"sum": {"field": "total_tokens"}},
                     "total_cost": {"sum": {"field": "estimated_cost_usd"}},
+                    "total_cache_read_tokens": {"sum": {"field": "cache_read_input_tokens"}},
                     "total_queries": {"value_count": {"field": "@timestamp"}},
                     "today": {
                         "filter": {"range": {"@timestamp": {"gte": today}}},
@@ -393,6 +480,8 @@ def get_usage_stats() -> dict[str, Any]:
         "total_queries": int(aggs.get("total_queries", {}).get("value", 0)),
         "total_tokens": int(aggs.get("total_tokens", {}).get("value", 0)),
         "total_cost_usd": round(aggs.get("total_cost", {}).get("value", 0), 4),
+        # tokens served from the prompt cache (billed at 0.1x).
+        "total_cache_read_tokens": int(aggs.get("total_cache_read_tokens", {}).get("value", 0) or 0),
         "queries_today": int(today_aggs.get("queries", {}).get("value", 0)),
         "cost_today_usd": round(today_aggs.get("cost", {}).get("value", 0), 6),
         "tokens_today": int(today_aggs.get("tokens", {}).get("value", 0)),

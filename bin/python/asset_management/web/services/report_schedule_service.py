@@ -48,6 +48,8 @@ from lib.es_helpers import (
     get_elasticsearch_client,
     put_regular_index_template,
     create_index_if_not_exists,
+    scoped_index_pattern as _scoped_index_pattern,
+    team_data_index_names as _team_indices,
 )
 from lib.import_error_classifier import SEVERITY_ERROR, SEVERITY_INFO
 from lib.errors import UserFacingError
@@ -543,7 +545,9 @@ _CONNECTOR_IMPORT_DISPATCH = {
 # ImportLockService.is_held; youtube takes no lock, so its background import
 # has no live signal (the poll endpoint reports trackable: False).
 # Phase 3 — bitly acquires the connector-global lock (scope_id "").
-_LOCKED_IMPORT_SOURCES = frozenset({"facebook", "google_ads", "echo", "google_analytics", "bitly"})
+# youtube now takes a per-team-set lock (so it sits inside the global
+# import cap); listing it here is what lets Cancel force_release that lock.
+_LOCKED_IMPORT_SOURCES = frozenset({"facebook", "google_ads", "echo", "google_analytics", "bitly", "youtube"})
 
 # sources whose run_daily_imports honors --progress_run_id and writes
 # live per-stage / per-day progress to de_import_progress (ImportProgressService).
@@ -569,9 +573,11 @@ _PROGRESS_IMPORT_SOURCES = frozenset({"facebook", "google_ads", "google_analytic
 # _trigger_scoped_import). facebook joins too: its lock is PER-CONNECTION
 # (facebook::<connection_esid>) when the team cohort resolves to one wizard
 # connection, via meta_connection_scope_key; legacy/mixed/unresolvable cohorts fall
-# back to "" (connector-global), same as before. Keep in sync with the scope_id
-# passed at each importer's ImportLockService.acquire call.
-_PER_SCOPE_LOCK_SOURCES = frozenset({"google_ads", "google_analytics", "echo", "facebook"})
+# back to "" (connector-global), same as before. youtube joins: its
+# lock is keyed on the dispatch's TEAM-ESID set (scope_key_for_ids, the generic
+# branch below — the importer is team-scoped and has no connection key). Keep in
+# sync with the scope_id passed at each importer's ImportLockService.acquire call.
+_PER_SCOPE_LOCK_SOURCES = frozenset({"google_ads", "google_analytics", "echo", "facebook", "youtube"})
 
 # YouTube reports progress by step (fetch -> index -> archive), not by
 # date, so its progress denominator is this fixed step count. Keep in sync with
@@ -1787,8 +1793,16 @@ class ReportScheduleService:
 
     @staticmethod
     def _resolve_scope_titles(es, schedule: dict) -> list[str]:
-        """Resolve a schedule's stored team/org scope to the team_title(s) used
-        as the snapshot's data-scope filter.
+        """The team titles of ``_resolve_scope`` (kept for title-only callers)."""
+        return ReportScheduleService._resolve_scope(es, schedule)[0]
+
+    @staticmethod
+    def _resolve_scope(es, schedule: dict) -> tuple[list[str], list[str]]:
+        """Resolve a schedule's stored team/org scope to ``(team_titles,
+        team_esids)`` — the titles label and filter the snapshot, the ESIDs pin
+        every query to the teams' own ``{team_esid}__{source}`` indices
+        (titles are not unique across tenants, so a title filter over
+        a wildcard data view also matched a same-titled foreign team).
 
         Headless equivalent of the session-based scoping in run_query: the cron
         runner has no Flask session, so scope comes from the schedule itself.
@@ -1804,7 +1818,7 @@ class ReportScheduleService:
         rendered only one team's data — empty if that team had none in the window
         (staging: a 19-team Echo report resolved to 1 title → empty table).
 
-        Returns the list of allowed titles (possibly empty → the snapshot
+        Returns the allowed titles and ESIDs (possibly empty → the snapshot
         computes empty rather than unscoped).
         """
         org_id = schedule.get("org_id") or ""
@@ -1821,10 +1835,11 @@ class ReportScheduleService:
                     },
                 )
                 hits = res.get("hits", {}).get("hits", [])
-                return [h["_source"]["team_title"] for h in hits if (h.get("_source") or {}).get("team_title")]
+                titles = [h["_source"]["team_title"] for h in hits if (h.get("_source") or {}).get("team_title")]
+                return titles, [h["_id"] for h in hits if h.get("_id")]
             except Exception as e:
-                logging.error("ReportScheduleService._resolve_scope_titles team lookup: %s", e)
-                return []
+                logging.error("ReportScheduleService._resolve_scope team lookup: %s", e)
+                return [], []
 
         if org_id:
             rf = _import_first(
@@ -1834,10 +1849,11 @@ class ReportScheduleService:
             )
             RoleFilterService = rf.RoleFilterService
             try:
-                return list(RoleFilterService.get_team_titles_by_organization_esids([org_id]) or [])
+                teams = list(RoleFilterService.get_teams_by_organization_esids([org_id]) or [])
             except Exception as e:
-                logging.error("ReportScheduleService._resolve_scope_titles org lookup: %s", e)
-                return []
+                logging.error("ReportScheduleService._resolve_scope org lookup: %s", e)
+                return [], []
+            return [title for _e, title in teams if title], [esid for esid, _t in teams if esid]
         # no explicit scope on the schedule. Email schedules store no
         # org/team at all (the dialog has no scope fields), which used to fall
         # through to [] here and then to an EMPTY match_phrase_any clause in
@@ -1848,11 +1864,16 @@ class ReportScheduleService:
         # which _precompute_charts now treats as deny-all (empty results),
         # never unfiltered. "the creator's teams" means the set the
         # dialog's org/team tree offered them, NOT what their privilege can
-        # reach — see _creator_scope_titles.
-        return ReportScheduleService._creator_scope_titles(es, schedule)
+        # reach — see _creator_scope.
+        return ReportScheduleService._creator_scope(es, schedule)
 
     @staticmethod
     def _creator_scope_titles(es, schedule: dict) -> list[str]:
+        """The team titles of ``_creator_scope`` (kept for title-only callers)."""
+        return ReportScheduleService._creator_scope(es, schedule)[0]
+
+    @staticmethod
+    def _creator_scope(es, schedule: dict) -> tuple[list[str], list[str]]:
         """resolve the schedule creator's team titles as
         the set the email dialog's org/team tree offered them.
 
@@ -1887,7 +1908,7 @@ class ReportScheduleService:
         """
         created_by = (schedule.get("created_by") or "").strip()
         if not created_by:
-            return []
+            return [], []
         try:
             rf = _import_first(
                 "asset_management.web.services.role_filter_service",
@@ -1926,17 +1947,17 @@ class ReportScheduleService:
                 workspaces = list(direct | inferred)
                 own_org_esids = frozenset(scope.org_esids or ())
             if not workspaces:
-                return []
+                return [], []
             teams = css.list_teams(workspaces) or []
             if own_org_esids:
                 # an org owner's tree only offers teams whose
                 # PRIMARY org is theirs; a team listing their org secondarily
                 # (or none) was never offered, so it must not email either.
                 teams = [t for t in teams if t.get("org_esid") in own_org_esids]
-            return sorted({t["title"] for t in teams if t.get("title")})
+            return sorted({t["title"] for t in teams if t.get("title")}), sorted({t["esid"] for t in teams if t.get("esid")})
         except Exception as e:  # noqa: BLE001 — deny-all on any resolution failure, never unfiltered
-            logging.error("ReportScheduleService._creator_scope_titles %s: %s", created_by, e)
-            return []
+            logging.error("ReportScheduleService._creator_scope %s: %s", created_by, e)
+            return [], []
 
     @staticmethod
     def _creator_roles(es, username: str) -> list[str]:
@@ -2037,7 +2058,8 @@ class ReportScheduleService:
                 for scope_key in ((title, ""), ("", title)):
                     entry = db._find_publish_entry(dashboard_source, scope_key)
                     if entry and db._entry_is_active(entry):
-                        token = entry.get("publish_token") or ""
+                        # stored hashed + encrypted; decrypt for the link.
+                        token = db._entry_token(entry) or ""
                         break
             except Exception as e:  # noqa: BLE001 — link is non-critical; fall back to dashboard URL
                 logging.warning("ReportScheduleService._resolve_report_link publish lookup: %s", e)
@@ -2106,6 +2128,7 @@ class ReportScheduleService:
         date_range: dict,
         scope_titles: list[str],
         *,
+        scope_team_esids: list[str],
         schedule: dict | None = None,
         dashboard_source: dict | None = None,
     ) -> dict:
@@ -2183,7 +2206,7 @@ class ReportScheduleService:
             # the wildcard data views span every team in the cluster, so querying
             # with no scope clause leaked cross-workspace data. The empty result
             # renders as the snapshot viewer's neutral "No data in scope" note.
-            if not scope_titles:
+            if not scope_titles or not scope_team_esids:
                 entry["result"] = {}
                 (out_tables if chart_type in _TABLE_CHART_TYPES else out_charts).append(entry)
                 continue
@@ -2212,6 +2235,10 @@ class ReportScheduleService:
                 # for every team (the hand-seeded chatwoot dashboard hit this). See
                 # _normalize_data_view_for_search.
                 data_view = _normalize_data_view_for_search(config.get("data_view", ""))
+                # pin the search to the scope teams' own indices. The
+                # title clause above is not enough on its own: titles repeat
+                # across tenants, and the data view is a cluster-wide wildcard.
+                search_index = _scoped_index_pattern(data_view, _team_indices(scope_team_esids))
                 # enrich the chart with live mapping field-types so
                 # build_query resolves a redundant ``.keyword`` suffix to the
                 # field that exists (parity with _execute_chart_query). Cached
@@ -2220,7 +2247,7 @@ class ReportScheduleService:
                 if ftypes:
                     config["field_types"] = ftypes
                 query_body = build_query(config)
-                es_response = es.search(index=data_view, body=query_body, ignore_unavailable=True)
+                es_response = es.search(index=search_index, body=query_body, ignore_unavailable=True)
                 es_dict = es_response.body if hasattr(es_response, "body") else dict(es_response)
                 result = transform(es_dict, config)
                 # relabel raw field-name headers to the dashboard's
@@ -2296,7 +2323,7 @@ class ReportScheduleService:
             if es is None:
                 data["precompute_skipped"] = "elasticsearch unavailable"
             else:
-                scope_titles = ReportScheduleService._resolve_scope_titles(es, schedule)
+                scope_titles, scope_team_esids = ReportScheduleService._resolve_scope(es, schedule)
                 skipped: list[str] = []
                 # follow-up — one link per dashboard, in check order.
                 # The email renders these directly (see report_email_service.
@@ -2312,7 +2339,11 @@ class ReportScheduleService:
                         # stored in the standard tables shape so the
                         # email/export/View pipeline is unchanged.
                         computed = rt.build_report_data(
-                            es, {**schedule, "dashboard_id": dashboard_id}, scope_titles, date_range
+                            es,
+                            {**schedule, "dashboard_id": dashboard_id},
+                            scope_titles,
+                            date_range,
+                            scope_team_esids=scope_team_esids,
                         )
                         data["tables"].extend(computed.get("tables") or [])
                         data["summary_metrics"].update(computed.get("summary_metrics") or {})
@@ -2347,6 +2378,7 @@ class ReportScheduleService:
                         charts,
                         date_range,
                         scope_titles,
+                        scope_team_esids=scope_team_esids,
                         schedule=schedule,
                         dashboard_source=dashboard_source,
                     )
@@ -2764,6 +2796,9 @@ class ReportScheduleService:
         #     esids → meta_connection_scope_key, the importer's exact lock-site
         #     function (legacy/mixed cohorts resolve to "" = connector-global). Meta
         #     is multi:True so ``values`` equals the one batch's --team_ids verbatim.
+        # * youtube: ``values`` are TEAM esids and the importer keys its
+        #     lock on scope_key_for_ids(--team_ids) — the generic branch, multi:True
+        #     so the one batch's --team_ids is ``values`` verbatim.
         lock_scope = ""
         if spec["source"] in _PER_SCOPE_LOCK_SOURCES:
             from lib.import_lock_service import ImportLockService
@@ -4675,6 +4710,8 @@ class ReportScheduleService:
         status = doc.get("status") or "pending"
         if status == "succeeded":
             percent = 100
+        from lib.import_slots import status_label
+
         return {
             "status": status,
             "phase": doc.get("phase") or "",
@@ -4682,4 +4719,8 @@ class ReportScheduleService:
             "days_fetched": days_fetched,
             "percent": percent,
             "error": doc.get("error") or "",
+            # waiting for a global import slot: the bar reads
+            # status_label ("queued (#2)") instead of a stage message.
+            "queue_position": doc.get("queue_position"),
+            "status_label": status_label(status, doc.get("queue_position")),
         }

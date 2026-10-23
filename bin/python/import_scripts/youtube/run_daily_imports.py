@@ -21,7 +21,8 @@ import lib.logging as custom_logging
 
 
 # fail-soft progress writers for the scheduler Run-now bar. The
-# YouTube importer has no per-date loop or cluster lock; it runs three sequential
+# YouTube importer has no per-date loop (it now takes a per-team-set
+# import lock — see main()); it runs three sequential
 # steps (fetch -> index -> archive). We report progress by phase: each step sets
 # a phase + bumps a nominal day counter (1/2/3 of 3) so the bar shows a real
 # percentage and the current stage. All no-ops when run_id is None (cron path)
@@ -132,6 +133,48 @@ def main(params):
     # + stage. Cron / CLI runs pass nothing → progress_run_id is None and every
     # progress write is a no-op.
     progress_run_id = params.get("progress_run_id") or None
+    # progress doc. Both automated launchers pre-mint the doc and
+    # pass --progress_run_id (the Report Scheduler, _start_progress_run; the
+    # wizard / Custom Range kickoff, _kickoff_on_demand_backfill) — GA4's
+    # external_run_id path. GA4 only mints its own run when handed
+    # --connection_esid + a resolvable principal; YouTube is team-scoped and is
+    # never given either, so there is nothing to mint from here. The
+    # manual Import Data page passes no run id (it shows import_runner status
+    # files, not progress docs); such a run queues on a local ticket.
+
+    # per-scope import lock, GA4 pattern. YouTube
+    # had no lock, so it bypassed the global import cap entirely — and a 12-month
+    # backfill runs ~2.6 h per team. The importer is team-scoped (channels and
+    # per-account OAuth tokens resolve from the team's linked assets; it never
+    # reads de_connection), so there is no per-connection key: the
+    # scope is the run's TEAM-ESID set via scope_key_for_ids — the same function
+    # the scheduler uses to stamp import_lock_scope for Cancel's force_release
+    # (report_schedule_service._PER_SCOPE_LOCK_SOURCES). Different teams run in
+    # parallel; the same team set serializes (double-click /
+    # loser-resolve). acquire() then waits for a global slot (lib.import_slots).
+    lock_scope = ""
+    lock_id = None
+    try:
+        from lib.import_lock_service import ImportLockService
+
+        lock_scope = ImportLockService.scope_key_for_ids(team_ids)
+        lock_id = ImportLockService.acquire("youtube", scope_id=lock_scope, progress_run_id=progress_run_id)
+        if lock_id is None:
+            logging.warning("lock: another youtube importer holds the lock (scope=%r); exiting cleanly.", lock_scope)
+            # resolve our progress doc IFF it's a true orphan (the lock
+            # winner is a DIFFERENT run that will never finalize it). A
+            # same-schedule winner adopting this same run_id and progressing it is
+            # left alone (preserves the double-click protection). Fail-soft.
+            if progress_run_id:
+                try:
+                    from lib.import_progress_service import ImportProgressService
+
+                    ImportProgressService.resolve_orphaned_lock_loser(progress_run_id)
+                except Exception as exc:  # noqa: BLE001
+                    logging.warning("lock: resolve_orphaned_lock_loser raised: %s", exc)
+            return
+    except Exception as exc:  # noqa: BLE001 — boundary
+        logging.warning("lock: acquire raised: %s — proceeding", exc)
 
     logging.info(f"\n{'='*60}")
     logging.info(f"YouTube Analytics Daily Import Workflow")
@@ -203,24 +246,34 @@ def main(params):
     if progress_run_id:
         steps[0]["command"].extend(["--progress_run_id", progress_run_id])
 
-    # Execute workflow steps sequentially
-    all_successful = True
-    for i, step in enumerate(steps, start=1):
-        # announce the stage BEFORE running it so the bar shows the
-        # step that's in flight (and its share of the 3-step progress).
-        _yt_set_phase(progress_run_id, step["phase"], i)
-        success = run_subprocess(step["command"], step["name"])
-        if not success:
-            all_successful = False
-            logging.error(f"Workflow stopped due to error in: {step['name']}")
-            # terminal failure stamp so the Run-now bar resolves to a
-            # failed state instead of hanging.
-            _yt_complete(progress_run_id, "failed", error=f"step failed: {step['name']}")
-            break
+    try:
+        # Execute workflow steps sequentially
+        all_successful = True
+        for i, step in enumerate(steps, start=1):
+            # announce the stage BEFORE running it so the bar shows the
+            # step that's in flight (and its share of the 3-step progress).
+            _yt_set_phase(progress_run_id, step["phase"], i)
+            success = run_subprocess(step["command"], step["name"])
+            if not success:
+                all_successful = False
+                logging.error(f"Workflow stopped due to error in: {step['name']}")
+                # terminal failure stamp so the Run-now bar resolves to a
+                # failed state instead of hanging.
+                _yt_complete(progress_run_id, "failed", error=f"step failed: {step['name']}")
+                break
 
-    # terminal success stamp (all three steps completed).
-    if all_successful:
-        _yt_complete(progress_run_id, "succeeded")
+        # terminal success stamp (all three steps completed).
+        if all_successful:
+            _yt_complete(progress_run_id, "succeeded")
+    finally:
+        # release the lock (and its global import slot).
+        if lock_id:
+            try:
+                from lib.import_lock_service import ImportLockService
+
+                ImportLockService.release("youtube", lock_id, scope_id=lock_scope)
+            except Exception as exc:  # noqa: BLE001
+                logging.warning("lock release raised: %s", exc)
 
     # Final summary
     end_time = datetime.now()

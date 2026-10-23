@@ -114,11 +114,12 @@ Queries.*
 Select a Model
 --------------
 
-The model dropdown next to the search bar offers two options:
+When your deployment runs different models behind the two choices, a model
+dropdown next to the search bar offers:
 
-- **Haiku 4.5 (fast)** — handles most queries quickly and is the
+- **Haiku (fast)** — handles most queries quickly and is the
   cheapest to run.
-- **Sonnet 4 (smart)** — slower and more expensive, but better at
+- **Sonnet (smart)** — slower and more expensive, but better at
   multi-step reasoning when Haiku doesn't get there.
 
 Start with Haiku and switch to Sonnet only if you need it.

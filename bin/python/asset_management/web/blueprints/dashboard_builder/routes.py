@@ -3,6 +3,8 @@ Dashboard Builder Blueprint Routes
 Provides API endpoints and page rendering for the visual dashboard builder.
 """
 
+import hashlib
+import hmac
 import json
 import os
 import re
@@ -1475,7 +1477,10 @@ def _connected_data_views(space_id: str = "default") -> list[dict]:
             es = get_elasticsearch_client()
             if es:
                 existing_ids = {dv["id"] for dv in data_views}
-                indices = es.indices.get(index="*")
+                # list only the indices this caller may read — the
+                # bare cluster listing named every tenant's indices.
+                visible = RoleFilterService.scoped_index_pattern("*").split(",")
+                indices = es.indices.get(index=",".join(visible), ignore_unavailable=True, allow_no_indices=True)
                 for name in sorted(indices.keys()):
                     if not name.startswith(".") and name not in existing_ids:
                         data_views.append({"id": name, "label": name.replace("_", " ").title()})
@@ -2149,6 +2154,10 @@ def get_field_values(data_view_id, field):
         date_to = (request.args.get("to") or "").strip() or None
 
         cache_key = (
+            # the caller's resolved Layer-1 index list. The cache is
+            # process-wide, so without it one tenant was served another
+            # tenant's cached values for the same (data view, field).
+            RoleFilterService.scoped_index_pattern(data_view_id),
             data_view_id,
             field,
             asset_type or "",
@@ -2426,7 +2435,9 @@ _MAP_STATISTICS = {
     "dt_contacts": {
         "data_source": "dt",
         "field": None,
-        "dt_date_field": "meta.first_contact_date_ms",
+        # meta.first_contact_date_ms is unmapped on the real DT
+        # indices and `long` on the demo one, where date math 400s.
+        "dt_date_field": "date_created_ms",
     },
     "echo_multiplier": {
         "data_source": "echo",
@@ -2502,7 +2513,8 @@ _MAP_STATISTICS = {
         "field": "meta.seeker_path.keyword",
         "type": "term",
         "value": "met",
-        "dt_date_field": "meta.first_contact_date_ms",
+        # same field as Trends' 1st Meetings (see dt_contacts).
+        "dt_date_field": "date_created_ms",
     },
     "new_groups": {
         "data_source": "dt",
@@ -4111,7 +4123,7 @@ def _query_dt_country_map(es, stat_cfg, org, teams, date_from, date_to):
         # retired cross-tenant `disciple-tools` alias. Tenant scoping stays at
         # query level via _org_team_filters, same model the alias used.
         resp = es.search(
-            index="*_disciple_tools",
+            index=RoleFilterService.scoped_index_pattern("*_disciple_tools"),
             body=_dt_map_query_body(must, address_only=address_only),
         )
         resp_dict = resp.body if hasattr(resp, "body") else dict(resp)
@@ -4324,7 +4336,7 @@ def _query_dt_team_country_map(es, stat_cfg, org, teams, date_from, date_to):
     # fallback to bare team_title never fired — a .keyword agg on a bare-keyword
     # index returns 0 buckets rather than raising — so bare-keyword teams were
     # silently dropped from the DT country map.
-    by_team = _terms_agg_by_team_title(es, "*_disciple_tools", query)
+    by_team = _terms_agg_by_team_title(es, RoleFilterService.scoped_index_pattern("*_disciple_tools"), query)
 
     country_totals = {}
     for team, agg in by_team.items():
@@ -4356,7 +4368,10 @@ def _query_dt_map(es, stat_cfg, org, teams, date_from, date_to):
 
     address_only = stat_cfg.get("address_only", False)
     # team-keyed indices replace the retired `disciple-tools` alias.
-    resp = es.search(index="*_disciple_tools", body=_dt_map_query_body(must, address_only=address_only))
+    resp = es.search(
+        index=RoleFilterService.scoped_index_pattern("*_disciple_tools"),
+        body=_dt_map_query_body(must, address_only=address_only),
+    )
     resp_dict = resp.body if hasattr(resp, "body") else dict(resp)
 
     points = []
@@ -5813,6 +5828,46 @@ def get_profile_image():
     return resp
 
 
+_QUERY_FILTER_SCALARS = (str, int, float, bool)
+_QUERY_FILTER_RANGE_KEYS = frozenset({"gte", "gt", "lte", "lt", "format"})
+
+
+def _is_safe_query_filter(query_filter) -> bool:
+    """is a trend-line source's raw ``query_filter`` one of the
+    plain shapes the seeded dashboards use?
+
+    ``query_filter`` is appended verbatim to the search's ``bool.filter``, so
+    from a client body (or a saved dashboard a user authored) it could carry a
+    ``terms`` LOOKUP into another index, a ``script``, or ``more_like_this``
+    — a yes/no oracle on documents outside the caller's scope. Only a single
+    ``term`` / ``terms`` (value list) / ``range`` / ``exists`` leaf on a field
+    is accepted.
+    """
+    if not isinstance(query_filter, dict) or len(query_filter) != 1:
+        return False
+    ((kind, spec),) = query_filter.items()
+    if not isinstance(spec, dict):
+        return False
+    if kind == "exists":
+        return set(spec) == {"field"} and isinstance(spec["field"], str)
+    if kind not in ("term", "terms", "range") or len(spec) != 1:
+        return False
+    ((field, value),) = spec.items()
+    if not isinstance(field, str):
+        return False
+    if kind == "term":
+        if isinstance(value, dict):
+            return set(value) == {"value"} and isinstance(value["value"], _QUERY_FILTER_SCALARS)
+        return isinstance(value, _QUERY_FILTER_SCALARS)
+    if kind == "terms":
+        return isinstance(value, list) and all(isinstance(v, _QUERY_FILTER_SCALARS) for v in value)
+    return (
+        isinstance(value, dict)
+        and set(value) <= _QUERY_FILTER_RANGE_KEYS
+        and all(isinstance(v, _QUERY_FILTER_SCALARS) for v in value.values())
+    )
+
+
 @dashboard_bp.route("/api/trend-line-data", methods=["POST"])
 def get_trend_line_data():
     """Return multi-source date histogram data for a trend_line chart.
@@ -5840,6 +5895,9 @@ def get_trend_line_data():
             dv = src.get("data_view", "")
             if dv:
                 _require_index_access(dv)
+            # only plain filter shapes may ride into bool.filter.
+            if src.get("query_filter") is not None and not _is_safe_query_filter(src.get("query_filter")):
+                return jsonify({"error": "Unsupported query_filter"}), 400
 
         # same body-filter scope-bypass pattern as /api/query.
         # Intersect any scope-defining filters in body['filters'] against
@@ -7953,6 +8011,12 @@ def export_dashboard(dashboard_id):
                     if not data_view:
                         tl_results[label] = {}
                         continue
+                    if query_filter is not None and not _is_safe_query_filter(query_filter):
+                        # a saved source with a non-plain filter is
+                        # dropped from the export, never executed.
+                        logging.warning("export: dropping trend-line source %r with an unsupported query_filter", label)
+                        tl_results[label] = {}
+                        continue
 
                     hist = {
                         "field": date_field,
@@ -8643,15 +8707,19 @@ def delete_dashboard(dashboard_id):
 # ══════════════════════════════════════════════════════════════
 #
 # Fields on the dashboard record:
-#   publish_token          — URL-safe secret; absent when unpublished
+#   publish_token          — URL-safe secret; absent when unpublished. LEGACY
+# plaintext: an entry stores
+#                            publish_token_hash (SHA-256 hex, the lookup key)
+#                            + publish_token_enc (Fernet, for re-display only)
 #   publish_enabled        — bool mirror of token presence, kept for clarity
 #   published_at           — ISO-8601 timestamp of first publish / last regenerate
 # publish_expires_at — ISO-8601 expiry; null = never expires
 # published_org_title — org title snapshot at publish time
 # published_team_title — team title snapshot at publish time
 #
-# Lookup by token uses a term query on publish_token.keyword and rejects
-# expired tokens (publish_expires_at <= now).
+# Lookup by token hashes the presented token and matches the hash (;
+# see _lookup_dashboard_by_token) and rejects expired tokens
+# (publish_expires_at <= now).
 #
 # The ``publish_reports`` permission gates publish/unpublish/regenerate so an
 # org admin can grant "share publicly" without granting "edit dashboards".
@@ -8799,13 +8867,20 @@ def _forced_publish_filters(source: dict) -> list[dict]:
     # own allowed scope. Intersecting here (in addition to the publish-time
     # validation) closes the window for any entry stamped with a foreign title
     # BEFORE the write-path fix landed — without it, a pre-fix malicious entry
-    # would keep serving another tenant's data via the public link. An
-    # out-of-scope snapshot title falls through to the dashboard's general
-    # allowed_*_esids scope (never wider than the dashboard itself).
-    if pub_team and pub_team in set(team_titles):
-        return [{"field": "team_title", "op": "match_phrase", "value": pub_team}]
-    if pub_org and pub_org in set(org_titles):
-        return [{"field": "organization_title", "op": "match_phrase", "value": pub_org}]
+    # would keep serving another tenant's data via the public link.
+    # a snapshot that no longer resolves (the team or org was renamed
+    # or left the dashboard's scope) serves NOTHING. It used to fall through to
+    # the dashboard's whole allowed scope, so a link minted for one team served
+    # every team the dashboard covers. An empty list makes every public route
+    # refuse.
+    if pub_team:
+        if pub_team in set(team_titles):
+            return [{"field": "team_title", "op": "match_phrase", "value": pub_team}]
+        return []
+    if pub_org:
+        if pub_org in set(org_titles):
+            return [{"field": "organization_title", "op": "match_phrase", "value": pub_org}]
+        return []
 
     specs: list[dict] = []
     if team_titles:
@@ -8819,6 +8894,53 @@ def _forced_publish_filters(source: dict) -> list[dict]:
         else:
             specs.append({"field": "organization_title", "op": "match_phrase_any", "value": org_titles})
     return specs
+
+
+def _publish_scope_team_esids(source: dict) -> list[str]:
+    """the team ESIDs a public query for this publish may read.
+
+    Mirrors ``_forced_publish_filters``' selection exactly — the publisher's
+    snapshot team/org when it lies inside the dashboard's own scope (nothing
+    when a snapshot no longer resolves); with no snapshot, the
+    allowed teams, else the allowed orgs' teams — but yields ESIDs, so the
+    public routes can pin every search to those teams' own
+    ``{team_esid}__{source}`` indices. The forced ``team_title`` filters
+    alone ran over cluster-wide wildcards, and titles repeat across tenants.
+    Teams or orgs that no longer exist contribute nothing; an empty list
+    means the link serves nothing.
+    """
+    team_pairs: list[tuple[str, str]] = []
+    for esid in source.get("allowed_team_esids") or []:
+        if not esid:
+            continue
+        doc = get_document_by_id("de_asset_teams", esid)
+        if doc:
+            team_pairs.append((esid, doc.get("team_title") or ""))
+    org_titles: dict[str, str] = {}
+    for esid in source.get("allowed_org_esids") or []:
+        if not esid:
+            continue
+        doc = get_document_by_id("de_asset_organization", esid)
+        if doc:
+            org_titles[esid] = doc.get("organization_title") or ""
+
+    def _org_team_esids(org_esids: list[str]) -> list[str]:
+        return [e for e, _t in RoleFilterService.get_teams_by_organization_esids(org_esids) if e]
+
+    pub_team = (source.get("published_team_title") or "").strip()
+    pub_org = (source.get("published_org_title") or "").strip()
+    # an unresolvable snapshot pins nothing — same rule as
+    # _forced_publish_filters; never widen to the dashboard's whole scope.
+    if pub_team:
+        return [e for e, t in team_pairs if t == pub_team]
+    if pub_org:
+        matched = [e for e, t in org_titles.items() if t == pub_org]
+        return _org_team_esids(matched) if matched else []
+    if team_pairs:
+        return [e for e, _t in team_pairs]
+    if org_titles:
+        return _org_team_esids(list(org_titles))
+    return []
 
 
 def _canvas_binding_data_views(source: dict) -> set[str]:
@@ -8970,6 +9092,9 @@ _PUBLISH_ENTRY_FIELDS = (
     # city / country / hidden — read per entry by the public map
     # endpoints through the same ``_scoped_source_view`` flattening.
     "publish_map_detail",
+    # the token at rest — lookup hash + encrypted copy for display.
+    "publish_token_hash",
+    "publish_token_enc",
 )
 
 
@@ -9036,11 +9161,95 @@ def _iter_publish_entries(source: dict):
         yield legacy
 
 
+# publish tokens at rest.
+#
+# A publish token IS the credential for a public report, and it sat in the
+# dashboard doc (and the publish_tokens_lookup mirror) in plaintext, so anyone
+# who could read the index (a snapshot, a support export, an over-broad ES
+# role) could open every published report. An entry now stores:
+#   * ``publish_token_hash`` — SHA-256 hex of the token; the lookup key, and the
+#     only form in ``publish_tokens_lookup``. A 256-bit random token needs no
+#     salt or slow hash: there is nothing to brute-force.
+#   * ``publish_token_enc``  — the token Fernet-encrypted (lib.encryption), only
+#     so the publish dialog and scheduled-report emails can show the link again.
+#     Lookup never decrypts.
+# LEGACY: entries written carry plaintext ``publish_token``.
+# They keep working (the ``_entry_*`` helpers and the lookup query accept them)
+# and any publish write on the doc rehashes them (``_hash_entry_token``).
+# tools/hash_publish_tokens.py migrates the rest. Once it reports
+# nothing left on prod, delete every branch marked "legacy".
+
+
+def _publish_token_hash(token: str) -> str:
+    """SHA-256 hex of a publish token — the stored lookup key."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _publish_token_fields(token: str) -> dict:
+    """The at-rest fields for a token: lookup hash + encrypted display copy."""
+    from lib.encryption import encrypt
+
+    return {"publish_token_hash": _publish_token_hash(token), "publish_token_enc": encrypt(token)}
+
+
+def _hash_entry_token(entry: dict) -> dict:
+    """Return ``entry`` with a legacy plaintext ``publish_token`` replaced by the
+     at-rest fields (a copy; an already-hashed entry is returned as is)."""
+    if not isinstance(entry, dict) or "publish_token" not in entry:
+        return entry
+    out = dict(entry)
+    token = out.pop("publish_token")
+    if token:  # legacy
+        out.update(_publish_token_fields(str(token)))
+    return out
+
+
+def _entry_has_token(entry: dict) -> bool:
+    """True when the entry carries a token in either form."""
+    if not isinstance(entry, dict):
+        return False
+    return bool(entry.get("publish_token_hash") or entry.get("publish_token"))  # publish_token
+
+
+def _entry_token(entry: dict) -> str | None:
+    """The raw token, for showing the link to the publisher or in a scheduled
+    email. ``None`` when the entry has none or its copy cannot be decrypted."""
+    if not isinstance(entry, dict):
+        return None
+    encrypted = entry.get("publish_token_enc")
+    if encrypted:
+        from lib.encryption import decrypt
+
+        try:
+            return decrypt(encrypted)
+        except Exception as e:  # noqa: BLE001 — a key we no longer hold; the link still works for viewers
+            logging.warning(f"publish token display copy could not be decrypted: {type(e).__name__}")
+            return None
+    return entry.get("publish_token") or None  # legacy
+
+
+def _entry_token_fields(entry: dict) -> dict:
+    """The at-rest token fields of an existing entry (computed for a legacy one)."""
+    hashed = _hash_entry_token(entry)
+    return {k: hashed.get(k) for k in ("publish_token_hash", "publish_token_enc")}
+
+
+def _entry_matches_token(entry: dict, token: str) -> bool:
+    """True when ``token`` is this entry's token (constant-time compare)."""
+    if not isinstance(entry, dict) or not token:
+        return False
+    stored_hash = entry.get("publish_token_hash")
+    if stored_hash:
+        return hmac.compare_digest(str(stored_hash), _publish_token_hash(token))
+    legacy = entry.get("publish_token")  # legacy
+    return bool(legacy) and hmac.compare_digest(str(legacy).encode("utf-8"), token.encode("utf-8"))
+
+
 def _entry_is_active(entry: dict) -> bool:
     """True if this entry has an enabled, unexpired token."""
     if not isinstance(entry, dict):
         return False
-    if not (entry.get("publish_enabled") and entry.get("publish_token")):
+    if not (entry.get("publish_enabled") and _entry_has_token(entry)):
         return False
     return not _is_publish_expired(entry)
 
@@ -9073,7 +9282,8 @@ def _any_active_entry(source: dict) -> dict | None:
 
 
 def _tokens_lookup_array(publishes: list[dict]) -> list[str]:
-    """Mirror every entry's ``publish_token`` into a top-level string array.
+    """Mirror every entry's token HASH into a top-level string array (:
+    hashes only — a legacy plaintext entry contributes the hash of its token).
 
     Prod's dynamic mapping treats nested-object string fields like
     ``publishes.publish_token`` as analyzed text WITHOUT a ``.keyword``
@@ -9086,9 +9296,13 @@ def _tokens_lookup_array(publishes: list[dict]) -> list[str]:
     """
     out: list[str] = []
     for entry in publishes or []:
-        tok = entry.get("publish_token") if isinstance(entry, dict) else None
-        if tok:
-            out.append(tok)
+        if not isinstance(entry, dict):
+            continue
+        token_hash = entry.get("publish_token_hash")
+        if not token_hash and entry.get("publish_token"):  # legacy
+            token_hash = _publish_token_hash(str(entry["publish_token"]))
+        if token_hash:
+            out.append(token_hash)
     return out
 
 
@@ -9109,6 +9323,9 @@ def _build_publishes_list_for_write(source: dict, scope_key: tuple[str, str], en
         legacy = _legacy_entry_from_flat_fields(source)
         if legacy is not None:
             out = [legacy]
+    # every write leaves the doc with no plaintext token — sibling
+    # entries written before the hash landed are rehashed while we hold the pen.
+    out = [_hash_entry_token(e) for e in out]
 
     # Drop any existing entry at this scope key — we either replace it
     # below or are removing it (unpublish).
@@ -9175,13 +9392,16 @@ def _lookup_dashboard_by_token(token: str) -> tuple[str | None, dict | None]:
         return None, None
     try:
         # Match against either:
-        #   - the legacy top-level ``publish_token.keyword`` (pre-664 docs)
-        #   - the new top-level ``publish_tokens_lookup.keyword`` mirror
-        # array
+        #   - the top-level ``publish_tokens_lookup.keyword`` mirror array
+        #, which holds token HASHES  —
+        # a doc not yet rehashed still mirrors the
+        #     plaintext token there, so the raw token is a second term;
+        # the top-level ``publish_token.keyword``
+        #     (pre-664 docs).
         # Avoid querying ``publishes.publish_token.keyword`` directly:
         # prod's dynamic mapping doesn't keywordize nested-object string
-        # fields, so that path silently never matches. Active-entry
-        # filtering is done in Python below.
+        # fields, so that path silently never matches. The per-entry token
+        # match and active-entry filtering are done in Python below.
         resp = es.search(
             index=DASHBOARDS_INDEX,
             body={
@@ -9189,8 +9409,8 @@ def _lookup_dashboard_by_token(token: str) -> tuple[str | None, dict | None]:
                 "query": {
                     "bool": {
                         "should": [
+                            {"terms": {"publish_tokens_lookup.keyword": [_publish_token_hash(token), token]}},
                             {"term": {"publish_token.keyword": token}},
-                            {"term": {"publish_tokens_lookup.keyword": token}},
                         ],
                         "minimum_should_match": 1,
                     }
@@ -9211,7 +9431,7 @@ def _lookup_dashboard_by_token(token: str) -> tuple[str | None, dict | None]:
         # it an expired team-A entry would mask an active team-B entry
         # that happened to share a doc.
         for entry in _iter_publish_entries(source):
-            if entry.get("publish_token") != token:
+            if not _entry_matches_token(entry, token):
                 continue
             if not _entry_is_active(entry):
                 return None, None
@@ -9249,17 +9469,19 @@ def _publish_state_response(dashboard_id: str, source: dict, scope_key: tuple[st
     else:
         entry = _find_publish_entry(source, scope_key) or {}
 
-    token = entry.get("publish_token")
-    enabled = bool(entry.get("publish_enabled") and token)
-    expired = _is_publish_expired(entry) if token else False
+    has_token = _entry_has_token(entry)
+    enabled = bool(entry.get("publish_enabled") and has_token)
+    expired = _is_publish_expired(entry) if has_token else False
     effective_published = enabled and not expired
+    # the raw token is decrypted for the publisher's dialog only.
+    token = _entry_token(entry) if effective_published else None
     eligible, reason = _is_publish_eligible(source)
     return {
         "success": True,
         "id": dashboard_id,
         "published": effective_published,
-        "token": token if effective_published else None,
-        "path": f"/public/report/{token}" if effective_published else None,
+        "token": token,
+        "path": f"/public/report/{token}" if token else None,
         "published_at": entry.get("published_at"),
         "expires_at": entry.get("publish_expires_at"),
         "expired": expired and enabled,
@@ -9396,7 +9618,7 @@ def _coerce_map_detail(payload: dict, existing_entry: dict | None) -> tuple[str,
         if not isinstance(raw, str) or raw.strip().lower() not in _PUBLISH_MAP_DETAIL_CHOICES:
             return _PUBLISH_DEFAULT_MAP_DETAIL, "map_detail must be one of: " + ", ".join(_PUBLISH_MAP_DETAIL_CHOICES) + "."
         return raw.strip().lower(), None
-    if existing_entry and existing_entry.get("publish_token"):
+    if _entry_has_token(existing_entry):
         return _entry_map_detail(existing_entry), None
     return _PUBLISH_DEFAULT_MAP_DETAIL, None
 
@@ -9599,14 +9821,18 @@ def publish_dashboard(dashboard_id: str):
 
         # Reuse the existing token for this scope when the caller is only
         # updating expiry/scope (rotation belongs to /publish/regenerate).
-        token = existing_entry.get("publish_token") if existing_unexpired and existing_entry else secrets.token_urlsafe(32)
+        # carried over in its at-rest form (hash + encrypted copy).
+        if existing_unexpired and existing_entry:
+            token_fields = _entry_token_fields(existing_entry)
+        else:
+            token_fields = _publish_token_fields(secrets.token_urlsafe(32))
         now = datetime.now(tz=timezone.utc).isoformat()
         es = get_elasticsearch_client()
         if es is None:
             return jsonify({"success": False, "error": "Elasticsearch unavailable"}), 503
 
         new_entry = {
-            "publish_token": token,
+            **token_fields,
             "publish_enabled": True,
             "published_at": now,
             "publish_expires_at": expires_at,
@@ -9629,7 +9855,7 @@ def publish_dashboard(dashboard_id: str):
             # follow-up: mirror tokens into a top-level string
             # array so the lookup query has a .keyword surface to term
             # against (prod's dynamic mapping doesn't keywordize the
-            # per-entry publishes.publish_token field).
+            # per-entry publishes.publish_token field). hashes.
             "publish_tokens_lookup": _tokens_lookup_array(new_publishes),
             "updated_at": now,
         }
@@ -9733,7 +9959,8 @@ def regenerate_publish_token(dashboard_id: str):
             return jsonify({"success": False, "error": "Elasticsearch unavailable"}), 503
 
         new_entry = {
-            "publish_token": token,
+            # hash + encrypted copy, never the plaintext token.
+            **_publish_token_fields(token),
             "publish_enabled": True,
             "published_at": now,
             "publish_expires_at": expires_at,
@@ -9749,7 +9976,7 @@ def regenerate_publish_token(dashboard_id: str):
             # follow-up: mirror tokens into a top-level string
             # array so the lookup query has a .keyword surface to term
             # against (prod's dynamic mapping doesn't keywordize the
-            # per-entry publishes.publish_token field).
+            # per-entry publishes.publish_token field). hashes.
             "publish_tokens_lookup": _tokens_lookup_array(new_publishes),
             "updated_at": now,
         }

@@ -84,8 +84,9 @@ class TestBitlyReportType:
     def test_should_dispatch_bitly_report_type_from_build_report_data(self, monkeypatch):
         seen = {}
 
-        def fake_builder(es, scope_titles, date_range):
+        def fake_builder(es, scope_titles, date_range, *, scope_team_esids):
             seen["scope_titles"] = scope_titles
+            seen["scope_team_esids"] = scope_team_esids
             seen["date_range"] = date_range
             return {"tables": [], "summary_metrics": {}}
 
@@ -95,16 +96,21 @@ class TestBitlyReportType:
             {"dashboard_id": "report:bitly_clicks"},
             ["Team Alpha"],
             {"from": "2026-07-01", "to": "2026-07-07"},
+            scope_team_esids=["esid_a"],
         )
         assert out == {"tables": [], "summary_metrics": {}}
         assert seen["scope_titles"] == ["Team Alpha"]
+        # the teams' ESIDs reach the builder for index scoping.
+        assert seen["scope_team_esids"] == ["esid_a"]
         assert seen["date_range"] == {"from": "2026-07-01", "to": "2026-07-07"}
 
     def test_should_build_per_link_and_per_day_tables_with_the_window_applied(self, monkeypatch):
         monkeypatch.setattr(rts, "_scoped_indices", lambda pattern, _titles: "esid_a__bitly_clicks")
 
         fake = _FakeES(_bitly_agg_response())
-        out = rts._build_bitly_clicks_report(fake, ["Team Alpha"], {"from": "2026-07-01", "to": "2026-07-07"})
+        out = rts._build_bitly_clicks_report(
+            fake, ["Team Alpha"], {"from": "2026-07-01", "to": "2026-07-07"}, scope_team_esids=["esid_a"]
+        )
 
         links, days = out["tables"]
         assert links["chart_type"] == "table" and links["result"]["chart_type"] == "table"
@@ -139,7 +145,7 @@ class TestBitlyReportType:
         monkeypatch.setattr(rts, "_scoped_indices", lambda pattern, _titles: "esid_a__bitly_clicks")
         fake = _FakeES()
 
-        rts._build_bitly_clicks_report(fake, ["Team Alpha"], {})
+        rts._build_bitly_clicks_report(fake, ["Team Alpha"], {}, scope_team_esids=["esid_a"])
 
         rng = fake.searches[0]["body"]["query"]["bool"]["filter"][2]["range"]["date"]
         today = date.today()
@@ -158,7 +164,7 @@ class TestBitlyReportType:
 
     def test_should_compute_empty_and_query_nothing_when_scope_is_empty(self):
         fake = _FakeES()
-        out = rts._build_bitly_clicks_report(fake, [], {"from": "2026-07-01", "to": "2026-07-07"})
+        out = rts._build_bitly_clicks_report(fake, [], {"from": "2026-07-01", "to": "2026-07-07"}, scope_team_esids=[])
         assert fake.searches == []
         assert [t["result"]["rows"] for t in out["tables"]] == [[], []]
         assert out["summary_metrics"]["Total clicks"] == 0
@@ -167,7 +173,9 @@ class TestBitlyReportType:
     def test_should_skip_query_when_no_in_scope_bitly_indices_exist(self, monkeypatch):
         monkeypatch.setattr(rts, "_scoped_indices", lambda pattern, _titles: "")
         fake = _FakeES()
-        out = rts._build_bitly_clicks_report(fake, ["Team Alpha"], {"from": "2026-07-01", "to": "2026-07-07"})
+        out = rts._build_bitly_clicks_report(
+            fake, ["Team Alpha"], {"from": "2026-07-01", "to": "2026-07-07"}, scope_team_esids=["esid_a"]
+        )
         assert fake.searches == []
         assert [t["result"]["rows"] for t in out["tables"]] == [[], []]
 
@@ -178,7 +186,9 @@ class TestBitlyReportType:
             def search(self, **_kw):
                 raise RuntimeError("es down")
 
-        out = rts._build_bitly_clicks_report(_Boom(), ["Team Alpha"], {"from": "2026-07-01", "to": "2026-07-07"})
+        out = rts._build_bitly_clicks_report(
+            _Boom(), ["Team Alpha"], {"from": "2026-07-01", "to": "2026-07-07"}, scope_team_esids=["esid_a"]
+        )
         assert [t["result"]["rows"] for t in out["tables"]] == [[], []]
 
     def test_should_mirror_system_reports_in_the_scheduler_template(self):

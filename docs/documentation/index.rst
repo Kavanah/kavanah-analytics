@@ -94,58 +94,64 @@ Browse by section
 Subscription Tiers
 ------------------
 
+Every tier is the whole platform. The tiers differ only in who
+qualifies and what each team costs.
+
 .. list-table::
    :header-rows: 1
-   :widths: 20 15 15 50
+   :widths: 19 27 27 27
 
-   * - Feature
-     - Free
-     - Pro
-     - Enterprise
+   * -
+     - Missionary teams
+     - Christian ministries
+     - Businesses & other groups
+   * - **Who qualifies**
+     - Any Christian missionary team or organization doing
+       evangelism, discipleship, and church planting
+     - Any other Christian ministry
+     - Everyone else, including agencies and commercial media
+       teams that serve mission clients
    * - **Price**
-     - $0
-     - $49 / mo or $499 / yr
-     - $249 / mo
+     - $0 for every team (sponsored license, funded by donors)
+     - $20 per team / month (covers our server costs)
+     - $49.95 per team / month
+   * - **How to start**
+     - Apply for a sponsored license
+     - Apply for sponsorship (the same application; the review
+       sets the rate)
+     - Sign up and start a 14-day free trial
    * - **Users**
-     - Up to 10
-     - Unlimited
-     - Unlimited
+     - Unlimited, no per-user charges
+     - Unlimited, no per-user charges
+     - Unlimited, no per-user charges
    * - **Data sources**
-     - Up to 5
-     - All platforms
-     - All platforms + custom
-   * - **Core dashboards**
-     - Read-only
-     - Read-only
-     - Read-only
-   * - **Dashboard Builder**
-     - —
-     - Full access
-     - Full access
-   * - **Automated weekly reports**
-     - —
-     - Included
-     - Included
-   * - **Client space management**
-     - —
-     - Included
-     - Included
-   * - **Custom ingestion pipelines**
-     - —
-     - —
-     - Included
-   * - **White-label branding**
-     - —
-     - —
-     - Included *(GA)*
-   * - **SLA uptime**
-     - —
-     - —
-     - Included
-   * - **Support**
-     - Community
-     - Email (48 hr SLA)
-     - Dedicated account manager
+     - Every connector
+     - Every connector
+     - Every connector
+   * - **Features**
+     - The whole platform
+     - The whole platform
+     - The whole platform
+
+**Every connector:** Meta (Facebook and Instagram), YouTube, Google Ads,
+GA4, Chatwoot, Echo, and Disciple.Tools.
+
+**The whole platform:** role-scoped access, so people see their team and
+nothing else; custom dashboards; geographic views; and scheduled
+reports.
+
+A *team* is one reporting group, usually one campaign, one region, or
+one initiative. Every new account starts with a 14-day trial, and
+sponsorship applications are reviewed by a person, usually within two
+business days. A sponsored license has no trial clock, never converts
+to a paid plan, and is not metered as you add teams. Apply or start a
+trial at `kavanahanalytics.com/pricing
+<https://kavanahanalytics.com/pricing>`_.
+
+Kavanah Analytics is also open source. You can run it on your own
+servers for free (you then pass Meta App Review and Google OAuth
+verification yourself): `github.com/Kavanah/kavanah-analytics
+<https://github.com/Kavanah/kavanah-analytics>`_.
 
 ----
 

@@ -43,7 +43,6 @@ interpreting your engagement data.
    server-side data isolation is enforced.
 
 :doc:`automated-reporting`
-   *Planned feature, not in v1.0.* Placeholder describing the
-   scheduled-email report shape coming in Phase 2 (Q3 2026), with
-   workarounds you can use today (public Impact Report URLs, manual
-   Excel/PDF export).
+   The Report Scheduler: scheduled imports that save dashboard
+   snapshots, and scheduled emails that send dashboards as a summary
+   and link, inline tables, or an Excel or PDF attachment.

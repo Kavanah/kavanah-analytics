@@ -86,6 +86,7 @@ from lib.es_helpers import (  # noqa: E402
     get_elasticsearch_client,
     put_regular_index_template,
 )
+from lib.org_title_restamp import resolve_org_titles  # noqa: E402
 
 try:
     from web.services.invite_token_service import (
@@ -634,6 +635,16 @@ class InviteService:
             "organization_esid": [primary_org],
             "@timestamp": _iso(_now()),
         }
+        # importers copy organization_title from the team record onto
+        # every data doc; without it they stamp "Unknown". An unresolvable org
+        # is left for tools.restamp_org_titles rather than guessed.
+        try:
+            org_titles = resolve_org_titles(es, [primary_org])
+        except Exception as e:  # noqa: BLE001 — the team is still created; the sweep tool fills the name
+            logging.warning("InviteService.ensure_general_team org title lookup %s: %s", primary_org, e)
+            org_titles = None
+        if org_titles:
+            doc["organization_title"] = org_titles
         try:
             # pass an explicit ES-safe _id (alphanumeric leading char)
             # instead of relying on ES auto-id, which can produce an _id starting
@@ -1003,6 +1014,58 @@ class InviteService:
         if not isinstance(source, dict):
             return None
         return source
+
+    # ------------------------------------------------------------------
+    # Accept-time check
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def accept_refusal(invite: dict, account_email: str | None) -> str | None:
+        """Why ``invite`` may not be accepted by the holder of ``account_email``.
+
+        The invite JWT is a bearer token: whoever held the link could sign
+        up with any address and take the invitee's role, and a cancelled,
+        accepted or superseded invite kept working until its JWT expired.
+        Accepting now requires, server-side:
+
+        * ``account_email`` — the accepting account's VERIFIED address —
+          equals the invitee address the invite was sent to;
+        * the ``de_authz_invite`` doc for (workspace, invitee) exists and is
+          still ``pending`` and inside its ``expires_at``;
+        * the role (and team, when the doc names one) still match the doc —
+          a resend that changed them supersedes the older link.
+
+        The doc is keyed by (workspace, invitee email), not by the JWT's
+        ``jti``: resends mint a fresh ``jti`` per email (see
+        ``send_invite_email``), so the doc's status is the authoritative
+        "revoked / accepted / expired" record. Returns ``None`` when the
+        invite may be accepted, else a short reason slug for the audit log.
+        Fails closed: no doc (or an ES outage) refuses.
+        """
+        invitee = _normalize_email(invite.get("invitee_email") or "")
+        if not invitee or _normalize_email(account_email or "") != invitee:
+            return "email_mismatch"
+        workspace_esid = invite.get("org_esid") or ""
+        doc = InviteService.get_invite_doc(workspace_esid, invitee)
+        if doc is None:
+            return "not_found"
+        status = doc.get("status") or ""
+        if status != "pending":
+            return f"status_{status or 'unknown'}"
+        expires_at = doc.get("expires_at")
+        if expires_at:
+            try:
+                expired = datetime.fromisoformat(str(expires_at)) <= _now()
+            except (TypeError, ValueError):
+                expired = True
+            if expired:
+                return "expired"
+        if (doc.get("role_esid") or "") != (invite.get("role_esid") or ""):
+            return "superseded"
+        doc_team = doc.get("team_esid") or ""
+        if doc_team and doc_team != (invite.get("team_esid") or doc_team):
+            return "superseded"
+        return None
 
     # ------------------------------------------------------------------
     # Inviter authorization

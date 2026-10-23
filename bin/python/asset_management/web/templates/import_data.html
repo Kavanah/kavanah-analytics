@@ -1943,7 +1943,9 @@ if (window.location.hash) {
             if (data.success && data.fields) {
                 fieldsLoaded = true;
                 const sel = document.getElementById('field-viewer-field-select');
-                sel.innerHTML = data.fields.map(f => `<option value="${f.name}">${f.name} (${f.type})</option>`).join('');
+                // field names come from the index mapping — build
+                // the options as DOM nodes so a name is never parsed as HTML.
+                sel.replaceChildren(...data.fields.map(f => new Option(`${f.name} (${f.type})`, f.name)));
                 _makeSearchableSelect(sel);
 
                 // Auto-select first field and load its values
@@ -2000,10 +2002,10 @@ if (window.location.hash) {
                     selectorRow.style.display = 'none';
                 }
             } else {
-                body.innerHTML = `<tr><td colspan="2" style="padding:12px; color:#e74c3c;">Error: ${data.error || 'Unknown'}</td></tr>`;
+                body.innerHTML = `<tr><td colspan="2" style="padding:12px; color:#e74c3c;">Error: ${escapeAllFieldsHtml(data.error || 'Unknown')}</td></tr>`;
             }
         } catch (e) {
-            body.innerHTML = `<tr><td colspan="2" style="padding:12px; color:#e74c3c;">Request failed: ${e.message}</td></tr>`;
+            body.innerHTML = `<tr><td colspan="2" style="padding:12px; color:#e74c3c;">Request failed: ${escapeAllFieldsHtml(e.message)}</td></tr>`;
         }
     }
 
@@ -2200,10 +2202,10 @@ if (window.location.hash) {
             if (data.success) {
                 renderFieldValues(data.values);
             } else {
-                panel.innerHTML = `<p class="no-data" style="padding:12px; margin:0; color:#e74c3c;">Error: ${data.error || 'Unknown error'}</p>`;
+                panel.innerHTML = `<p class="no-data" style="padding:12px; margin:0; color:#e74c3c;">Error: ${escapeAllFieldsHtml(data.error || 'Unknown error')}</p>`;
             }
         } catch (e) {
-            panel.innerHTML = `<p class="no-data" style="padding:12px; margin:0; color:#e74c3c;">Request failed: ${e.message}</p>`;
+            panel.innerHTML = `<p class="no-data" style="padding:12px; margin:0; color:#e74c3c;">Request failed: ${escapeAllFieldsHtml(e.message)}</p>`;
         }
     }
 
@@ -2216,8 +2218,10 @@ if (window.location.hash) {
         panel.innerHTML = values.map(v => {
             const display = (v.value === null || v.value === undefined)
                 ? '<em class="no-data">—</em>'
-                : (typeof v.value === 'object' ? JSON.stringify(v.value) : String(v.value));
-            return `<div class="field-value-row"><span class="fvr-team">${v.team_title}</span><span class="fvr-value">${display}</span></div>`;
+                : escapeAllFieldsHtml(typeof v.value === 'object' ? JSON.stringify(v.value) : String(v.value));
+            // values are imported, publicly authored text (comments,
+            // captions, ad names) — escape before they reach innerHTML.
+            return `<div class="field-value-row"><span class="fvr-team">${escapeAllFieldsHtml(v.team_title ?? '')}</span><span class="fvr-value">${display}</span></div>`;
         }).join('');
     }
 
