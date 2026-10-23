@@ -25,6 +25,8 @@ A **release product**: a file of aggregate counts at **country × month** grain,
 | Touchpoints | Conversations started, by the seeker's country | Echo conversations |
 | Active | Conversations with a spiritual-conversation or multiplier outcome | Echo conversations |
 
+Each row names the team by its title as entered in the Contributor's system. That title leaves with the row; the Contributor renames a team before publishing if its title would identify a person. The Steward holds the title as confidential provenance and never renders it.
+
 The release also carries a manifest: schema version, the grain in words, the suppression rule (none, §4), the sources used, the countries included, the organization's directory identifier, whether the organization wants to be named, this agreement's id, version, hash and acceptance time, and when and by what software the file was generated.
 
 ## 3. What never leaves the Contributor's system

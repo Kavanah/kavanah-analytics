@@ -268,7 +268,7 @@ ORG_URI = "https://data.global.church/org/riverside-media"
 DISPLAY_NAME = "Riverside Media (test data)"
 AGREEMENT_ID = "digital-aggregates"
 AGREEMENT_VERSION = "0.1"
-AGREEMENT_SHA256 = "9d4a615508ae831db12ae5bd8f7219895d93982b8468ef51ec14936647dc8b45"
+AGREEMENT_SHA256 = "12eb2bc45b875c71044a58fbc86b824440dbcc2e2f4683f894fdd673129acc2e"
 AGREEMENT_ACCEPTED_AT = "2026-10-19T00:00:00Z"
 NOW = datetime(2026, 10, 19, 12, 0, 0, tzinfo=timezone.utc)
 LAST_MONTH = "2026-10"
