@@ -48,7 +48,7 @@ The Contributor chooses whether to be **named**. The default is **"a contributin
 - Validates it against the published schema and refuses anything that is not country × month.
 - Stores the file with its hash and loads it into the shared knowledge graph under the Contributor's attribution.
 - Renders the counts on the shared map and answers questions about them through its API and assistant, at country grain, with the attribution in §5.
-- Does not re-aggregate counts across Contributors as if cells were additive, and carries each count's definition (§2) with it.
+- Combines counts across Contributors where they share a definition, so the map shows the fuller picture, and lets a reader choose which Contributors' counts to include. Every count stays attributed to its Contributor (§5) and carries its definition (§2). Counts with different definitions are shown side by side, never added together.
 - Does not sell the release, and does not share it with any party on terms other than these.
 
 ## 7. Supersession and withdrawal

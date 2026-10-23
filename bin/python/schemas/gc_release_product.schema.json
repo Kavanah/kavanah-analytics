@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://data.global.church/schema/digital-engagement-release-product/0.1.0",
   "title": "Digital engagement release product",
-  "description": "A partner-published release of aggregate digital-engagement counts at country x month grain, with its manifest. One file per publish. Produced by the partner's own export job (reference implementation: Kavanah Analytics); validated and loaded by gc-kavanah-bridge into <https://data.global.church/releases/digital-engagement/>. Row fields carry an x-gc-term annotation naming the ontology term each maps to; the four counts are Kavanah Analytics' own measures (kav:), never added to another producer's. Nothing below country grain is representable in this schema.",
+  "description": "A partner-published release of aggregate digital-engagement counts at country x month grain, with its manifest. One file per publish. Produced by the partner's own export job (reference implementation: Kavanah Analytics); validated and loaded by gc-kavanah-bridge into <https://data.global.church/releases/digital-engagement/>. Row fields carry an x-gc-term annotation naming the ontology term each maps to; the four counts are Kavanah Analytics' own measures (kav:), summed across the organizations that publish them and never added to counts defined differently. Nothing below country grain is representable in this schema.",
   "type": "object",
   "additionalProperties": false,
   "required": [
