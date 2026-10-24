@@ -245,6 +245,11 @@ def rollup_query(family: dict, cutoff: datetime) -> dict:
                 "terms": {"field": "team_esid", "size": TEAM_TERMS_SIZE, "missing": ""},
                 "aggs": {
                     "team_title": {"terms": {"field": "team_title", "size": 1}},
+                    # The Summary Report's org-scoped views filter on organization_title
+                    # (match_phrase, no team filter), so a rollup without it would drop
+                    # out of those views silently. Both titles are bare keyword on the
+                    # raw docs.
+                    "organization_title": {"terms": {"field": "organization_title", "size": 1}},
                     "by_month": {
                         "date_histogram": {
                             "field": family["date_field"],
@@ -287,6 +292,8 @@ def build_rollup_docs(
             continue
         title_buckets = ((tb.get("team_title") or {}).get("buckets")) or []
         team_title = str(title_buckets[0].get("key")) if title_buckets else ""
+        org_buckets = ((tb.get("organization_title") or {}).get("buckets")) or []
+        organization_title = str(org_buckets[0].get("key")) if org_buckets else ""
         for mb in ((tb.get("by_month") or {}).get("buckets")) or []:
             month = str(mb.get("key_as_string") or "")
             if len(month) != 7:
@@ -294,6 +301,7 @@ def build_rollup_docs(
             doc: dict[str, Any] = {
                 "team_esid": team_esid,
                 "team_title": team_title,
+                "organization_title": organization_title,
                 "source": source,
                 "month": month,
                 "kibana_date": f"{month}-01",

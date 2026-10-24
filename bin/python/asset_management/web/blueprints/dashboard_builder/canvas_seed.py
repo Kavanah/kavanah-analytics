@@ -329,14 +329,21 @@ _CANVA_SEED_METRICS: dict[str, dict] = {
         "dv": "*echo_conversations",
         "field": "incomingMessagesCount",
         "agg": "sum",
-        "also": [{"dv": "*_chatwoot_insights", "field": "incoming_messages_count", "agg": "sum"}],
+        # archived months (retention rollups) count too.
+        "also": [
+            {"dv": "*_chatwoot_insights", "field": "incoming_messages_count", "agg": "sum"},
+            {"dv": "*_conversation_rollups", "field": "incomingMessagesCount", "agg": "sum"},
+        ],
     },
     "msg-sent": {
         "label": "Messages Sent",
         "dv": "*echo_conversations",
         "field": "outboundMessagesCount",
         "agg": "sum",
-        "also": [{"dv": "*_chatwoot_insights", "field": "outgoing_messages_count", "agg": "sum"}],
+        "also": [
+            {"dv": "*_chatwoot_insights", "field": "outgoing_messages_count", "agg": "sum"},
+            {"dv": "*_conversation_rollups", "field": "outboundMessagesCount", "agg": "sum"},
+        ],
     },
     # page_positive_feedback_by_type_comment is a Page Insights metric
     # Meta retired — 0 for every team. Comments on ADS are what Meta still
@@ -357,7 +364,10 @@ _CANVA_SEED_METRICS: dict[str, dict] = {
         # schema maps it integer; a term on "true" made ES reject the whole
         # query ('For input string: "true"') so the tile read 0 for every team.
         "equals_value": "1",
-        "also": [{"dv": "*_chatwoot_insights", "field": "contact_attr_spiritual_conversation", "agg": "sum"}],
+        "also": [
+            {"dv": "*_chatwoot_insights", "field": "contact_attr_spiritual_conversation", "agg": "sum"},
+            {"dv": "*_conversation_rollups", "field": "spiritual_conversation", "agg": "sum"},
+        ],
     },
     # Section 4: Journey
     "baptisms": {

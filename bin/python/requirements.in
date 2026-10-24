@@ -94,10 +94,16 @@ msgpack>=1.2.1
 # imports it directly, but Trivy scans the installed image. Same posture
 # as the Dockerfile's explicit pip upgrade — drop this once the base image
 # ships setuptools >= 78.1.1.
-# setuptools>=83.0.0 — PYSEC-2026-3447 (NFD filename bypasses MANIFEST
-# exclude); raised from the 78.1.1 CVE-2025-47273 floor when the lock was
+# setuptools>=84.1.0 — GHSA-xmj3-9gf7-h52w (attacker-controlled
+# namespace_packages.txt in a wheel's .dist-info, Windows); raised from the
+# 83.0.0 PYSEC-2026-3447 floor (NFD filename bypasses MANIFEST exclude),
+# itself raised from the 78.1.1 CVE-2025-47273 floor when the lock was
 # introduced, previously a pytest.yml ad-hoc install.
-setuptools>=83.0.0
+setuptools>=84.1.0
+# filelock>=4.2.1 — CVE-2026-112940 / CVE-2026-112913 / CVE-2026-112907 (the
+# SQLite-backed ReadWriteLock and the Windows soft locks). Pulled in by
+# cachecontrol; floored here so the audit stays green.
+filelock>=4.2.1
 pip-audit
 
 # Geocoding

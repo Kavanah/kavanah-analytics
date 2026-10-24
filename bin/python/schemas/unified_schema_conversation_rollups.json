@@ -16,6 +16,9 @@
     "team_title": {
       "type": "keyword"
     },
+    "organization_title": {
+      "type": "keyword"
+    },
     "source": {
       "type": "keyword"
     },

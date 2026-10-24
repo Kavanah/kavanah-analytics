@@ -5653,14 +5653,19 @@ const _CANVA_SECTIONS = [
       // Echo). The editor's override replaces only the primary dv/field/agg.
       { id: 'msg-contacts', label: 'Messaging Contacts',      dv: '*echo_conversations', field: 'client_id',                             agg: 'cardinality',
         also: [{ dv: '*_chatwoot_insights', field: 'contacts_started', agg: 'sum' }] },
+      // the additive tiles also read *_conversation_rollups (archived
+      // months the retention sweep rolled up before deleting the raw docs).
       { id: 'msg-received', label: 'Messages Received',       dv: '*echo_conversations', field: 'incomingMessagesCount',                 agg: 'sum',
-        also: [{ dv: '*_chatwoot_insights', field: 'incoming_messages_count', agg: 'sum' }] },
+        also: [{ dv: '*_chatwoot_insights', field: 'incoming_messages_count', agg: 'sum' },
+               { dv: '*_conversation_rollups', field: 'incomingMessagesCount', agg: 'sum' }] },
       { id: 'msg-sent',     label: 'Messages Sent',           dv: '*echo_conversations', field: 'outboundMessagesCount',                 agg: 'sum',
-        also: [{ dv: '*_chatwoot_insights', field: 'outgoing_messages_count', agg: 'sum' }] },
+        also: [{ dv: '*_chatwoot_insights', field: 'outgoing_messages_count', agg: 'sum' },
+               { dv: '*_conversation_rollups', field: 'outboundMessagesCount', agg: 'sum' }] },
       // Page Insights comments are retired at Meta; count comments on ads instead.
       { id: 'comments',     label: 'Comments (ads)',          dv: '*fb_insights',        field: 'insight_actions_comment',               agg: 'sum' },
       { id: 'spiritual',    label: 'Spiritual Conversations', dv: '*echo_conversations', field: 'spiritual_conversation',                agg: 'equals',
-        also: [{ dv: '*_chatwoot_insights', field: 'contact_attr_spiritual_conversation', agg: 'sum' }] },
+        also: [{ dv: '*_chatwoot_insights', field: 'contact_attr_spiritual_conversation', agg: 'sum' },
+               { dv: '*_conversation_rollups', field: 'spiritual_conversation', agg: 'sum' }] },
     ],
   },
   {

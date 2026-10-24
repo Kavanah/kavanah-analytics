@@ -399,6 +399,7 @@ const CANVA_SUMMARY_DVS = [
   '*_youtube_analytics', '*_google_ads', '*_echo_conversations', '*_disciple_tools',
   '*_chatwoot_insights',  // Chatwoot sources for the interact band
   '*_tiktok_organic',     // TikTok card in the engage band
+  '*_conversation_rollups',  // archived Echo months the retention sweep rolled up
 ];
 
 /**
@@ -3496,6 +3497,7 @@ const _CV_SOURCE_LABELS = [
   ['google_ads',         'Google Ads'],
   ['echo_conversations', 'Echo'],
   ['chatwoot',           'Chatwoot'],
+  ['conversation_rollups', 'Echo archive'],  // monthly rollups of deleted raw conversations
   ['disciple_tools',     'Disciple Tools'],
   ['youtube',            'YouTube'],
   ['tiktok',             'TikTok'],
@@ -3769,15 +3771,23 @@ async function renderCanvaChart(chartId) {
     // twice — the closest match to Echo's unique client_id Chatwoot data allows.
     _m('msg-contacts',  '*echo_conversations', 'client_id',                             'cardinality',
        { also: [{ dv: '*_chatwoot_insights', field: 'contacts_started', agg: 'sum' }] }),
+    // the retention sweep rolls raw conversations older than 24
+    // months into *_conversation_rollups (one doc per team-month, additive
+    // counters only) before deleting them, so the additive tiles read the
+    // rollups too and the all-time period keeps its history. Messaging
+    // Contacts stays raw-only: a distinct count cannot be summed across months.
     _m('msg-received',  '*echo_conversations', 'incomingMessagesCount',                 'sum',
-       { also: [{ dv: '*_chatwoot_insights', field: 'incoming_messages_count', agg: 'sum' }] }),
+       { also: [{ dv: '*_chatwoot_insights', field: 'incoming_messages_count', agg: 'sum' },
+                { dv: '*_conversation_rollups', field: 'incomingMessagesCount', agg: 'sum' }] }),
     _m('msg-sent',      '*echo_conversations', 'outboundMessagesCount',                 'sum',
-       { also: [{ dv: '*_chatwoot_insights', field: 'outgoing_messages_count', agg: 'sum' }] }),
+       { also: [{ dv: '*_chatwoot_insights', field: 'outgoing_messages_count', agg: 'sum' },
+                { dv: '*_conversation_rollups', field: 'outboundMessagesCount', agg: 'sum' }] }),
     // Page Insights comments are retired at Meta; count comments on ads instead.
     _m('comments',      '*fb_insights',        'insight_actions_comment',               'sum'),
     // spiritual_conversation is an INTEGER 0/1 flag — 'true' made ES reject the query.
     _m('spiritual',     '*echo_conversations', 'spiritual_conversation',                'equals',
-       { equals_value: '1', also: [{ dv: '*_chatwoot_insights', field: 'contact_attr_spiritual_conversation', agg: 'sum' }] }),
+       { equals_value: '1', also: [{ dv: '*_chatwoot_insights', field: 'contact_attr_spiritual_conversation', agg: 'sum' },
+                                   { dv: '*_conversation_rollups', field: 'spiritual_conversation', agg: 'sum' }] }),
 
     // Section 4: Journey — team-keyed DT wildcard (matches
     // `{team}_disciple_tools`) so DT scopes per-team via the

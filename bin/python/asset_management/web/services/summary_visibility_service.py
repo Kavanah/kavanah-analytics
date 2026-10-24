@@ -82,6 +82,8 @@ PATTERN_SOURCE_DS = {
     "ga_metrics": "ds_google_analytics",
     "echo_conversations": "ds_echo",
     "chatwoot_insights": "ds_chatwoot",
+    # archived Echo months; governed by the Echo toggle like the raw docs.
+    "conversation_rollups": "ds_echo",
     "tiktok_organic": "ds_tiktok",
     "disciple_tools": None,
 }
