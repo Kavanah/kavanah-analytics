@@ -28,6 +28,60 @@
     },
     "auto_join_email_domains": {
       "type": "keyword"
+    },
+    "gc_gateway_url": {
+      "type": "keyword"
+    },
+    "gc_partner_api_key": {
+      "type": "keyword"
+    },
+    "gc_org_uri": {
+      "type": "keyword"
+    },
+    "gc_display_named": {
+      "type": "boolean"
+    },
+    "gc_display_name": {
+      "type": "keyword"
+    },
+    "gc_agreement_id": {
+      "type": "keyword"
+    },
+    "gc_agreement_version": {
+      "type": "keyword"
+    },
+    "gc_agreement_sha256": {
+      "type": "keyword"
+    },
+    "gc_agreement_accepted_at": {
+      "type": "date"
+    },
+    "gc_team_label_salt": {
+      "type": "keyword"
+    },
+    "gc_last_release_id": {
+      "type": "keyword"
+    },
+    "gc_last_release_hash": {
+      "type": "keyword"
+    },
+    "gc_last_published_at": {
+      "type": "date"
+    },
+    "gc_sharing_enabled": {
+      "type": "boolean"
+    },
+    "gc_sharing_changed_at": {
+      "type": "date"
+    },
+    "gc_sharing_changed_by": {
+      "type": "keyword"
+    },
+    "gc_sharing_agreement_version": {
+      "type": "keyword"
+    },
+    "gc_sharing_agreement_sha256": {
+      "type": "keyword"
     }
   }
 }

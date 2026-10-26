@@ -25,6 +25,13 @@ from lib.es_helpers import get_elasticsearch_client  # noqa: E402
 from lib import job_health as jh  # noqa: E402
 from lib.geocoding import _COUNTRY_CENTROIDS  # noqa: E402
 
+try:
+    from web.config import config as _config  # noqa: E402
+    from web.services.feedback_service import FeedbackService  # noqa: E402
+except ImportError:
+    from ..config import config as _config  # type: ignore[no-redef]  # noqa: E402
+    from .feedback_service import FeedbackService  # type: ignore[no-redef]  # noqa: E402
+
 
 # ── Cache ──────────────────────────────────────────────────────────────
 # 5-minute TTL is a deliberate tradeoff: the audit hits ES with several
@@ -607,6 +614,18 @@ def _demo_job_runs(es) -> dict[str, Any]:
     }
 
 
+def _feedback_jira() -> dict[str, Any]:
+    """can the feedback form file into Jira right now? Two read-only
+    calls with the configured identity (``FeedbackService.probe_jira``); a dead
+    token or a lost project permission shows here instead of in the next
+    user's failed bug report. Never raises."""
+    try:
+        return FeedbackService.probe_jira(_config)
+    except Exception as e:  # noqa: BLE001 — the report must render whatever Jira does
+        logging.warning("data quality: feedback Jira probe raised: %s", e)
+        return {"configured": False, "ok": False, "error": f"Probe failed ({type(e).__name__})."}
+
+
 def get_data_quality_report() -> dict[str, Any]:
     """Build the three-section data-quality report. Cached for 5 minutes."""
     now = time.time()
@@ -626,6 +645,7 @@ def get_data_quality_report() -> dict[str, Any]:
         report = {
             "ok": True,
             "pending_migrations": _pending_migrations(es),
+            "feedback_jira": _feedback_jira(),
             "demo_job_runs": _demo_job_runs(es),
             "fb_import_continuity": _fb_import_continuity(es),
             "ga_window_continuity": _ga_window_continuity(es),

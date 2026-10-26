@@ -1,0 +1,113 @@
+{% extends "base_v2.html" %}
+
+{% block title %}Global.Church sharing - Kavanah Analytics Management Console{% endblock %}
+
+{% block extra_css %}
+<style>
+    .gs-container { max-width: 960px; }
+    .gs-card { background:var(--cs-bg-primary); border:1px solid var(--cs-border-default); border-radius:var(--cs-radius-m); box-shadow:var(--cs-shadow-xs); padding:var(--cs-space-xl); margin-bottom:var(--cs-space-m); }
+    .gs-card h1 { font-size:var(--cs-font-size-xl); font-weight:var(--cs-font-weight-bold); color:var(--cs-text-heading); margin:0; }
+    .gs-sub { font-size:13px; color:var(--cs-text-secondary); margin:4px 0 0; }
+    .gs-section { margin-top:22px; }
+    .gs-label { display:block; font-size:11.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--cs-text-secondary); margin-bottom:8px; }
+    .gs-state { display:inline-flex; align-items:center; gap:8px; font-size:14px; font-weight:600; padding:6px 14px; border-radius:16px; }
+    .gs-state.on { background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; }
+    .gs-state.off { background:#f3f4f6; color:#374151; border:1px solid #e5e7eb; }
+    .gs-note { font-size:12.5px; color:var(--cs-text-secondary); margin-top:8px; }
+    .gs-two { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    @media (max-width: 760px) { .gs-two { grid-template-columns:1fr; } }
+    .gs-panel { border:1px solid var(--cs-border-default); border-radius:8px; padding:14px 16px; background:#fafbfc; font-size:13.5px; color:var(--cs-text-heading); }
+    .gs-panel b { display:block; margin-bottom:6px; }
+    .gs-panel ul { margin:6px 0 0 18px; padding:0; }
+    .gs-agreement { border:1px solid var(--cs-border-default); border-radius:8px; padding:12px 16px; max-height:320px; overflow:auto; background:#fff; font-size:13px; line-height:1.5; }
+    .gs-agreement h2, .gs-agreement h3 { font-size:14px; margin:14px 0 6px; }
+    .gs-agreement table { border-collapse:collapse; font-size:12.5px; }
+    .gs-agreement th, .gs-agreement td { border:1px solid #e3e6ea; padding:4px 8px; text-align:left; vertical-align:top; }
+    .gs-hash { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px; color:var(--cs-text-secondary); }
+    .gs-check { display:flex; align-items:center; gap:10px; font-size:14px; color:var(--cs-text-heading); padding:4px 0; }
+    .gs-check input { width:16px; height:16px; }
+    .gs-alert { border-radius:6px; padding:10px 14px; font-size:13.5px; margin-top:14px; }
+    .gs-alert-error { background:#fef2f2; border:1px solid #fecaca; color:#991b1b; }
+    .gs-alert-ok { background:#ecfdf5; border:1px solid #a7f3d0; color:#065f46; }
+    .gs-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:24px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="gs-container">
+  <div class="gs-card">
+    <h1>Sharing with Global.Church</h1>
+    <p class="gs-sub">{{ org_title }}</p>
+
+    {% if error %}
+    <div class="gs-alert gs-alert-error" role="alert">{{ error }}</div>
+    {% endif %}
+    {% if notice %}
+    <div class="gs-alert gs-alert-ok" role="status">{{ notice }}</div>
+    {% endif %}
+
+    <div class="gs-section">
+      <span class="gs-label">Sharing is</span>
+      <span class="gs-state {{ 'on' if enabled else 'off' }}">{{ 'On' if enabled else 'Off' }}</span>
+      {% if changed_at %}
+      <p class="gs-note">Last changed {{ changed_at }} by {{ changed_by }}{% if enabled and accepted_agreement %} &middot; accepted {{ accepted_agreement }} <span class="gs-hash">{{ accepted_sha256 }}</span>{% endif %}.</p>
+      {% else %}
+      <p class="gs-note">Off unless the workspace owner turns it on. Nothing leaves until then.</p>
+      {% endif %}
+      {% if last_release.id %}
+      <p class="gs-note">Last published {{ last_release.at }} &middot; release <span class="gs-hash">{{ last_release.id }}</span>.</p>
+      {% endif %}
+      {% if publish_url %}
+      <p class="gs-note"><a href="{{ publish_url }}">Publish to Global.Church &rarr;</a></p>
+      {% endif %}
+    </div>
+
+    <div class="gs-section gs-two">
+      <div>
+        <span class="gs-label">What leaves</span>
+        <div class="gs-panel">
+          <b>Country x month counts, and a manifest</b>
+          <ul>{% for item in what_leaves %}<li>{{ item }}</li>{% endfor %}</ul>
+        </div>
+      </div>
+      <div>
+        <span class="gs-label">What stays in Kavanah</span>
+        <div class="gs-panel">
+          <b>Everything else</b>
+          <ul>{% for item in what_stays %}<li>{{ item }}</li>{% endfor %}</ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="gs-section">
+      <span class="gs-label">Agreement <small>&mdash; {{ agreement_id }} v{{ agreement_version }}</small></span>
+      <div class="gs-agreement">{{ agreement_html|safe }}</div>
+      <p class="gs-note">SHA-256 of this text, computed now: <span class="gs-hash">{{ agreement_sha256 }}</span></p>
+    </div>
+
+    {% if is_owner %}
+    <form method="post" action="{{ url_for('publish_global_church.sharing_update', org_esid=org_esid) }}" class="gs-section">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      {% if enabled %}
+      <input type="hidden" name="action" value="disable">
+      <p class="gs-note">{{ off_note }}</p>
+      <div class="gs-actions">
+        <a class="cs-btn cs-btn-normal" href="{{ cancel_url }}">Back to the organisation</a>
+        <button class="cs-btn cs-btn-normal" type="submit">Turn sharing off</button>
+      </div>
+      {% else %}
+      <input type="hidden" name="action" value="enable">
+      <label class="gs-check"><input type="checkbox" name="accept" value="yes"> I accept the Global.Church data-sharing agreement v{{ agreement_version }} on behalf of {{ org_title }}</label>
+      <p class="gs-note">Turning sharing on records who accepted, when, and the hash of the text above. {{ off_note }}</p>
+      <div class="gs-actions">
+        <a class="cs-btn cs-btn-normal" href="{{ cancel_url }}">Back to the organisation</a>
+        <button class="cs-btn cs-btn-primary" type="submit">Turn sharing on</button>
+      </div>
+      {% endif %}
+    </form>
+    {% else %}
+    <p class="gs-note">Only the workspace owner can change this setting.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

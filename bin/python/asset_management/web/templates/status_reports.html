@@ -220,7 +220,7 @@
         <span id="data-quality-status" style="color: #666; font-size: 13px;"></span>
     </div>
     <p class="help-text" style="margin-top: 0;">
-        Scheduled jobs (last exit code), FB import continuity (teams whose ad docs stopped arriving), teams without country, docs with team_country='unknown', fb_insights with no derivable country, and missing centroids.
+        Feedback form &rarr; Jira (can the configured identity file into the project), scheduled jobs (last exit code), FB import continuity (teams whose ad docs stopped arriving), teams without country, docs with team_country='unknown', fb_insights with no derivable country, and missing centroids.
         Cached for 5 minutes; click Refresh after running a cleanup script to see fresh numbers.
     </p>
     <div id="data-quality-body">
@@ -306,6 +306,24 @@ function renderDataQuality(report) {
             + mig.pending.map(escHtml).join(', ')
             + ' — run <code>asset-management.py --apply-pending</code> (or verify by hand and'
             + ' <code>--mark-applied-through</code>).</div>';
+    }
+
+    // the feedback form's Jira path. A dead token sat unnoticed from
+    // 2026-10-21 to 10-26 because the only trace was a bare "400" in an email;
+    // the probe runs the two read-only calls the form depends on.
+    var fj = report.feedback_jira || {};
+    html += '<h4 style="margin:18px 0 6px;">Feedback form &rarr; Jira</h4>';
+    if (fj.ok) {
+        html += '<div style="color:#27ae60; padding:6px 0;">Filing works: authenticated as <strong>'
+            + escHtml(fj.identity || '') + '</strong>, project <strong>' + escHtml(fj.project_key || '')
+            + '</strong> visible (checked ' + escHtml(fj.checked_at || '') + ').</div>';
+    } else if (!fj.configured) {
+        html += '<div style="color:#999; padding:6px 0;">Not checked: ' + escHtml(fj.error || 'Jira integration not configured.') + '</div>';
+    } else {
+        html += '<div style="padding:4px 0; color:#c0392b;"><strong>Bug reports are NOT reaching Jira.</strong> '
+            + escHtml(fj.error || '') + ' (myself ' + escHtml(fj.myself_status == null ? '—' : fj.myself_status)
+            + ', project ' + escHtml(fj.project_status == null ? '—' : fj.project_status)
+            + '). Reports still arrive by email; re-seed the feedback Jira token (SSM deam/jira-api-token) and recreate the container.</div>';
     }
 
     // tracked cron jobs. The 05:40 demo DT reseed exited 1 for five

@@ -7,6 +7,7 @@ user-submitted feedback (bug reports / feature requests) via SMTP.
 import io
 import json
 import logging
+import re
 import smtplib
 
 from lib.smtp_transport import SMTP_TIMEOUT_SECONDS, smtp_ssl_context
@@ -406,12 +407,12 @@ class FeedbackService:
                 timeout=30,
             )
             if resp.status_code not in (200, 201):
-                logging.error(
-                    "FeedbackService: creation failed: %s %s",
-                    resp.status_code,
-                    resp.text[:500],
-                )
-                return {"success": False, "error": f"Jira API returned {resp.status_code}"}
+                # Jira's own errorMessages / errors travel with the
+                # failure (into the email and the audit log), not only into a
+                # container log that does not survive a recreate.
+                error = jira_error_text(resp.status_code, resp.text)
+                logging.error("FeedbackService: creation failed: %s", error)
+                return {"success": False, "error": error, "status": resp.status_code}
 
             issue_data = resp.json()
             issue_key = issue_data.get("key", "")
@@ -428,7 +429,68 @@ class FeedbackService:
 
         except Exception as e:
             logging.error("FeedbackService: Jira request failed: %s", e)
-            return {"success": False, "error": "Could not create the."}
+            return {"success": False, "error": f"Could not reach Jira ({type(e).__name__})."}
+
+    @staticmethod
+    def probe_jira(config, timeout: int = 8) -> dict:
+        """can the configured identity file into the configured project?
+
+        Two read-only calls with the credentials the form uses: ``/myself``
+        (does the token authenticate, and as whom) and ``/project/<key>``
+        (can that identity see the project). Surfaced on Status Reports so a
+        swapped token or a project-permission change is noticed before a user
+        hits it. Never raises; never includes the token.
+        """
+        import requests
+
+        out: dict = {
+            "configured": False,
+            "ok": False,
+            "identity": None,
+            "project_key": getattr(config, "JIRA_PROJECT_KEY", "") or "",
+            "myself_status": None,
+            "project_status": None,
+            "error": "",
+            "checked_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        }
+        if not getattr(config, "JIRA_ENABLED", False):
+            out["error"] = "Jira integration is disabled in master-config.yaml."
+            return out
+        base_url = (getattr(config, "JIRA_BASE_URL", "") or "").rstrip("/")
+        user_email = getattr(config, "JIRA_USER_EMAIL", "") or ""
+        api_token = getattr(config, "JIRA_API_TOKEN", "") or ""
+        if not all([base_url, out["project_key"], user_email, api_token]):
+            out["error"] = "Jira credentials not fully configured (base URL, project key, user email, API token)."
+            return out
+        out["configured"] = True
+        auth = (user_email, api_token)
+        headers = {"Accept": "application/json"}
+        try:
+            me = requests.get(f"{base_url}/rest/api/3/myself", auth=auth, headers=headers, timeout=timeout)
+            out["myself_status"] = me.status_code
+            if me.status_code != 200:
+                out["error"] = f"The feedback Jira token no longer authenticates as {user_email}: " + jira_error_text(
+                    me.status_code, me.text
+                )
+                return out
+            try:
+                out["identity"] = (me.json() or {}).get("emailAddress") or user_email
+            except ValueError:
+                out["identity"] = user_email
+            proj = requests.get(
+                f"{base_url}/rest/api/3/project/{out['project_key']}", auth=auth, headers=headers, timeout=timeout
+            )
+            out["project_status"] = proj.status_code
+            if proj.status_code != 200:
+                out["error"] = f"{out['identity']} cannot see project {out['project_key']}: " + jira_error_text(
+                    proj.status_code, proj.text
+                )
+                return out
+        except Exception as e:  # noqa: BLE001 — a probe must never take the page down
+            out["error"] = f"Could not reach Jira ({type(e).__name__})."
+            return out
+        out["ok"] = True
+        return out
 
     @staticmethod
     def _attach_file_to_jira(base_url: str, auth: tuple, issue_key: str, file_data: bytes, filename: str) -> None:
@@ -459,3 +521,35 @@ class FeedbackService:
 def _esc(text: str) -> str:
     """Escape HTML special characters."""
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+
+JIRA_ERROR_TEXT_MAX = 500
+_CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def jira_error_text(status: int, body: str | None) -> str:
+    """``Jira API returned <status>: <messages>`` from Jira's error JSON.
+
+    Jira answers a refused create with ``{"errorMessages": [...], "errors":
+    {"field": "why"}}``; both are joined, bounded to ``JIRA_ERROR_TEXT_MAX``
+    characters and stripped of control characters. A non-JSON body
+    contributes its first line. The status alone is what the email used to
+    carry, and a bare 400 told nobody anything.
+    """
+    detail = ""
+    text = (body or "").strip()
+    if text:
+        try:
+            parsed = json.loads(text)
+        except ValueError:
+            parsed = None
+        if isinstance(parsed, dict):
+            parts = [str(m) for m in (parsed.get("errorMessages") or []) if str(m).strip()]
+            errors = parsed.get("errors") or {}
+            if isinstance(errors, dict):
+                parts += [f"{k}: {v}" for k, v in errors.items()]
+            detail = "; ".join(parts)
+        else:
+            detail = text.splitlines()[0]
+    detail = _CONTROL_RE.sub(" ", detail).strip()[:JIRA_ERROR_TEXT_MAX]
+    return f"Jira API returned {status}" + (f": {detail}" if detail else "")

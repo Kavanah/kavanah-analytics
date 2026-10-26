@@ -163,17 +163,18 @@ SCHEDULE=(
     # {team_esid}__conversation_rollups, deletes the raw docs, purges raw JSON
     # already indexed for 7+ days and reports the SLM snapshot retention.
     #
-    # GATE: provisioned WITHOUT --apply on purpose — it reports what it WOULD
-    # roll up and delete and writes nothing to data indices or disk. Add
-    # --apply only after the Summary Report has been re-seeded to read the
-    # rollup source and the first dry-run report has been
-    # reviewed. Heartbeat: --check-heartbeat.
-    $'30\t04\t* * *\tretention_sweep\tpython3 /app/python/asset_management/jobs/retention_sweep.py'
+    # GATE (passed): provisioned without --apply until the first dry-run
+    # report was reviewed on prod and the live Summary
+    # Report read the rollup source on prod; a teammate
+    # signed off the switch on 2026-09-28. Deletes are irreversible once the 3-day
+    # SLM window has passed. Heartbeat: --check-heartbeat.
+    $'30\t04\t* * *\tretention_sweep\tpython3 /app/python/asset_management/jobs/retention_sweep.py --apply'
 
     # Disciple.Tools reconciliation, Sundays 04:45. Lists every
     # post id per site and removes ES docs the upstream no longer has (the
-    # importer never tombstones). Same dry-run gate as the sweep above.
-    $'45\t04\t* * 0\tretention_dt_reconcile\tpython3 /app/python/asset_management/jobs/retention_sweep.py --only-dt'
+    # importer never tombstones). Same gate as the sweep above; without
+    # --force it still refuses to delete more than 50% of a site's docs.
+    $'45\t04\t* * 0\tretention_dt_reconcile\tpython3 /app/python/asset_management/jobs/retention_sweep.py --only-dt --apply'
 
     # deleted-team data purge, 04:55 daily. A team delete writes a
     # purge request (de_team_purge_requests) with a 7-day grace; this job

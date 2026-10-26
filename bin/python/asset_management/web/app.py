@@ -140,6 +140,7 @@ if __name__ == "__main__" or __package__ is None or __package__ == "":
     from web.blueprints.report_scheduler import report_scheduler_bp
     from web.blueprints.field_catalog import field_catalog_bp
     from web.blueprints.signup_links import signup_links_bp
+    from web.blueprints.publish_global_church import publish_global_church_bp
 else:
     # Module import - use relative imports
     from .config import config
@@ -209,6 +210,7 @@ else:
     from .blueprints.report_scheduler import report_scheduler_bp
     from .blueprints.field_catalog import field_catalog_bp
     from .blueprints.signup_links import signup_links_bp
+    from .blueprints.publish_global_church import publish_global_church_bp
 
 # Initialize Flask app
 app = Flask(__name__, static_url_path="/static", static_folder="static")
@@ -260,6 +262,11 @@ app.register_blueprint(restore_backup_bp, url_prefix="/restore-backup")
 app.register_blueprint(field_catalog_bp, url_prefix="/field-catalog")
 # superuser page for personal signup links (webinar onboarding).
 app.register_blueprint(signup_links_bp)
+# Publish to Global.Church dialog — one organisation's country x month
+# release product, owner-only (WORKSPACE_DELETE on the organisation's own
+# workspace), hidden (404) while the GLOBAL_CHURCH_PUBLISH flag is off. The
+# route path is absolute (/publish-global-church/<org_esid>).
+app.register_blueprint(publish_global_church_bp)
 app.register_blueprint(analytics_bp)
 app.register_blueprint(public_report_bp)
 # internal auth-backend for nginx auth_request. Exposes
@@ -2615,15 +2622,21 @@ def add_asset(asset_type):
             # the full org list for a privileged-but-unscoped user.
             allowed_set = set(allowed_org_titles or [])
             if allowed_set:
-                org_hits = AssetService.get_all("de_asset_organization")
+                # narrow by the caller's scope, not by title alone.
+                # Org titles collide across workspaces (two self-signup orgs
+                # both named "OD"), and a title-only match posted the foreign
+                # org's ESID in the chips, which the reference guard
+                # then refused. ``_scope_filter_asset_hits`` is the same
+                # title-allow-list + workspace tenant-boundary pair the
+                # Asset Explorer list view applies, so the chips carry
+                # exactly the orgs the user can see there.
+                org_hits = _scope_filter_asset_hits("organizations", AssetService.get_all("de_asset_organization"))
                 matched_esids: list[str] = []
                 matched_titles: list[str] = []
                 for hit in org_hits:
                     src = hit.get("_source") or {}
-                    title = src.get("organization_title", "")
-                    if title in allowed_set:
-                        matched_esids.append(hit["_id"])
-                        matched_titles.append(title)
+                    matched_esids.append(hit["_id"])
+                    matched_titles.append(src.get("organization_title", ""))
                 # The multi_select widget reads from ``{name}_esids`` /
                 # ``{name}_titles`` (pipe-delimited strings via
                 # prepare_for_edit's convention). Match that shape so
@@ -16862,6 +16875,24 @@ def api_feedback_submit():
             logging.warning("Feedback: creation failed: %s", jira_result.get("error"))
             # surface the failure in the notification email.
             feedback_data["jira_error"] = jira_result.get("error") or "unknown error"
+        # the outcome (and Jira's own error text) is recorded in the
+        # audit log — the stored feedback record — not only in a container log
+        # that does not survive a recreate.
+        AuditLogService.log_event(
+            current_user.get("username", ""),
+            "feedback_jira_issue",
+            bool(jira_result.get("success")),
+            ip_address=request.remote_addr,
+            user_agent=request.headers.get("User-Agent", ""),
+            detail=(
+                f"type={fb_type} subject_len={len(subject)} "
+                + (
+                    f"issue={jira_result.get('issue_key')}"
+                    if jira_result.get("success")
+                    else f"status={jira_result.get('status', '-')} error={jira_result.get('error', '')}"
+                )
+            ),
+        )
 
     result = FeedbackService.send_feedback_email(es, feedback_data)
     status_code = 200 if result.get("success") else 500

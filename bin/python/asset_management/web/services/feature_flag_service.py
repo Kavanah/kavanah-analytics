@@ -56,6 +56,7 @@ MODE_COHORT = "cohort"
 _VALID_MODES = (MODE_OFF, MODE_ON, MODE_COHORT)
 
 FLAG_ORG_BILLING_PER_TEAM = "ORG_BILLING_PER_TEAM"
+FLAG_GLOBAL_CHURCH_PUBLISH = "GLOBAL_CHURCH_PUBLISH"
 
 # Registered flags. Adding a flag here registers it; ``seed_defaults`` will
 # create the ES doc on next startup if one does not already exist. The
@@ -79,6 +80,17 @@ _REGISTRY: dict[str, dict] = {
             "derives from the team subscription; OFF keeps the existing "
             "per-workspace single-subscription path. Flip to 'on' only AFTER the "
             "O4 migration has associated existing subscriptions with a team."
+        ),
+    },
+    FLAG_GLOBAL_CHURCH_PUBLISH: {
+        "mode": MODE_OFF,
+        "rollout_percent": 0,
+        "description": (
+            "Global.Church shared map. OFF by default on every environment. "
+            "While OFF the release-product export job refuses before reading any "
+            "data and the publish surfaces stay hidden. Flip to 'on' only after the "
+            "per-organisation opt-in has shipped; the opt-in is the "
+            "per-organisation control, this flag is the platform-wide one."
         ),
     },
 }

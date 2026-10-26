@@ -319,6 +319,16 @@
         <div class="section-divider" style="margin: 28px 0 18px 0;">
             <hr style="border: none; border-top: 1px solid #ddd; margin-bottom: 14px;">
             <h3 style="margin: 0; font-size: 1rem; font-weight: 600; color: #444; letter-spacing: 0.03em;">{{ field.label }}</h3>
+            {# a divider may explain itself and link to a page of its
+               own (edit mode only, since the link needs the item's esid);
+               ``link_flag`` names a feature flag the link waits for. #}
+            {% if field.get('help_text') %}
+            <p style="margin: 6px 0 0; font-size: 0.85rem; color: #666;">{{ field.help_text }}
+                {% if field.get('link_endpoint') and item_id and (not field.get('link_flag') or feature_enabled(field.link_flag)) %}
+                <a href="{{ url_for(field.link_endpoint, org_esid=item_id) }}" style="color: #4a90d9; text-decoration: none;">{{ field.link_label }} &rarr;</a>
+                {% endif %}
+            </p>
+            {% endif %}
         </div>
 
         {# read-only connector checkbox — never rendered (the

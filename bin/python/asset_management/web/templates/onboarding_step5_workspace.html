@@ -246,6 +246,15 @@
             color: #8A1A1A;
             font-size: 13px;
         }
+        /* Global.Church opt-in */
+        .gc-share-row { display: flex; align-items: flex-start; gap: 10px; font-size: 14px; cursor: pointer; }
+        .gc-share-row input { margin-top: 3px; width: 16px; height: 16px; flex: 0 0 auto; }
+        .gc-agreement { margin-top: 8px; }
+        .gc-agreement summary { cursor: pointer; font-size: 13px; }
+        .gc-agreement-text { border: 1px solid #e3e6ea; border-radius: 8px; padding: 10px 14px; max-height: 260px; overflow: auto; background: #fff; font-size: 12.5px; line-height: 1.5; margin-top: 6px; }
+        .gc-agreement-text h2, .gc-agreement-text h3 { font-size: 13px; margin: 12px 0 4px; }
+        .gc-agreement-text table { border-collapse: collapse; font-size: 12px; }
+        .gc-agreement-text th, .gc-agreement-text td { border: 1px solid #e3e6ea; padding: 3px 6px; text-align: left; vertical-align: top; }
     </style>
 </head>
 <body>
@@ -414,6 +423,24 @@
                     </div>
                 </details>
 
+                {% if gc_share_offered %}
+                {# Global.Church opt-in. Off unless ticked; ticking is
+                   the owner's acceptance of the agreement shown below, recorded
+                   once the organisation exists. The same words and hash appear
+                   on the organisation's sharing page, where it can be turned off. #}
+                <div class="field gc-share" id="gcShareField">
+                    <label class="gc-share-row">
+                        <input type="checkbox" id="gcShareInput" name="gc_share" value="yes" {% if gc_share_checked %}checked{% endif %}>
+                        <span>Share country-level reach with the Global.Church shared map, and accept its data-sharing agreement v{{ gc_agreement_version }} on behalf of this organisation</span>
+                    </label>
+                    <div class="hint">Off unless you tick it. What leaves: {{ gc_what_leaves|join('; ') }}. What stays: {{ gc_what_stays|join('; ') }}. You can turn this off any time from your organisation's sharing page; releases already published are not recalled.</div>
+                    <details class="gc-agreement">
+                        <summary>Read the agreement</summary>
+                        <div class="gc-agreement-text">{{ gc_agreement_html|safe }}</div>
+                        <div class="hint">SHA-256 of this text: <code>{{ gc_agreement_sha256 }}</code></div>
+                    </details>
+                </div>
+                {% endif %}
                 <div class="btn-row">
                     <a class="btn btn-ghost" href="{{ url_for('analytics.onboarding_step4_page') }}">← Back</a>
                     <button type="submit"

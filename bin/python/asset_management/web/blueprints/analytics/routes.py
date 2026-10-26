@@ -5047,6 +5047,8 @@ def onboarding_step5_page():
         "onboarding_step5_workspace.html",
         csrf_token=csrf_token,
         username=username,
+        gc_share_checked=bool(state.get("gc_share_optin")),
+        **_global_church_offer(),
         step3_title=defaults.step3_title,
         step3_subtitle=defaults.step3_subtitle,
         step3_label=defaults.step3_label,
@@ -5095,6 +5097,59 @@ def _apply_grant_sponsorship(state: dict, username: str) -> None:
             f"jti={_grant.get('jti', '')} workspace={state['workspace_esid']} "
             f"orgs_ok={len(_sponsor.get('orgs_ok') or [])} orgs_failed={','.join(_sponsor.get('orgs_failed') or []) or '-'}"
         ),
+    )
+
+
+def _global_church_offer() -> dict:
+    """the step-5 Global.Church opt-in. Offered only while the
+    GLOBAL_CHURCH_PUBLISH flag is on; the explanation and the agreement text,
+    version and hash the owner accepts by ticking the box."""
+    try:
+        from asset_management.web.services import global_church_sharing_service as gc
+        from asset_management.web.services.feature_flag_service import FLAG_GLOBAL_CHURCH_PUBLISH, FeatureFlagService
+    except ImportError:
+        from web.services import global_church_sharing_service as gc  # type: ignore[no-redef]
+        from web.services.feature_flag_service import FLAG_GLOBAL_CHURCH_PUBLISH, FeatureFlagService  # type: ignore[no-redef]
+    if not FeatureFlagService.is_enabled(FLAG_GLOBAL_CHURCH_PUBLISH):
+        return {"gc_share_offered": False}
+    text, sha = gc.load_agreement()
+    return {
+        "gc_share_offered": True,
+        "gc_agreement_html": gc.render_agreement_html(text),
+        "gc_agreement_version": gc.AGREEMENT_VERSION,
+        "gc_agreement_sha256": sha,
+        "gc_what_leaves": gc.WHAT_LEAVES,
+        "gc_what_stays": gc.WHAT_STAYS,
+    }
+
+
+def _apply_global_church_optin(state: dict, username: str) -> None:
+    """the owner ticked "share with Global.Church" at step-5. Once the
+    organisation exists, turn sharing on for it (recording who, when and which
+    agreement, and minting the team-label salt). Fail-soft like the provision
+    it follows; the owner can always do it again from the sharing page.
+    Mutates ``state`` (the caller saves it)."""
+    if not (state.get("gc_share_optin") and state.get("org_esid") and not state.get("gc_share_applied")):
+        return
+    try:
+        from asset_management.web.services.global_church_sharing_service import GlobalChurchSharingService
+    except ImportError:
+        from web.services.global_church_sharing_service import GlobalChurchSharingService  # type: ignore[no-redef]
+    ok = True
+    try:
+        GlobalChurchSharingService.enable(state["org_esid"], username)
+    except Exception as e:  # noqa: BLE001 — see docstring
+        logging.warning("sharing opt-in raised for %r: %s", username, e)
+        ok = False
+    if ok:
+        state["gc_share_applied"] = True
+    AuditLogService.log_event(
+        username,
+        "global_church_sharing",
+        ok,
+        ip_address=request.remote_addr,
+        user_agent=request.headers.get("User-Agent", ""),
+        detail=f"org={state['org_esid']} action=enable source=signup",
     )
 
 
@@ -5200,6 +5255,9 @@ def onboarding_step5_post():
     # user's org/agency name. The actual workspace title is derived
     # below via OnboardingDefaults.derive_workspace_title.
     org_title_input = (request.form.get("workspace_title") or "").strip()
+    gc_ctx = _global_church_offer()
+    # (no bool() around the comparison: Semgrep nan-injection reads bool(request...) as a typecast)
+    gc_share_ticked = request.form.get("gc_share") == "yes" if gc_ctx["gc_share_offered"] else False
     # follow-up (2026-05-21) — defensive strip: if the form
     # input arrives with a trailing "-workspace" or "-workspace-N"
     # suffix, that means the GET prefill leaked the SYSTEM-derived
@@ -5306,6 +5364,8 @@ def onboarding_step5_post():
                 "onboarding_step5_workspace.html",
                 csrf_token=auth_module.refresh_csrf_token(),
                 username=username,
+                gc_share_checked=gc_share_ticked,
+                **gc_ctx,
                 step3_title=defaults.step3_title,
                 step3_subtitle=defaults.step3_subtitle,
                 step3_label=defaults.step3_label,
@@ -5352,6 +5412,8 @@ def onboarding_step5_post():
                 "onboarding_step5_workspace.html",
                 csrf_token=auth_module.refresh_csrf_token(),
                 username=username,
+                gc_share_checked=gc_share_ticked,
+                **gc_ctx,
                 step3_title=defaults.step3_title,
                 step3_subtitle=defaults.step3_subtitle,
                 step3_label=defaults.step3_label,
@@ -5980,6 +6042,8 @@ def onboarding_step5_post():
 
     # a sponsored personal signup link comps the new workspace once.
     _apply_grant_sponsorship(state, username)
+    state["gc_share_optin"] = gc_share_ticked
+    _apply_global_church_optin(state, username)
 
     # the optional "Your plan" screen comes next unless the signup
     # was sponsored (then straight to the connector picker).
