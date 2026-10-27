@@ -203,8 +203,8 @@ class TestGetPermissions:
 class TestGetMergedPermissions:
     """(Phase 5 cleanup) replaced the per-role ES lookup with a
     deterministic three-case map: admin -> all True, data_explorer ->
-    Data Explorer carve-out, anything else -> all False. The legacy
-    OR-merge + ES cache are gone."""
+    Data Explorer carve-out, anything else -> all False except
+    db_data_explorer. The legacy OR-merge + ES cache are gone."""
 
     def test_admin_role_returns_all_true_except_grants_management(self):
         """asset_admin sees every admin surface EXCEPT Data
@@ -244,10 +244,14 @@ class TestGetMergedPermissions:
                 continue
             assert result[field] is False, f"data_explorer must NOT grant {field}"
 
-    def test_scoped_role_returns_all_false(self):
-        """org_*/team_*/custom non-admin roles get nothing."""
+    def test_scoped_role_gets_only_data_explorer(self):
+        """org_*/team_*/custom non-admin roles get nothing but Data Explorer,
+        which every signed-in user holds."""
         result = RolePermissionsService.get_merged_permissions(["org_VOGZ", "team_NFCY"])
+        assert result["db_data_explorer"] is True
         for field in _PERM_FIELDS:
+            if field == "db_data_explorer":
+                continue
             assert result[field] is False
 
     def test_admin_overrides_data_explorer(self):
@@ -265,9 +269,13 @@ class TestGetMergedPermissions:
                 continue
             assert result[field] is True
 
-    def test_empty_roles_returns_all_false(self):
+    def test_empty_roles_gets_only_data_explorer(self):
+        """a wizard user with no ES roles still reaches Data Explorer."""
         result = RolePermissionsService.get_merged_permissions([])
+        assert result["db_data_explorer"] is True
         for field in _PERM_FIELDS:
+            if field == "db_data_explorer":
+                continue
             assert result[field] is False
 
     def test_does_not_query_es(self, mock_es):

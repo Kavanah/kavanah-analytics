@@ -75,11 +75,11 @@ _PRICING = {
 }
 _DEFAULT_PRICING = {"input": 1.00, "output": 5.00}
 
-# once the prepaid Console credit is spent the direct API refuses
+# once the account's API credit is spent the direct API refuses
 # every call with HTTP 400 invalid_request_error ("Your credit balance is too
-# low to access the Anthropic API …"). a teammate chose a hard stop (no backup card,
-# the credit renews monthly), so this is an expected end-of-month state, not
-# a bug — the services say so instead of "API error — see server logs".
+# low to access the Anthropic API …"). Running out is a deliberate hard stop
+# until the credit renews, so this is an expected state, not a bug — the
+# services say so instead of "API error — see server logs".
 CREDIT_EXHAUSTED_ERROR = "The monthly AI credit is used up — AI features return when it renews."
 
 
@@ -419,8 +419,12 @@ def log_feedback(
         logging.error(f"Failed to log NLQ feedback: {e}")
 
 
-def get_usage_stats() -> dict[str, Any]:
+def get_usage_stats(user: str | None = None) -> dict[str, Any]:
     """Return aggregate usage stats for the NLQ feature.
+
+    ``user`` narrows every figure to that username's own rows (:
+    non-superusers must not see other tenants' usernames or spend). None
+    returns the platform-wide view.
 
     Returns:
         dict with: total_queries, total_tokens, total_cost_usd,
@@ -431,12 +435,15 @@ def get_usage_stats() -> dict[str, Any]:
         return {"error": "Elasticsearch unavailable"}
 
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    # ``is not None``: an empty username must match nothing, not everyone.
+    query = {"term": {"user": user}} if user is not None else {"match_all": {}}
 
     try:
         result = es.search(
             index=NLQ_USAGE_INDEX,
             body={
                 "size": 0,
+                "query": query,
                 "aggs": {
                     "total_tokens": {"sum": {"field": "total_tokens"}},
                     "total_cost": {"sum": {"field": "estimated_cost_usd"}},

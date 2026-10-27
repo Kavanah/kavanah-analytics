@@ -1507,7 +1507,9 @@ def _nlq_skip_status(status: int | None) -> str | None:
     environment — record SKIP (never a vacuous PASS, never a noisy ERROR):
       * 503 — NLQ_ENABLED is false on this deployment.
       * 502 — upstream model/API error (no/invalid key) — can't exercise scope.
-      * 302/401/403 — caller denied before NLQ runs (no mc_data_explorer).
+      * 302/401/403 — caller denied before NLQ runs (no Data Explorer
+        permission, or no team scope at all).
+      * 429 — the caller's daily Ask Kavanah cap is spent.
     """
     if status is None:
         return "request failed"
@@ -1516,7 +1518,9 @@ def _nlq_skip_status(status: int | None) -> str | None:
     if status == 502:
         return "NLQ upstream/model error (502) — API key likely absent"
     if status in (302, 401, 403):
-        return f"denied before NLQ ({status}) — no mc_data_explorer"
+        return f"denied before NLQ ({status}) — no Data Explorer permission or no team scope"
+    if status == 429:
+        return "daily Ask Kavanah cap reached (429)"
     return None
 
 

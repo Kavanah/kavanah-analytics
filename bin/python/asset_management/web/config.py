@@ -155,6 +155,9 @@ def load_config():
             config["NLQ_MODEL"] = nlq_config.get("model", "claude-haiku-5-5")
             config["NLQ_ENABLED"] = nlq_config.get("enabled", False)
             config["NLQ_MAX_TOKENS"] = nlq_config.get("max_tokens", 8192)
+            # every user has Ask Kavanah, so each one gets a daily
+            # spend cap (a teammate, 2026-10-27: $2, matching the canvas AI cap).
+            config["NLQ_USER_DAILY_COST_CAP_USD"] = nlq_config.get("user_daily_cost_cap_usd", 2.0)
             config["NLQ_PROVIDER"] = nlq_config.get("provider", "anthropic")
             config["NLQ_AWS_REGION"] = nlq_config.get("aws_region", "us-west-2")
             config["NLQ_AWS_PROFILE"] = nlq_config.get("aws_profile", "")
@@ -203,8 +206,8 @@ def load_config():
             config["CANVAS_AI_ANTHROPIC_MODEL_DEFAULT"] = canvas_ai_config.get("anthropic_model_default", "claude-haiku-5-5")
             config["CANVAS_AI_ANTHROPIC_MODEL_COMPLEX"] = canvas_ai_config.get("anthropic_model_complex", "claude-haiku-5-5")
             config["CANVAS_AI_USER_DAILY_COST_CAP_USD"] = canvas_ai_config.get("user_daily_cost_cap_usd", 2.0)
-            # $6/day keeps the feature inside the $200/month
-            # Console credit (was $25/day, up to about $775/month).
+            # a whole-feature daily ceiling, sized to the monthly API
+            # credit (it was 25.0).
             config["CANVAS_AI_FEATURE_DAILY_COST_CAP_USD"] = canvas_ai_config.get("feature_daily_cost_cap_usd", 6.0)
 
         # Security settings (MFA enforcement, etc.) —
@@ -702,6 +705,11 @@ class Config:
     def NLQ_MAX_TOKENS(self):
         """Max tokens for NLQ API responses."""
         return int(self._config.get("NLQ_MAX_TOKENS", 8192))
+
+    @property
+    def NLQ_USER_DAILY_COST_CAP_USD(self):
+        """Per-user daily estimated-cost cap for Ask Kavanah (USD); 0 disables it."""
+        return float(self._config.get("NLQ_USER_DAILY_COST_CAP_USD", 2.0))
 
     @property
     def NLQ_PROVIDER(self):

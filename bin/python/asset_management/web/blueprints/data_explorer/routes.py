@@ -20,7 +20,13 @@ try:
         structured_query as nlq_structured_query,
         resolve_memory_tenant_keys,
     )
-    from web.services.nlq_usage_service import log_query, log_feedback, get_usage_stats, ensure_usage_index
+    from web.services.nlq_usage_service import (
+        log_query,
+        log_feedback,
+        get_feature_spend_today,
+        get_usage_stats,
+        ensure_usage_index,
+    )
     from web.services.report_export_service import export_excel, export_pdf
     from web.services.nlq_memory_service import (
         ensure_memory_index,
@@ -37,7 +43,13 @@ except ImportError:
         structured_query as nlq_structured_query,
         resolve_memory_tenant_keys,
     )
-    from ...services.nlq_usage_service import log_query, log_feedback, get_usage_stats, ensure_usage_index
+    from ...services.nlq_usage_service import (
+        log_query,
+        log_feedback,
+        get_feature_spend_today,
+        get_usage_stats,
+        ensure_usage_index,
+    )
     from ...services.report_export_service import export_excel, export_pdf
     from ...services.nlq_memory_service import (
         ensure_memory_index,
@@ -61,6 +73,29 @@ def _require_data_explorer() -> None:
     perms = RolePermissionsService.get_merged_permissions(session.get("roles", []))
     if not perms.get("mc_data_explorer") and not perms.get("db_data_explorer"):
         abort(403, description="This page requires the Data Explorer permission.")
+
+
+def _ai_call_refusal(username: str) -> tuple[str, int] | None:
+    """why an Ask Kavanah call must not reach the model, or None.
+
+    Every user holds Data Explorer, so two checks run before any spend:
+    a caller with no team scope would only get the deny-all filter's empty
+    answer, and each user has a daily cost cap. Superusers (Kavanah staff)
+    are exempt from the cap (a teammate, 2026-10-27). The spend lookup fails
+    closed (``get_feature_spend_today`` returns inf on ES errors).
+    """
+    try:
+        from web.services.role_filter_service import RoleFilterService
+    except ImportError:
+        from ...services.role_filter_service import RoleFilterService
+    if not RoleFilterService.current_user_has_any_scope():
+        return "You don't have access to any teams yet, so there is no data to ask about.", 403
+    if "superuser" in session.get("roles", []):
+        return None
+    cap = config.NLQ_USER_DAILY_COST_CAP_USD
+    if cap > 0 and get_feature_spend_today("nlq", user=username) >= cap:
+        return "You've reached today's Ask Kavanah limit. It resets at midnight UTC.", 429
+    return None
 
 
 # ── Blueprint error handlers (return JSON for API routes) ──────────────────────
@@ -133,6 +168,9 @@ def api_chat():
 
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     username = session.get("username", "unknown")
+    refusal = _ai_call_refusal(username)
+    if refusal:
+        return jsonify({"success": False, "error": refusal[0]}), refusal[1]
 
     # Get the latest user message for logging
     user_message = ""
@@ -201,6 +239,9 @@ def api_ask():
         model_choice = "haiku"
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     username = session.get("username", "unknown")
+    refusal = _ai_call_refusal(username)
+    if refusal:
+        return jsonify({"success": False, "error": refusal[0]}), refusal[1]
 
     result = nlq_structured_query(
         query=query,
@@ -354,9 +395,14 @@ def api_export_pdf():
 
 @data_explorer_bp.route("/api/usage")
 def api_usage():
-    """Return NLQ usage statistics."""
+    """Return NLQ usage statistics.
+
+    superusers see the platform-wide figures; everyone else sees
+    only their own, so no user learns another tenant's usernames or spend.
+    """
     _require_data_explorer()
-    stats = get_usage_stats()
+    is_superuser = "superuser" in session.get("roles", [])
+    stats = get_usage_stats(user=None if is_superuser else session.get("username", ""))
     if "error" in stats:
         return jsonify({"success": False, "error": stats["error"]}), 503
     return jsonify({"success": True, "stats": stats})

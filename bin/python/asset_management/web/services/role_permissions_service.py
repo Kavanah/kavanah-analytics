@@ -677,7 +677,8 @@ class RolePermissionsService:
           required to reach Data Explorer (``db_data_explorer`` +
           ``hdr_dashboards_link``); everything else False
         * Anything else (org_*, team_*, custom roles) → all flags
-          False (scoped users don't see admin sidebar items)
+          False (scoped users don't see admin sidebar items), except
+          ``db_data_explorer``, which every user holds
 
         The legacy ES-backed lookup let admins toggle 15 boolean
         flags per custom role in the Roles tab. In practice the only
@@ -765,6 +766,13 @@ class RolePermissionsService:
         # afterwards. (The superuser / asset_admin branches above still return
         # all_true early — there is nothing for the bridge to add on top.)
         scoped = dict(all_false)
+
+        # (a teammate, 2026-10-27): Data Explorer / Ask Kavanah is open to
+        # every signed-in user. The flag grants the page, not data: nlq_service
+        # scopes every query to the caller's teams (filter,
+        # index scope) and the routes refuse a caller with no scope before any
+        # model spend.
+        scoped["db_data_explorer"] = True
 
         if "data_explorer" in role_set:
             scoped["db_data_explorer"] = True
