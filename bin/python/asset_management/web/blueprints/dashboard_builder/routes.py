@@ -1021,7 +1021,9 @@ def canvas_seed(dashboard_id):
                 charts = (source.get("echarts_config") or {}).get("charts") or []
                 canva_chart = next((c for c in charts if isinstance(c, dict) and c.get("chart_type") == "canva"), None)
                 if canva_chart is not None:
-                    visible_sections = visible_canva_sections(es, team_titles, canva_chart)
+                    visible_sections = visible_canva_sections(
+                        es, team_titles, canva_chart, workspace_esid=source.get("workspace_esid") or ""
+                    )
         canvas_config, skipped = convert_dashboard_to_canvas(
             source, theme_ref=request.args.get("theme"), visible_sections=visible_sections
         )

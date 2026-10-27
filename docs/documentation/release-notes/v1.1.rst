@@ -1,0 +1,53 @@
+.. _v1.1:
+
+v1.1 — October 2026
+===================
+
+Release date: October 2026
+
+A feature release on top of :doc:`v1.0-beta`. The standard upgrade
+procedure applies: back up, pull, restart the workers. No migration step
+is needed; the one new set of organization fields is added automatically
+the first time it is used.
+
+----
+
+What's New
+----------
+
+**Sharing with the Global.Church shared map (opt-in, off by default)**
+
+An organization can choose to contribute its country-by-month reach to
+the `Global.Church <https://global.church>`_ shared map. A release holds
+four whole-number counts per team × country × month — exposed,
+interactions, touchpoints and active — plus a short manifest. Teams are
+identified only by an opaque identifier; nothing below country grain and
+nothing naming a person ever leaves, and the file format cannot carry
+anything finer.
+
+Sharing is off for every organization until its workspace owner turns
+it on, either at signup or from the organization's new sharing page,
+after reading what leaves, what stays, and the data-sharing agreement.
+Publishing is a deliberate action from the new **Publish to Global.Church**
+page: choose teams and countries, choose whether to be named, accept
+the agreement, publish. Kavanah records the acceptance and the receipt
+only after Global.Church accepts the file. Turning sharing off stops
+every future release and keeps nothing hidden about what was already
+sent.
+
+The whole feature sits behind a platform switch that is off on a fresh
+installation and on Kavanah's hosted service until the first live
+publish has been reviewed.
+
+See :doc:`../guide-management-console/global-church-sharing`.
+
+----
+
+Fixes
+-----
+
+**Team form: organization pre-fill is scoped by workspace.** When an
+organization in one workspace had the same name as an organization in
+another, the team Add form could offer both and then refuse the save.
+The pre-fill now only ever offers organizations the current user can
+see.

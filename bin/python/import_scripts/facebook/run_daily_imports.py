@@ -411,6 +411,7 @@ def run_import_for_range(
     force_dates=None,
     days_base=0,
     backfill_bailout=False,
+    country_only=False,
 ):
     """run get_insights ONCE for the whole date set.
 
@@ -464,6 +465,10 @@ def run_import_for_range(
     # backfill; harmless/absent everywhere else.
     if backfill_bailout:
         get_insights_cmd.append("--backfill_bailout=true")
+    # country-breakdown backfill: the child skips the platform call
+    # and every *_fb_insights write.
+    if country_only:
+        get_insights_cmd.append("--country_only=true")
     # let get_insights record its OWN user-actionable failures (strict-
     # mode zero teams, no traversable asset chain, revoked connection) against the
     # run's progress doc. Without this, those raise ValueError → the subprocess
@@ -794,6 +799,21 @@ def _run_ad_stage(
         check=True,
     )
 
+    # per-country delivery rows ({team_esid}__fb_insights_country):
+    # the same send -> archive pair as the platform docs. Best-effort
+    # (check=False): the country index refines the Global.Church export and is
+    # never a reason to fail the import of the platform docs.
+    logging.info("Running send_country_json_to_elastic.py...")
+    country_send_cmd = ["python3", "/app/python/import.py", "facebook", "send_country_json_to_elastic"]
+    if team_ids:
+        country_send_cmd.append(f"--team_ids={team_ids}")
+    _country_rc = getattr(subprocess.run(country_send_cmd, check=False), "returncode", 0)
+    if _country_rc:
+        logging.warning("send_country_json_to_elastic exited %s; platform docs are unaffected.", _country_rc)
+    else:
+        logging.info("Running archive_country_imported_json.py...")
+        subprocess.run(["python3", "/app/python/import.py", "facebook", "archive_country_imported_json"], check=False)
+
     # Pre-warm the city geocode cache so the map dashboard doesn't fall back to
     # live Nominatim calls when a user first views any new campaigns.
     # Best-effort — failure here doesn't fail the import. scope to
@@ -908,6 +928,55 @@ def _run_window_reach_step(dates, *, log_usage, team_ids, progress_run_id=None, 
 _VALID_STAGES = ("ad", "page", "ig")
 
 
+def _run_country_backfill(dates, *, log_usage, team_ids, progress_run_id=None):
+    """fetch and index the per-country delivery rows for ``dates``.
+
+    One ranged get_insights run with ``--country_only=true`` and
+    ``--backfill_bailout=true`` (a Meta rate limit stops the run and keeps what
+    it wrote; re-run to continue), then the country send + archive. Every
+    requested day is fetched: the skip is about the platform index,
+    which this run never writes. Respects the Facebook-ads toggle.
+    Returns "skipped" / "failed" / "ok"; never raises into the caller.
+    """
+    if _all_scoped_teams_source_off(team_ids, "fb_ads"):
+        logging.info("country backfill: Facebook ads are switched off for the scoped team(s); nothing to do.")
+        return "skipped"
+    dates = sorted(d for d in dates if d)
+    if not dates:
+        return "skipped"
+    logging.info(
+        "country backfill: %d day(s) %s..%s for team_ids=%r (no platform writes).",
+        len(dates),
+        dates[0],
+        dates[-1],
+        team_ids,
+    )
+    try:
+        run_import_for_range(
+            dates,
+            log_usage,
+            team_ids=team_ids,
+            progress_run_id=progress_run_id,
+            backfill_bailout=True,
+            country_only=True,
+        )
+    except Exception as exc:  # noqa: BLE001 — boundary: report, keep whatever was written for the send below
+        logging.warning("country backfill: get_insights failed (%s); sending what was written.", exc)
+        status = "failed"
+    else:
+        status = "ok"
+    country_send_cmd = ["python3", "/app/python/import.py", "facebook", "send_country_json_to_elastic"]
+    if team_ids:
+        country_send_cmd.append(f"--team_ids={team_ids}")
+    rc = getattr(subprocess.run(country_send_cmd, check=False), "returncode", 0)
+    if rc:
+        logging.warning("country backfill: send_country_json_to_elastic exited %s; files kept for a re-send.", rc)
+        return "failed"
+    subprocess.run(["python3", "/app/python/import.py", "facebook", "archive_country_imported_json"], check=False)
+    logging.info("country backfill finished: status=%s.", status)
+    return status
+
+
 def _parse_stages(params):
     """/B (KAN-XXX selective dispatch) — resolve which Meta stages to run.
 
@@ -980,6 +1049,8 @@ def main(params):
     # partial data) instead of the daily path's sleep-and-retry. Accepts the string
     # "true"/"1" (CLI) or a real bool (params).
     backfill_bailout = params.get("backfill_bailout") in (True, "true", "True", "1", 1)
+    # country-breakdown backfill (see _run_country_backfill).
+    country_only = params.get("country_only") in (True, "true", "True", "1", 1)
 
     # startup reaper. Stamp any orphaned non-terminal progress
     # doc (importer died mid-run without a terminal stamp) terminal before
@@ -1229,6 +1300,22 @@ def main(params):
                         )
                 except Exception as exc:  # noqa: BLE001 — boundary
                     logging.warning("dedup-only complete_run raised: %s", exc)
+            return
+
+        # country-breakdown backfill. Adds per-country rows for
+        # history WITHOUT re-writing platform docs (a forced re-pull would write
+        # current-format docs beside earlier ones and double-count them).
+        # Bypasses the settled-day skip (that skip looks at the platform
+        # index, which is exactly what this run must not re-fetch), always runs
+        # in backfill bail-out mode, and sends + archives ONLY the country docs.
+        # No page / IG / window-reach / prewarm stages.
+        if country_only:
+            _run_country_backfill(
+                dates,
+                log_usage=log_usage,
+                team_ids=team_ids,
+                progress_run_id=progress_run_id,
+            )
             return
 
         # Ad-insights stage (selective dispatch). Runs the per-date fetch loop

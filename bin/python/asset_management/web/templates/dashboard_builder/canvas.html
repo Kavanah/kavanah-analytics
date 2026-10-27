@@ -787,7 +787,7 @@
      exist first ('' → page-relative api/…, same value canvas_editor.js
      re-sets later). builder.js' page init self-guards on #db-panel-left. #}
   <script nonce="{{ csp_nonce }}">window.DASHBOARD_BASE = window.DASHBOARD_BASE || '';</script>
-  <script src="{{ url_for('static', filename='dashboard_builder/charts.js') }}?v=20261024a"></script>
+  <script src="{{ url_for('static', filename='dashboard_builder/charts.js') }}?v=20261027a"></script>
   <script src="{{ url_for('static', filename='dashboard_builder/builder.js') }}?v=20261024a"></script>
   {# dashboard_filters.js must load BEFORE canvas_editor.js — the
      editor calls renderDashboardFilterStrip during boot/load/seed. #}

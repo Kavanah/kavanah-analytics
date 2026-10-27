@@ -154,6 +154,8 @@ DATA_VIEWS=(
     "*_bitly_clicks|Bitly Clicks|@timestamp"
     # TikTok organic snapshots ({team_esid}__tiktok_organic).
     "*_tiktok_organic|TikTok Organic|@timestamp"
+    # per-country delivery breakdown of FB ad insights.
+    "*_fb_insights_country|Facebook Ads by Country (daily)|@timestamp"
     # monthly per-team conversation rollups written by the retention
     # sweep before raw conversations older than 24 months are deleted.
     "*_conversation_rollups|Conversation Rollups (monthly)|@timestamp"

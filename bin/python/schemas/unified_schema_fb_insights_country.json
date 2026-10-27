@@ -1,0 +1,30 @@
+{
+  "_comment": "per-country delivery breakdown of Facebook ad insights ({team_esid}__fb_insights_country): one doc per ad x day x delivery country, written by import_scripts/facebook/get_insights.py from a second account-level insights call with breakdowns=[country]. Kept OUT of *_fb_insights so no existing tile double-counts impressions/clicks. Hand-maintained (not generated from the fb_ads catalog — the catalog governs the platform docs' field picker, which does not apply here).",
+  "properties": {
+    "@timestamp": {"type": "date"},
+    "date": {"type": "date", "format": "yyyy-MM-dd"},
+    "kibana_date": {"type": "date", "format": "yyyy-MM-dd"},
+    "record_type": {"type": "keyword"},
+    "country": {"type": "keyword"},
+    "ad_id": {"type": "keyword"},
+    "ad_name": {"type": "keyword"},
+    "ad_account_id": {"type": "keyword"},
+    "ad_campaign_id": {"type": "keyword"},
+    "ad_campaign_name": {"type": "keyword"},
+    "adset_id": {"type": "keyword"},
+    "adset_name": {"type": "keyword"},
+    "page_id": {"type": "keyword"},
+    "page_name": {"type": "keyword"},
+    "team_esid": {"type": "keyword"},
+    "team_title": {"type": "keyword"},
+    "team_country": {"type": "keyword"},
+    "team_city": {"type": "keyword"},
+    "team_site_url": {"type": "keyword"},
+    "organization_title": {"type": "keyword"},
+    "insight_date_start": {"type": "date", "format": "yyyy-MM-dd"},
+    "insight_date_stop": {"type": "date", "format": "yyyy-MM-dd"},
+    "insight_impressions": {"type": "integer"},
+    "insight_clicks": {"type": "integer"},
+    "insight_reach": {"type": "integer"}
+  }
+}

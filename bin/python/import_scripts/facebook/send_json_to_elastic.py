@@ -41,8 +41,23 @@ def _build_doc_id(data):
     return f"{ad_id}_{date}_{platform}"
 
 
-def generate_bulk_actions(documents, indices_created, es_client, schema, team_cache, scope_esids=None):
+def generate_bulk_actions(
+    documents,
+    indices_created,
+    es_client,
+    schema,
+    team_cache,
+    scope_esids=None,
+    *,
+    source_slug=SOURCE_SLUG,
+    doc_id_fn=_build_doc_id,
+):
     """Yield bulk index actions, creating ESID-keyed indices on first encounter.
+
+    ``source_slug`` / ``doc_id_fn`` let the per-country sender
+    (``send_country_json_to_elastic``) reuse this generator for
+    ``{team_esid}__fb_insights_country`` with its own id grain; the defaults
+    keep the platform-doc path unchanged.
 
     index name is now `{team_esid}__fb_insights`. Docs that can't
     be resolved to a known team_esid are skipped with a warning rather
@@ -90,7 +105,7 @@ def generate_bulk_actions(documents, indices_created, es_client, schema, team_ca
             continue
 
         if team_esid not in indices_created:
-            index_name = ensure_data_index(es_client, team_esid, SOURCE_SLUG, schema)
+            index_name = ensure_data_index(es_client, team_esid, source_slug, schema)
             indices_created[team_esid] = index_name
             logging.info(f"Created team index: {index_name}")
         else:
@@ -106,7 +121,7 @@ def generate_bulk_actions(documents, indices_created, es_client, schema, team_ca
             "_index": index_name,
             "_source": data,
         }
-        doc_id = _build_doc_id(data)
+        doc_id = doc_id_fn(data)
         if doc_id:
             action["_id"] = doc_id
         yield action

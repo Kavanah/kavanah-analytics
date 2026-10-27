@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import logging
 
+from lib.es_helpers import dual_term, dual_terms
+
 TEAMS_INDEX = "de_asset_teams"
 OVERRIDES_FIELD = "summary_card_overrides"
 
@@ -46,6 +48,14 @@ SUMMARY_UNITS: list[tuple[str, str]] = [
 ]
 _UNIT_KEYS = {k for k, _ in SUMMARY_UNITS}
 _VALID_STATES = ("show", "hide")
+
+# a partial-doc update merges objects key by key, so writing {}
+# changed nothing and a dropped key survived. The script replaces the whole
+# map, and removes the field when no overrides are left.
+_REPLACE_OVERRIDES_SCRIPT = (
+    "if (params.overrides.isEmpty()) { ctx._source.remove(params.field) } "
+    "else { ctx._source[params.field] = params.overrides }"
+)
 
 # Unit key -> the Summary section it lives in (whole-section rollup for the
 # canvas seeder's seed-time skip).
@@ -75,6 +85,8 @@ UNIT_SECTION = {
 # docs, so data existence alone governs it.
 PATTERN_SOURCE_DS = {
     "fb_insights": "ds_facebook",
+    # per-country delivery breakdown; governed by the Facebook toggle like the platform docs.
+    "fb_insights_country": "ds_facebook",
     "fb_page_insights": "ds_facebook",
     "ig_insights": "ds_instagram",
     "google_ads": "ds_google_ads",
@@ -126,7 +138,9 @@ def get_overrides(es, team_esid: str, allowed_workspaces) -> dict | None:
 
 def set_overrides(es, team_esid: str, raw_overrides: dict | None, allowed_workspaces) -> dict | None:
     """Replace the team's overrides with the sanitized map. Returns the map
-    as stored, or None when the team is not visible to the caller."""
+    read back from the doc (never the input, so a write that did
+    not land cannot report success), or None when the team is not visible to
+    the caller."""
     source = _scoped_team(es, team_esid, allowed_workspaces)
     if source is None:
         return None
@@ -135,13 +149,18 @@ def set_overrides(es, team_esid: str, raw_overrides: dict | None, allowed_worksp
         es.update(
             index=TEAMS_INDEX,
             id=team_esid,
-            doc={OVERRIDES_FIELD: overrides},
+            script={
+                "source": _REPLACE_OVERRIDES_SCRIPT,
+                "lang": "painless",
+                "params": {"field": OVERRIDES_FIELD, "overrides": overrides},
+            },
             refresh="wait_for",
         )
+        stored = es.get(index=TEAMS_INDEX, id=team_esid)
     except Exception as e:  # noqa: BLE001 — surfaced as a 500 by the route
         logging.warning("summary_visibility set_overrides %s: %s", team_esid, e)
         raise
-    return overrides
+    return sanitize_overrides((stored.get("_source") or {}).get(OVERRIDES_FIELD))
 
 
 def _title_query(titles) -> dict:
@@ -210,10 +229,89 @@ def visible_patterns_for_titles(es, team_titles, patterns) -> dict:
     return out
 
 
+def teams_in_workspace(es, workspace_esid: str, team_titles) -> list[dict]:
+    """the team docs titled ``team_titles`` INSIDE one workspace,
+    as search hits (``_id`` = team ESID; ``_source`` carries the title, the
+    overrides and the ds_* toggles). Titles collide across workspaces
+    (every wizard signup's first team is "Team 1"), so the title-keyed
+    helpers below let any tenant's same-titled team steer a report. Empty
+    list on no workspace / no titles / lookup failure — callers fall back
+    to their earlier behavior."""
+    titles = [t for t in (team_titles or []) if t]
+    if not workspace_esid or not titles:
+        return []
+    try:
+        result = es.search(
+            index=TEAMS_INDEX,
+            body={
+                "query": {"bool": {"filter": [dual_term("workspace_esid", workspace_esid), _title_query(titles)]}},
+                "size": len(titles) * 2,
+                # ds_* (not _DS_FIELDS): the availability endpoint reads its own
+                # toggle list off these hits too.
+                "_source": ["team_title", OVERRIDES_FIELD, "ds_*"],
+            },
+            ignore_unavailable=True,
+        )
+    except Exception as e:  # noqa: BLE001 — callers fall back to the title path
+        logging.warning("summary_visibility teams_in_workspace: %s", e)
+        return []
+    return result.get("hits", {}).get("hits", [])
+
+
+def visible_patterns_for_teams(es, team_hits, patterns) -> dict:
+    """``visible_patterns_for_titles`` keyed by team ESID: a
+    pattern is visible when it holds docs whose ``team_esid`` is one of the
+    teams AND the governing ds_* toggle is on for any of them. Empty dict on
+    no teams / no patterns / lookup failure (callers fail open)."""
+    esids = [h["_id"] for h in (team_hits or []) if h.get("_id")]
+    pats = [p for p in (patterns or []) if p]
+    if not esids or not pats:
+        return {}
+    team_query = dual_terms("team_esid", esids)
+    body = []
+    for p in pats:
+        body.append({"index": p, "ignore_unavailable": True})
+        body.append({"size": 0, "query": team_query})
+    try:
+        results = es.msearch(body=body)
+    except Exception as e:  # noqa: BLE001 — fail open
+        logging.warning("summary_visibility visible_patterns_for_teams: %s", e)
+        return {}
+    ds_flags = {k: any(str((h.get("_source") or {}).get(k, "")).lower() == "true" for h in team_hits) for k in _DS_FIELDS}
+    out = {}
+    for i, p in enumerate(pats):
+        resp = (results.get("responses") or [{}] * len(pats))[i]
+        total = resp.get("hits", {}).get("total", {})
+        count = total.get("value", 0) if isinstance(total, dict) else (total or 0)
+        visible = count > 0 and "error" not in resp
+        ds_field = PATTERN_SOURCE_DS.get(p.lstrip("*_"))
+        if ds_field and not ds_flags.get(ds_field, False):
+            visible = False
+        out[p] = visible
+    return out
+
+
+def merged_overrides_for_teams(team_hits) -> dict:
+    """Merge the overrides carried on ``team_hits``: any 'show' wins, else
+    any 'hide' wins. The single home of the merge rule (keys the
+    teams by ESID; the title path below feeds its hits through here too)."""
+    merged: dict = {}
+    for hit in team_hits or []:
+        for k, v in sanitize_overrides((hit.get("_source") or {}).get(OVERRIDES_FIELD)).items():
+            if merged.get(k) == "show":
+                continue  # an earlier team's 'show' already won this key
+            merged[k] = v  # 'show' overwrites a 'hide'; 'hide' fills empty
+    return merged
+
+
 def merged_overrides_for_titles(es, team_titles) -> dict:
     """Merge overrides across the teams matching ``team_titles`` for the
     availability endpoint: any 'show' wins, else any 'hide' wins. Empty dict
-    on no titles, lookup failure, or no opinions — automatic behavior."""
+    on no titles, lookup failure, or no opinions — automatic behavior.
+
+    Title-keyed across every workspace — the fallback when no dashboard
+    workspace is known; prefer ``teams_in_workspace`` +
+    ``merged_overrides_for_teams``."""
     titles = [t for t in (team_titles or []) if t]
     if not titles:
         return {}
@@ -234,10 +332,4 @@ def merged_overrides_for_titles(es, team_titles) -> dict:
     except Exception as e:  # noqa: BLE001 — overrides are an overlay; fail to automatic
         logging.warning("summary_visibility merged_overrides_for_titles: %s", e)
         return {}
-    merged: dict = {}
-    for hit in result.get("hits", {}).get("hits", []):
-        for k, v in sanitize_overrides((hit.get("_source") or {}).get(OVERRIDES_FIELD)).items():
-            if merged.get(k) == "show":
-                continue  # an earlier team's 'show' already won this key
-            merged[k] = v  # 'show' overwrites a 'hide'; 'hide' fills empty
-    return merged
+    return merged_overrides_for_teams(result.get("hits", {}).get("hits", []))

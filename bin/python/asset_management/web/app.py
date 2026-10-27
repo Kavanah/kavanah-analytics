@@ -4773,6 +4773,36 @@ def _get_team_data_source_flags(es, team_titles):
         return {k: True for k in _DS_FIELDS}
 
 
+def _dashboard_workspace_team_hits(es, dashboard_id, team_titles):
+    """the selected teams that live in the named dashboard's
+    workspace, as de_asset_teams hits (``_id`` = team ESID).
+
+    Team titles collide across workspaces (every signup's first team is
+    "Team 1"), and a privileged all-teams view spans workspaces, so a team in
+    another workspace could hide a section on this one's report. The
+    dashboard's workspace is the report's tenant, so only its teams may steer
+    the report. The caller must be able to read the dashboard — otherwise a
+    scoped user could name a foreign dashboard and have their own team title
+    resolve to that tenant's same-titled team. Empty list (the caller keeps
+    its title-keyed path) when no dashboard is named, it is unreadable, or
+    none of the selected teams is in its workspace.
+    """
+    if not dashboard_id or not team_titles:
+        return []
+    from lib.es_helpers import get_document_by_id
+    from asset_management.web.blueprints.dashboard_builder.routes import _user_may_read_dashboard
+
+    try:
+        from web.services import summary_visibility_service as _svs
+    except ImportError:
+        from asset_management.web.services import summary_visibility_service as _svs
+
+    source = get_document_by_id("de_asset_echarts_dashboards", dashboard_id)
+    if not source or not _user_may_read_dashboard(source):
+        return []
+    return _svs.teams_in_workspace(es, source.get("workspace_esid") or "", team_titles)
+
+
 def _get_team_titles_for_org(es, org, filter_type):
     """Look up team titles from de_asset_teams for the given org and filter_type.
 
@@ -4926,9 +4956,19 @@ def get_platform_availability():
             logging.warning("Platform availability: platform index map unavailable (Kibana down?): %s", e)
             index_map = {}
 
+        # the Summary Report names its dashboard (?dashboard=): the
+        # selected teams are narrowed to that dashboard's workspace and every
+        # per-team read below (data existence, ds_* toggles, card overrides)
+        # is keyed by team ESID. Without it the title-keyed path is unchanged.
+        scoped_team_hits = _dashboard_workspace_team_hits(es, request.args.get("dashboard", ""), team_titles)
+
         # Build the team filter query once — reused for every msearch entry.
         # Query both team_title and team_title.keyword to handle either mapping.
-        if team_titles:
+        if scoped_team_hits:
+            from lib.es_helpers import dual_terms
+
+            team_query = dual_terms("team_esid", [h["_id"] for h in scoped_team_hits])
+        elif team_titles:
             should_clauses = []
             for t in team_titles:
                 should_clauses.append({"term": {"team_title.keyword": t}})
@@ -5029,7 +5069,10 @@ def get_platform_availability():
         # When a team/org is selected, check which data sources are disabled
         # and hide the corresponding platform groups and individual dashboards.
         if team_titles:
-            ds_flags = _get_team_data_source_flags(es, team_titles)
+            if scoped_team_hits:
+                ds_flags = {k: any(h["_source"].get(k) == "true" for h in scoped_team_hits) for k in _DS_FIELDS}
+            else:
+                ds_flags = _get_team_data_source_flags(es, team_titles)
 
             # 3a: Per-dashboard override using index pattern → ds_* mapping.
             # A dashboard is hidden when ANY of its index patterns belongs to
@@ -5058,7 +5101,10 @@ def get_platform_availability():
                     from web.services import summary_visibility_service as _svs
                 except ImportError:
                     from asset_management.web.services import summary_visibility_service as _svs
-                unit_overrides = _svs.merged_overrides_for_titles(es, team_titles)
+                if scoped_team_hits:
+                    unit_overrides = _svs.merged_overrides_for_teams(scoped_team_hits)
+                else:
+                    unit_overrides = _svs.merged_overrides_for_titles(es, team_titles)
 
             # 3b: Dashboards without index patterns — fall back to menu match.
             # Also catches dashboards whose patterns aren't in INDEX_PATTERN_DS_MAP.

@@ -25,6 +25,7 @@ guide walks you through a feature with annotated screenshots.
    data-connectors
    restore-from-backup
    status-reports
+   global-church-sharing
    testing
 
 ----
@@ -56,6 +57,11 @@ guide walks you through a feature with annotated screenshots.
 :doc:`status-reports`
    Daily-health screen for the import pipeline — parsed errors and
    per-platform records / errors / runtime summary.
+
+:doc:`global-church-sharing`
+   Opt-in sharing of country-by-month reach with the Global.Church shared
+   map: what leaves, what never leaves, turning it on and off, and
+   publishing a release.
 
 :doc:`testing`
    Internal QA tooling: pytest, Locust load tests, security

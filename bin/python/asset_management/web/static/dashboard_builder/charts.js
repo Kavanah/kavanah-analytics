@@ -3972,6 +3972,10 @@ async function _cvFetchPatternVisibility(M) {
         params.push('org=' + encodeURIComponent(f.value));
       }
     });
+    // name the dashboard so the server scopes the teams to its
+    // workspace and keys overrides by team ESID, not title. id is null on the
+    // snapshot / public pages, which keep the title-keyed answer.
+    if (DASHBOARD_STATE.id) params.push('dashboard=' + encodeURIComponent(DASHBOARD_STATE.id));
     // Prefix-safe root: DASHBOARD_BASE is pathname-derived (view.html) and
     // ends with 'dashboard-builder/', so stripping that yields the app root
     // under any mount prefix (bare or /assets).

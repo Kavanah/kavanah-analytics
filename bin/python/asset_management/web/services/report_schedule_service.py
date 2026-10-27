@@ -825,13 +825,10 @@ class ReportScheduleService:
             dow = schedule.get("day_of_week")
             if not isinstance(dow, int) or not (0 <= dow <= 6):
                 raise ReportScheduleError(f"day_of_week (0=Mon..6=Sun) required for {freq}; got {dow!r}")
+            # For biweekly this is the FIRST fire only (create / edit / resume).
+            # After a run, _next_run_after_fire steps 14 days from the fire that
+            # just ran.
             nxt = ReportScheduleService._next_weekly(local_after, hh, mm, dow)
-            if freq == FREQ_BIWEEKLY:
-                # The next weekly occurrence is correct for the first fire; the
-                # 14-day cadence is enforced at run time by adding 14d from
-                # last_run (see _advance_after_run). For a fresh schedule with
-                # no last_run, the next weekly hit is the right first fire.
-                pass
         else:  # FREQ_MONTHLY
             dom = schedule.get("day_of_month")
             if not isinstance(dom, int) or not (1 <= dom <= 28):
@@ -839,6 +836,42 @@ class ReportScheduleService:
             nxt = ReportScheduleService._next_monthly(local_after, hh, mm, dom)
 
         return nxt.astimezone(timezone.utc)
+
+    @staticmethod
+    def _next_run_after_fire(
+        cadence: dict,
+        previous_next_run: str | None,
+        *,
+        now: datetime,
+    ) -> datetime:
+        """The next fire time after a run that started at ``now``.
+
+        Every cadence except biweekly is ``compute_next_run(after=now)``.
+
+        biweekly steps 14 days from ``previous_next_run`` (the fire
+        that just ran), not to the next weekly hit, so the schedule keeps its
+        two-week phase:
+          * a Run-now before the due time leaves the pending fire where it is;
+          * a scheduler that was down past one or more fires catches up on the
+            same phase (the first fire strictly after ``now``);
+          * no stored next_run falls back to the next weekly hit (first fire).
+        Each step asks for the named weekday strictly after +10 days, which is
+        always +14 days in local wall-clock time: a DST change shifts the UTC
+        gap by an hour, never by the 3+ days that would land on another week.
+        """
+        if (cadence or {}).get("frequency") != FREQ_BIWEEKLY or not previous_next_run:
+            return ReportScheduleService.compute_next_run(cadence, after=now)
+        previous = datetime.fromisoformat(previous_next_run)
+        if previous.tzinfo is None:
+            previous = previous.replace(tzinfo=timezone.utc)
+        if now.tzinfo is None:
+            now = now.replace(tzinfo=timezone.utc)
+        if previous > now:
+            return previous
+        nxt = previous
+        while nxt <= now:
+            nxt = ReportScheduleService.compute_next_run(cadence, after=nxt + timedelta(days=10))
+        return nxt
 
     @staticmethod
     def _parse_hhmm(value: str | None) -> tuple[int, int]:
@@ -3466,7 +3499,9 @@ class ReportScheduleService:
         the deferred path advance identically."""
         schedule_id = schedule.get("schedule_id")
         try:
-            next_run = ReportScheduleService.compute_next_run(schedule.get("schedule") or {}, after=now)
+            next_run = ReportScheduleService._next_run_after_fire(
+                schedule.get("schedule") or {}, schedule.get("next_run"), now=now
+            )
             es.update(
                 index=INDEX_REPORT_SCHEDULES,
                 id=schedule_id,

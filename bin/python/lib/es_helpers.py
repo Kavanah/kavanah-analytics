@@ -1075,6 +1075,10 @@ KNOWN_SOURCES = (
     # that FB only computes correctly over a whole window in one call — a per-day
     # sum over-counts them. Produced by the (repurposed) windowed FB importer.
     "fb_insights_window",
+    # per-country delivery breakdown ({team_esid}__fb_insights_country) —
+    # one doc per ad x day x delivery country, read by the Global.Church export so
+    # multi-country ad sets are placed instead of reported as unattributed.
+    "fb_insights_country",
     "fb_page_insights",
     "fb_page_posts",
     "ga_metrics",

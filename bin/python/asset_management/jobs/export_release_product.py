@@ -32,11 +32,16 @@ Counting rules (each metric names the only documents it reads):
   shared ``lib.country_codes`` resolver) + Facebook ``insight_clicks`` from
   the same single-country ad sets.
 
-A Facebook ad set that targets several countries (or none — worldwide) is
-NOT split across them: its impressions and clicks are reported once, in
-``manifest.unattributed``, so the owner and the receiver know what the rows
-do not contain. The per-country delivery breakdown Meta can report is a
-separate importer change.
+Facebook placement: where the importer has stored Meta's
+per-country delivery breakdown (``{team}__fb_insights_country``, one doc per
+ad x day x country), those ad-days are placed by the country the ads actually
+delivered in — multi-country and worldwide ad sets included — and the
+platform docs for the same ad-days are skipped so nothing is counted twice.
+Only ad-days with NO breakdown rows (data imported before the breakdown
+existed, or a run with it turned off) fall back to the targeting rule above:
+a single-country ad set is placed, anything else is reported once in
+``manifest.unattributed`` so the owner and the receiver know what the rows
+do not contain.
 
 Why ``kibana_date`` and not ``@timestamp``: every importer stamps
 ``@timestamp`` with the import instant (``datetime.now`` at send time), so
@@ -355,7 +360,24 @@ def facebook_query(first_month: str, last_month: str) -> dict:
                 ]
             }
         },
-        "_source": [DATE_FIELD, "insight_impressions", "insight_clicks", "adset_targeting.geo_locations"],
+        "_source": [DATE_FIELD, "ad_id", "insight_impressions", "insight_clicks", "adset_targeting.geo_locations"],
+    }
+
+
+def facebook_country_query(first_month: str, last_month: str) -> dict:
+    """every per-country delivery row in the window (NOT filtered by
+    the selected countries — the ad-days it covers must be known in full so
+    the platform scan can skip them)."""
+    return {
+        "query": {
+            "bool": {
+                "filter": [
+                    {"term": {"record_type": "country_breakdown"}},
+                    window_range(first_month, last_month),
+                ]
+            }
+        },
+        "_source": [DATE_FIELD, "ad_id", "country", "insight_impressions", "insight_clicks"],
     }
 
 
@@ -486,13 +508,37 @@ def count_team(es, counts: Counts, team_esid: str, team_label: str, countries: l
                 continue
             counts.cell(team_label, iso2, month)["interactions"] += _int((mb.get("sessions") or {}).get("value"))
 
+    # per-country delivery rows first: they place every ad-day they
+    # cover (multi-country ad sets included) and mark those ad-days so the
+    # platform scan below never counts them a second time.
+    covered: set[tuple[str, str]] = set()
+    fb_country_index = build_data_index_name(team_esid, "fb_insights_country")
+    if es.indices.exists(index=fb_country_index):
+        counts.sources_used.add("facebook_ads")
+        for hit in _scan(es, fb_country_index, facebook_country_query(first, last)):
+            src = hit.get("_source") or {}
+            day = str(src.get(DATE_FIELD) or "")
+            month = day[:7]
+            if not _MONTH_RE.match(month):
+                continue
+            covered.add((str(src.get("ad_id") or ""), day))
+            iso2 = str(src.get("country") or "").upper()
+            if iso2 not in selected:
+                continue
+            c = counts.cell(team_label, iso2, month)
+            c["exposed"] += _int(src.get("insight_impressions"))
+            c["interactions"] += _int(src.get("insight_clicks"))
+
     fb_index = build_data_index_name(team_esid, "fb_insights")
     if es.indices.exists(index=fb_index):
         counts.sources_used.add("facebook_ads")
         for hit in _scan(es, fb_index, facebook_query(first, last)):
             src = hit.get("_source") or {}
-            month = str(src.get(DATE_FIELD) or "")[:7]
+            day = str(src.get(DATE_FIELD) or "")
+            month = day[:7]
             if not _MONTH_RE.match(month):
+                continue
+            if (str(src.get("ad_id") or ""), day) in covered:
                 continue
             impressions = _int(src.get("insight_impressions"))
             clicks = _int(src.get("insight_clicks"))

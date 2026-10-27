@@ -60,6 +60,40 @@ class _RateLimitBailout(Exception):
 # they bail out instead of sleeping. Default False = daily/scheduled behavior.
 _backfill_bailout = False
 
+# per-country delivery breakdown (ON by default). One extra
+# account-level insights call per range chunk with breakdowns=[country]; the
+# rows land in {team_esid}__fb_insights_country (one doc per ad x day x country,
+# separate from *_fb_insights so no tile double-counts) and let the
+# Global.Church export place multi-country ad sets by where they delivered.
+# --country_breakdown=false turns the pull off for a run.
+_country_breakdown = True
+# country-only backfill mode. Fetches ads (for team attribution) and
+# the per-country breakdown, and SKIPS the platform insights call and every
+# write to *_fb_insights. Exists because a forced re-pull over months stored by
+# the earlier importer (random _ids, no publisher_platform) writes current-
+# format platform docs BESIDE the old ones and double-counts them; this mode
+# adds the country rows for history without touching the platform docs.
+_country_only = False
+_COUNTRY_INSIGHT_FIELDS = ["impressions", "clicks", "reach"]
+_COUNTRY_RECORD_TYPE = "country_breakdown"
+_COUNTRY_DOC_AD_KEYS = (
+    "ad_id",
+    "ad_name",
+    "ad_account_id",
+    "ad_campaign_id",
+    "ad_campaign_name",
+    "adset_id",
+    "adset_name",
+    "page_id",
+    "page_name",
+    "team_esid",
+    "team_title",
+    "team_country",
+    "team_city",
+    "team_site_url",
+    "organization_title",
+)
+
 
 # Meta ads-management rate-limit signals. A throttled account can fail
 # the request OUTRIGHT (400) rather than returning near-limit usage headers, so
@@ -1854,7 +1888,7 @@ def _chunk_date_range(since, until, chunk_days):
 
 # Main function to handle params passed from import.py
 def main(params):
-    global _log_usage, _backfill_bailout
+    global _log_usage, _backfill_bailout, _country_breakdown, _country_only
 
     lib.logging.define("fb-get-insights")
 
@@ -1865,6 +1899,18 @@ def main(params):
     _backfill_bailout = params.get("backfill_bailout") in (True, "true", "True", "1", 1)
     if _backfill_bailout:
         logging.info("backfill mode ON: rate limits will bail out and keep partial progress.")
+    # per-country breakdown pull; on unless the caller says otherwise.
+    _country_breakdown = params.get("country_breakdown") not in (False, "false", "False", "0", 0, "no", "off")
+    _country_only = params.get("country_only") in (True, "true", "True", "1", 1)
+    if _country_only:
+        # Country-only implies the breakdown; it is the only thing this run writes.
+        _country_breakdown = True
+        logging.info(
+            "country-only mode: fetching ads + the per-country breakdown only; "
+            "no platform insights call and no *_fb_insights writes."
+        )
+    elif not _country_breakdown:
+        logging.info("country breakdown OFF for this run (--country_breakdown=false).")
 
     # bind this run's progress doc so the strict-mode failures below
     # (zero teams, no traversable asset chain) and a revoked connection surface in
@@ -2294,8 +2340,16 @@ def main(params):
                 _kaf16_teams = [_fb_team_esid]
             else:
                 _kaf16_teams = [t.get("_id") for _teams in page_id_to_teams.values() for t in _teams]
-            account_ad_insights = fetch_account_ad_insights(
-                ad_account_id, since, until=until, fields=_daily_fields_for_teams(_kaf16_teams)
+            # country-only backfill skips the platform call entirely.
+            account_ad_insights = (
+                {}
+                if _country_only
+                else fetch_account_ad_insights(ad_account_id, since, until=until, fields=_daily_fields_for_teams(_kaf16_teams))
+            )
+            # the per-country delivery rows for the same range (one
+            # more call per chunk; same rate-limit / bail-out handling).
+            account_country_insights = (
+                fetch_account_country_insights(ad_account_id, since, until=until) if _country_breakdown else {}
             )
         except _RateLimitBailout as bail:
             logging.warning(
@@ -2534,9 +2588,13 @@ def main(params):
                 # compute_optimization_result reads per-platform spend/results.
                 # with the ranged time_increment=1 fetch each row is a
                 # (day, platform) cell; the row's own day drives the doc grain.
-                if not ad_insights_list:
+                if not ad_insights_list and not _country_only:
                     logging.info(f"No insights rows for ad {ad.get('ad_id')} on {window_label} — nothing to write")
                     continue
+                if _country_only:
+                    # no platform docs in country-only mode; fall
+                    # through to the country write below.
+                    ad_insights_list = []
 
                 for platform_insights in ad_insights_list:
                     platform = platform_insights.get("publisher_platform", "unknown")
@@ -2616,6 +2674,17 @@ def main(params):
                             f"Ad {platform_ad.get('ad_id')} platform={platform} had no delivery "
                             f"(spend={platform_ad.get('insight_spend')}, impressions={platform_ad.get('insight_impressions')}) — skipping write"
                         )
+                # this ad's per-country delivery rows, attributed to
+                # the same team as the platform docs above, into their own index.
+                _write_country_docs(
+                    ad,
+                    account_country_insights.get(str(ad.get("ad_id")), []),
+                    wanted_days=wanted_days,
+                    force_refetch=force_refetch,
+                    force_dates=force_dates,
+                    fb_ad_account_esid=fb_ad_account.get("_id"),
+                    fb_app_esid=fb_app.get("_id"),
+                )
             except Exception as e:
                 # per-ad boundary. One bad ad must not kill the batch.
                 logging.warning(
@@ -2664,6 +2733,10 @@ def main(params):
     # a zombie and inflates doc counts on the Import Status page).
     # once per requested day (both helpers are no-ops today;
     # the per-day call shape is preserved in case the subsystem is revived).
+    # a country-only run wrote no platform docs, so teams_with_data
+    # is empty by design: never let that read as "no data" for *_fb_insights.
+    if _country_only:
+        return
     for _day in dates:
         delete_stale_markers_for_date("*_fb_insights", _day, teams_with_data)
 
@@ -3106,6 +3179,172 @@ def _fetch_account_ad_insights_chunk(ad_account_id, since, until, fields=None):
     return {}
 
 
+# ── per-country delivery breakdown ─────────────────────────────────
+
+
+def _country_request_params(since, until):
+    """Request params for the per-country account-level call: level=ad,
+    ``breakdowns=[country]``, no action breakdowns (only delivery counts are
+    asked for), ``time_increment=1`` for a multi-day range like the platform
+    call."""
+    params = {
+        "time_range": {"since": since, "until": until},
+        "level": "ad",
+        "breakdowns": ["country"],
+        "limit": 1000,
+    }
+    if until != since:
+        params["time_increment"] = 1
+    return params
+
+
+def _country_code(value):
+    """Meta's ``country`` breakdown value as an upper-case ISO 3166-1 alpha-2
+    code, or None for anything else ("Unknown", "", a region label)."""
+    code = str(value or "").strip().upper()
+    if len(code) == 2 and code.isascii() and code.isalpha():
+        return code
+    return None
+
+
+def fetch_account_country_insights(ad_account_id, date, until=None):
+    """per-ad PER-COUNTRY delivery rows for an ad account over
+    ``[date..until]``: ``dict[ad_id -> [{country, insight_date_start,
+    insight_date_stop, insight_impressions, insight_clicks, insight_reach}]]``.
+
+    Chunked like ``fetch_account_ad_insights`` so a long backfill never asks
+    Meta for an oversized result set; rows whose ``country`` is not an ISO-2
+    code are dropped and counted. A chunk that fails soft contributes no rows.
+    """
+    lib.logging.define("fb-get-insights")
+    window_until = until or date
+    by_ad = {}
+    for chunk_since, chunk_until in _chunk_date_range(date, window_until, _RANGED_INSIGHTS_CHUNK_DAYS):
+        chunk = _fetch_account_country_chunk(ad_account_id, chunk_since, chunk_until)
+        for ad_id, rows in chunk.items():
+            by_ad.setdefault(ad_id, []).extend(rows)
+    return by_ad
+
+
+def _fetch_account_country_chunk(ad_account_id, since, until):
+    """One ``breakdowns=[country]`` account-level call over ``[since..until]``.
+
+    The retry / rate-limit / bail-out handling mirrors
+    ``_fetch_account_ad_insights_chunk`` on purpose (kept separate so the
+    platform path stays byte-identical)."""
+    normalized_account_id = normalize_ad_account_id(ad_account_id)
+    request_params = _country_request_params(since, until)
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            insights = AdAccount(normalized_account_id).get_insights(
+                fields=["ad_id", *_COUNTRY_INSIGHT_FIELDS],
+                params=request_params,
+            )
+            by_ad = {}
+            skipped = 0
+            for row in insights:  # SDK Cursor auto-paginates on iteration
+                ad_id = row.get("ad_id")
+                code = _country_code(row.get("country"))
+                if not ad_id or not code:
+                    skipped += 1
+                    continue
+                by_ad.setdefault(str(ad_id), []).append(
+                    {
+                        "country": code,
+                        "insight_date_start": row.get("date_start") or since,
+                        "insight_date_stop": row.get("date_stop") or row.get("date_start") or since,
+                        "insight_impressions": int(float(row.get("impressions") or 0)),
+                        "insight_clicks": int(float(row.get("clicks") or 0)),
+                        "insight_reach": int(float(row.get("reach") or 0)),
+                    }
+                )
+            if skipped:
+                logging.info(
+                    "%d country-breakdown row(s) for %s had no ISO-2 country and were dropped.",
+                    skipped,
+                    ad_account_id,
+                )
+            return by_ad
+        except FacebookRequestError as e:
+            if e.api_error_subcode() == 1504022:
+                if _backfill_bailout:
+                    logging.warning(
+                        "backfill: rate limit fetching country breakdown for %s; "
+                        "bailing out to keep partial progress.",
+                        ad_account_id,
+                    )
+                    raise _RateLimitBailout(f"rate limited fetching country breakdown for {ad_account_id}") from e
+                backoff = 60 * (2**attempt)
+                logging.warning(
+                    f"rate limit hit fetching country breakdown for {ad_account_id} "
+                    f"(attempt {attempt + 1}/{max_retries}). Sleeping {backoff}s before retry."
+                )
+                time.sleep(backoff)
+                check_and_pause_for_account(ad_account_id)
+            else:
+                _maybe_record_expired_fb_token(e)
+                logging.error(f"failed to fetch country breakdown for {ad_account_id}: {e}")
+                return {}
+    logging.error(f"failed to fetch country breakdown for {ad_account_id} after {max_retries} retries.")
+    return {}
+
+
+def _country_doc(ad, row):
+    """One ``{team_esid}__fb_insights_country`` document: the ad's identity and
+    team attribution (already resolved on ``ad``) plus one country's delivery
+    counts for one day. Never carries targeting, spend or actions."""
+    doc = {k: ad.get(k) for k in _COUNTRY_DOC_AD_KEYS if ad.get(k) is not None}
+    day = row["insight_date_start"]
+    doc.update(
+        {
+            "record_type": _COUNTRY_RECORD_TYPE,
+            "country": row["country"],
+            "insight_date_start": day,
+            "insight_date_stop": row.get("insight_date_stop") or day,
+            "insight_impressions": int(row.get("insight_impressions") or 0),
+            "insight_clicks": int(row.get("insight_clicks") or 0),
+            "insight_reach": int(row.get("insight_reach") or 0),
+            "kibana_date": day,
+            "date": day,
+            "@timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+    return doc
+
+
+def _write_country_docs(ad, rows, *, wanted_days, force_refetch, force_dates, fb_ad_account_esid, fb_app_esid):
+    """Write this ad's per-country docs to ``ad_insights_country/`` for the
+    sender. Same day gate, day-level force and archived-AND-indexed skip as
+    the platform docs. Returns the number of
+    files written."""
+    if not rows:
+        return 0
+    team_esid = ad.get("team_esid", "unknown")
+    ad_id = ad.get("ad_id")
+    if not ad_id or not team_esid or team_esid == "unknown":
+        return 0
+    es_index = build_data_index_name(team_esid, "fb_insights_country")
+    written = 0
+    for row in rows:
+        day = row.get("insight_date_start") or ""
+        if day not in wanted_days:
+            continue
+        if not (row.get("insight_impressions") or row.get("insight_clicks") or row.get("insight_reach")):
+            continue
+        doc = _country_doc(ad, row)
+        code = doc["country"]
+        doc_id = f"{ad_id}_{day}_{code}"
+        base = f"{fb_ad_account_esid}/{fb_app_esid}/{team_esid}/{day}_{ad_id}_{code}.json"
+        imported_file_path = f"/app/data/facebook/ad_insights_country_imported/{base}"
+        day_forced = force_refetch or (day in force_dates)
+        if not day_forced and os.path.exists(imported_file_path) and indexed_doc_present(es_index, doc_id=doc_id):
+            continue
+        save_data_to_file(doc, f"/app/data/facebook/ad_insights_country/{base}")
+        written += 1
+    return written
+
+
 # Function to reformat insights data
 def reformat_insights(insights):
     lib.logging.define("fb-get-insights")
@@ -3445,6 +3684,14 @@ if __name__ == "__main__":
     parser.add_argument("--fb_app_ids", default=False, help="Comma-separated FB app IDs")
     parser.add_argument("--team_ids", default=False, help="Comma-separated team IDs")
     parser.add_argument("--fb_page_id", default=False, help="Single FB page ID for debugging")
+    parser.add_argument(
+        "--country_breakdown", default=None, help="false/0 turns off the per-country delivery pull"
+    )
+    parser.add_argument(
+        "--country_only",
+        default=None,
+        help="true = country-breakdown backfill: no platform call, no *_fb_insights writes",
+    )
 
     args = parser.parse_args()
 
@@ -3458,6 +3705,8 @@ if __name__ == "__main__":
         "fb_app_ids": args.fb_app_ids,
         "team_ids": args.team_ids,
         "fb_page_id": args.fb_page_id,
+        "country_breakdown": args.country_breakdown,
+        "country_only": args.country_only,
     }
 
     main(params)

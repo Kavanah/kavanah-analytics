@@ -101,6 +101,8 @@ PROJECT_INDEX_PATTERNS: list[str] = [
     "de_*",
     "*_fb_insights",
     "*_fb_insights_window",
+    # per-country delivery breakdown ({esid}__fb_insights_country).
+    "*_fb_insights_country",
     # windowed deduplicated IG reach ({esid}__ig_insights_window).
     "*_ig_insights_window",
     "*_fb_page_insights",

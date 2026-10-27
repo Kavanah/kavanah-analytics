@@ -12,6 +12,7 @@ Kavanah Analytics release.
 
    versioning
    release-roadmap
+   v1.1
    v1.0-beta
 
 ----
@@ -26,5 +27,9 @@ Kavanah Analytics release.
    Planned phases and target quarters for upcoming features, from Phase 2
    billing through Phase 4 multi-region rollout.
 
+:doc:`v1.1`
+   Release notes for the current release — v1.1 (October 2026): opt-in
+   sharing with the Global.Church shared map.
+
 :doc:`v1.0-beta`
-   Release notes for the current release — v1.0 (May 2026).
+   Release notes for v1.0 (May 2026), the general availability release.

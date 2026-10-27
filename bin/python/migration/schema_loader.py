@@ -51,6 +51,8 @@ SCHEMA_MAP = {
     "tiktok_organic": "unified_schema_tiktok_organic",
     # monthly conversation rollups ({team_esid}__conversation_rollups).
     "conversation_rollups": "unified_schema_conversation_rollups",
+    # per-country delivery breakdown of FB ad insights ({team_esid}__fb_insights_country).
+    "fb_insights_country": "unified_schema_fb_insights_country",
 }
 
 # root keys Elasticsearch accepts in a ``mappings`` body (index create

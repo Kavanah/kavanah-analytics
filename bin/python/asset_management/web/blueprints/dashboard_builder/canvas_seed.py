@@ -827,8 +827,13 @@ _CANVA_SECTION_METRICS = {
 }
 
 
-def visible_canva_sections(es, team_titles, chart: dict):
+def visible_canva_sections(es, team_titles, chart: dict, workspace_esid: str = ""):
     """seed-time — which Summary sections to seed for a team scope.
+
+    with ``workspace_esid`` (the source dashboard's workspace) the
+    titles resolve to that workspace's teams and every lookup is keyed by
+    team ESID, so a same-titled team in another workspace cannot steer the
+    seed. No match there falls back to the title lookups below.
 
     Whole-section granularity (a teammate's option-2 call, 2026-08-27): a section
     seeds when ANY of its metrics' override-resolved data views is visible
@@ -855,10 +860,17 @@ def visible_canva_sections(es, team_titles, chart: dict):
         for sec, mids in _CANVA_SECTION_METRICS.items()
     }
     patterns = sorted({dv for dvs in section_dvs.values() for dv in dvs})
-    vis = svs.visible_patterns_for_titles(es, titles, patterns)
+    team_hits = svs.teams_in_workspace(es, workspace_esid, titles)
+    if team_hits:
+        vis = svs.visible_patterns_for_teams(es, team_hits, patterns)
+    else:
+        vis = svs.visible_patterns_for_titles(es, titles, patterns)
     if not vis:
         return None  # lookup failed / empty — fail open, seed everything
-    overrides = svs.merged_overrides_for_titles(es, titles)
+    if team_hits:
+        overrides = svs.merged_overrides_for_teams(team_hits)
+    else:
+        overrides = svs.merged_overrides_for_titles(es, titles)
     visible: set = set()
     for sec, dvs in section_dvs.items():
         if overrides.get(sec) == "hide":
