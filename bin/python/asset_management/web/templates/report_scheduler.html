@@ -1506,8 +1506,10 @@
     const CREATE_URL = "{{ url_for('report_scheduler.api_create') }}";
     const API_BASE = "{{ url_for('report_scheduler.index') }}".replace(/\/$/, "") + "/api/";
     // Reuse the dashboard-builder scope endpoints (already authz'd + scope-filtered).
-    const DASHBOARDS_URL = "{{ url_for('dashboard_builder.list_dashboards') }}";
-    const ORG_TEAM_URL = "{{ url_for('dashboard_builder.get_org_team_options') }}";
+    // assets_url, not url_for: this page is served at bare /report-scheduler/,
+    // where url_for emits a bare /dashboard-builder/... path that nginx 404s.
+    const DASHBOARDS_URL = "{{ assets_url('dashboard_builder.list_dashboards') }}";
+    const ORG_TEAM_URL = "{{ assets_url('dashboard_builder.get_org_team_options') }}";
     // the connector-filtered team list the Scope listbox uses in BOTH
     // create and edit: only teams that have the chosen connector configured (the
     // same set the tile count is computed from). Supersedes the edit modal's old
@@ -2048,7 +2050,9 @@
     const CREATE_URL = "{{ url_for('report_scheduler.api_create') }}";
     const API_BASE = "{{ url_for('report_scheduler.index') }}".replace(/\/$/, "") + "/api/";
     const PAGE_API = API_BASE;
-    const DASHBOARDS_URL = "{{ url_for('dashboard_builder.list_dashboards') }}";
+    // assets_url: a bare url_for here 404s at nginx, which left the email
+    // picker with only the built-in reports.
+    const DASHBOARDS_URL = "{{ assets_url('dashboard_builder.list_dashboards') }}";
 
     const $ = function (id) { return document.getElementById(id); };
     const overlay = $("esm-overlay");
