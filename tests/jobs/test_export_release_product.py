@@ -270,7 +270,7 @@ def test_a_country_whose_alpha3_cannot_be_resolved_refuses_the_run(es, monkeypat
 def test_manifest_carries_the_organisation_settings_and_the_window(release):
     rel, _ = release
     m = rel["manifest"]
-    assert m["schemaVersion"] == "0.1.0"
+    assert m["schemaVersion"] == "0.2.0"
     assert m["grain"] == "country x month"
     assert m["suppression"] == "none"
     assert m["sources"] == ["echo", "facebook_ads", "ga4", "google_ads", "youtube"]

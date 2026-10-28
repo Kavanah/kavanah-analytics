@@ -26,7 +26,8 @@ Org/team visibility scoping reuses ``role_filter_service.resolve_user_scope``:
 ``UserScope``.
 
 Cron parsing is hand-rolled (user decision 2026-06-09): the creation form only
-emits a handful of cadence shapes (daily / weekly+DOW / biweekly / monthly), so
+emits a handful of cadence shapes (daily / weekly+DOW / biweekly / monthly /
+quarterly), so
 ``compute_next_run`` works off structured frequency fields rather than parsing a
 general cron string. The ``schedule.cron`` field is still stored for display +
 future generality.
@@ -333,7 +334,14 @@ FREQ_DAILY = "daily"
 FREQ_WEEKLY = "weekly"
 FREQ_BIWEEKLY = "biweekly"
 FREQ_MONTHLY = "monthly"
-_VALID_FREQUENCIES = (FREQ_DAILY, FREQ_WEEKLY, FREQ_BIWEEKLY, FREQ_MONTHLY)
+FREQ_QUARTERLY = "quarterly"
+_VALID_FREQUENCIES = (FREQ_DAILY, FREQ_WEEKLY, FREQ_BIWEEKLY, FREQ_MONTHLY, FREQ_QUARTERLY)
+
+# quarterly is an EMAIL cadence only. An import schedule's pull window
+# is derived from its frequency (_FREQUENCY_WINDOW_MODE), and a
+# quarter-long pull every run is not something the importers are sized for, so
+# create/update refuse it for non-email schedules.
+_EMAIL_ONLY_FREQUENCIES = (FREQ_QUARTERLY,)
 
 # Rolling windows. Each resolves at *run time* relative to "now" — see
 # resolve_date_range. AC: "previous 7 days" always = the 7 days ending
@@ -345,6 +353,7 @@ RANGE_PREV_14D = "rolling_14d"
 RANGE_PREV_30D = "rolling_30d"
 RANGE_PREV_CAL_WEEK = "prev_calendar_week"
 RANGE_PREV_CAL_MONTH = "prev_calendar_month"
+RANGE_PREV_CAL_QUARTER = "prev_calendar_quarter"
 RANGE_MONTH_TO_DATE = "month_to_date"
 _VALID_DATE_RANGE_MODES = (
     RANGE_PREV_DAY,
@@ -353,6 +362,7 @@ _VALID_DATE_RANGE_MODES = (
     RANGE_PREV_30D,
     RANGE_PREV_CAL_WEEK,
     RANGE_PREV_CAL_MONTH,
+    RANGE_PREV_CAL_QUARTER,
     RANGE_MONTH_TO_DATE,
 )
 
@@ -789,12 +799,13 @@ class ReportScheduleService:
         """Return the next UTC fire time strictly after ``after`` (default now).
 
         Reads the structured cadence from ``schedule``:
-          * ``frequency``       — daily / weekly / biweekly / monthly
+          * ``frequency``       — daily / weekly / biweekly / monthly / quarterly
           * ``time``            — "HH:MM" local wall-clock in ``timezone``
           * ``timezone``        — IANA tz name (e.g. "America/New_York")
           * ``day_of_week``     — 0=Mon … 6=Sun, required for weekly/biweekly
-          * ``day_of_month``    — 1..28, required for monthly (capped at 28 so
-                                  every month has the day)
+          * ``day_of_month``    — 1..28, required for monthly and quarterly
+                                  (capped at 28 so every month has the day);
+                                  quarterly fires on it in Jan / Apr / Jul / Oct
 
         Hand-rolled (no croniter): the form constrains input to these shapes.
         Raises ReportScheduleError on a malformed schedule so a bad create
@@ -829,11 +840,14 @@ class ReportScheduleService:
             # After a run, _next_run_after_fire steps 14 days from the fire that
             # just ran.
             nxt = ReportScheduleService._next_weekly(local_after, hh, mm, dow)
-        else:  # FREQ_MONTHLY
+        else:  # FREQ_MONTHLY / FREQ_QUARTERLY
             dom = schedule.get("day_of_month")
             if not isinstance(dom, int) or not (1 <= dom <= 28):
-                raise ReportScheduleError(f"day_of_month (1..28) required for monthly; got {dom!r}")
-            nxt = ReportScheduleService._next_monthly(local_after, hh, mm, dom)
+                raise ReportScheduleError(f"day_of_month (1..28) required for {freq}; got {dom!r}")
+            if freq == FREQ_QUARTERLY:
+                nxt = ReportScheduleService._next_quarterly(local_after, hh, mm, dom)
+            else:
+                nxt = ReportScheduleService._next_monthly(local_after, hh, mm, dom)
 
         return nxt.astimezone(timezone.utc)
 
@@ -913,6 +927,19 @@ class ReportScheduleService:
         return candidate
 
     @staticmethod
+    def _next_quarterly(local_after: datetime, hh: int, mm: int, dom: int) -> datetime:
+        """day ``dom`` of the first month of a calendar quarter
+        (Jan / Apr / Jul / Oct), strictly after ``local_after``."""
+        quarter_start_month = ((local_after.month - 1) // 3) * 3 + 1
+        candidate = local_after.replace(month=quarter_start_month, day=dom, hour=hh, minute=mm, second=0, microsecond=0)
+        if candidate <= local_after:
+            # Roll to the next quarter's first month (dom<=28 so always valid).
+            year = candidate.year + (1 if quarter_start_month == 10 else 0)
+            month = 1 if quarter_start_month == 10 else quarter_start_month + 3
+            candidate = candidate.replace(year=year, month=month)
+        return candidate
+
+    @staticmethod
     def resolve_date_range(mode: str, *, now: datetime | None = None) -> dict:
         """Resolve a rolling-window mode to a concrete {from, to} date pair
         (inclusive, ``YYYY-MM-DD`` strings) at run time.
@@ -946,6 +973,13 @@ class ReportScheduleService:
             first_of_this_month = today.replace(day=1)
             last_of_prev = first_of_this_month - timedelta(days=1)
             first_of_prev = last_of_prev.replace(day=1)
+            return ReportScheduleService._fmt_range(first_of_prev, last_of_prev)
+        if mode == RANGE_PREV_CAL_QUARTER:
+            # the complete calendar quarter before the current one
+            # (Q1 = Jan..Mar, ...). A run on Jan 5 reports Oct 1..Dec 31.
+            first_of_this_quarter = today.replace(month=((today.month - 1) // 3) * 3 + 1, day=1)
+            last_of_prev = first_of_this_quarter - timedelta(days=1)
+            first_of_prev = last_of_prev.replace(month=last_of_prev.month - 2, day=1)
             return ReportScheduleService._fmt_range(first_of_prev, last_of_prev)
         # RANGE_MONTH_TO_DATE — 1st of this month through today (inclusive).
         return ReportScheduleService._fmt_range(today.replace(day=1), today)
@@ -1209,6 +1243,8 @@ class ReportScheduleService:
             return {"success": False, "error": "name is required"}
         if not is_email and not org_id and not team_id and not org_esids and not team_esids:
             return {"success": False, "error": "an org or team selection is required"}
+        if not is_email and (schedule or {}).get("frequency") in _EMAIL_ONLY_FREQUENCIES:
+            return {"success": False, "error": "Quarterly is available for email reports only."}
 
         # scope check against the FULL selection, ALL-match. The old
         # any-match (_scope_allows_any, a VISIBILITY predicate) let one in-scope
@@ -1747,6 +1783,11 @@ class ReportScheduleService:
             return {"success": False, "error": "no updatable fields provided"}
 
         if "schedule" in patch:
+            if (
+                existing.get("schedule_type") != SCHEDULE_TYPE_EMAIL
+                and (patch["schedule"] or {}).get("frequency") in _EMAIL_ONLY_FREQUENCIES
+            ):
+                return {"success": False, "error": "Quarterly is available for email reports only."}
             try:
                 patch["next_run"] = ReportScheduleService.compute_next_run(patch["schedule"]).isoformat()
             except ReportScheduleError as e:

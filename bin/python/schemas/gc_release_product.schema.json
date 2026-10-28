@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://data.global.church/schema/digital-engagement-release-product/0.1.0",
+  "$id": "https://data.global.church/schema/digital-engagement-release-product/0.2.0",
   "title": "Digital engagement release product",
   "description": "A partner-published release of aggregate digital-engagement counts at country x month grain, with its manifest. One file per publish. Produced by the partner's own export job (reference implementation: Kavanah Analytics); validated and loaded by gc-kavanah-bridge into <https://data.global.church/releases/digital-engagement/>. Row fields carry an x-gc-term annotation naming the ontology term each maps to; the four counts are Kavanah Analytics' own measures (kav:), summed across the organizations that publish them and never added to counts defined differently. Nothing below country grain is representable in this schema.",
   "type": "object",
@@ -29,7 +29,7 @@
       "properties": {
         "schemaVersion": {
           "type": "string",
-          "const": "0.1.0",
+          "const": "0.2.0",
           "description": "Version of this schema the file was written against; the receiver accepts a named set of versions and refuses the rest."
         },
         "grain": {
@@ -235,7 +235,7 @@
     },
     "rows": {
       "type": "array",
-      "description": "One row per opaque team identifier x country x month. Rows for the same team, country and month must not repeat.",
+      "description": "One row per team x country x month. Rows for the same team, country and month must not repeat.",
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -253,8 +253,8 @@
           "team": {
             "type": "string",
             "pattern": "^[A-Za-z0-9_-]{8,64}$",
-            "description": "An opaque per-team identifier assigned by the partner system (Kavanah: HMAC-SHA256 of the team id keyed per organisation, 32 hex chars). Stable across the organisation's releases so a later release replaces the earlier cells; never a title, never resolvable to a name. Carried for provenance; confidential, never rendered.",
-            "x-gc-term": "gc:partnerTeamLabel (opaque, confidential, never rendered)"
+            "description": "An opaque identifier the partner assigns to the team under the organisation, in place of its title: the same value for the same team in every release, never derived from the team's name, never meant to be read. Distinguishes the team's cells within the release; held with the stored release only, never published or rendered.",
+            "x-gc-term": "gc:partnerTeamKey (held with the stored release only; never published)"
           },
           "countryIso2": {
             "$ref": "#/$defs/iso2",

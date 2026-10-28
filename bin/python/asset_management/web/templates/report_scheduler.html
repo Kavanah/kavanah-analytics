@@ -431,6 +431,9 @@
               <option value="weekly">Weekly</option>
               <option value="biweekly">Every 2 weeks</option>
               <option value="monthly">Monthly</option>
+              {# email-only cadence; the import dialog (#rsm-frequency)
+                 does not offer it and the service refuses it for imports. #}
+              <option value="quarterly">Quarterly</option>
             </select>
           </div>
           <div class="rsm-group rsm-hidden" id="esm-dow-group">
@@ -443,7 +446,7 @@
             </select>
           </div>
           <div class="rsm-group rsm-hidden" id="esm-dom-group">
-            <label for="esm-dom">Day of month</label>
+            <label for="esm-dom" id="esm-dom-label">Day of month</label>
             <input type="number" id="esm-dom" min="1" max="28" value="1">
           </div>
         </div>
@@ -467,6 +470,7 @@
             <option value="rolling_30d">Previous 30 days</option>
             <option value="prev_calendar_week">Previous calendar week</option>
             <option value="prev_calendar_month">Previous calendar month</option>
+            <option value="prev_calendar_quarter">Previous calendar quarter</option>
             <option value="month_to_date">Month to date</option>
           </select>
         </div>
@@ -610,6 +614,7 @@
             case "weekly": return "Weekly on " + (DOW[cfg.day_of_week] || "?") + " at " + t + " " + tz;
             case "biweekly": return "Every 2 weeks on " + (DOW[cfg.day_of_week] || "?") + " at " + t + " " + tz;
             case "monthly": return "Monthly on day " + (cfg.day_of_month || "?") + " at " + t + " " + tz;
+            case "quarterly": return "Quarterly on day " + (cfg.day_of_month || "?") + " of Jan, Apr, Jul, Oct at " + t + " " + tz;
             default: return cfg.frequency || "—";
         }
     }
@@ -987,7 +992,8 @@
     const RANGE_LABEL = {
         rolling_7d: "Previous 7 days", rolling_14d: "Previous 14 days",
         rolling_30d: "Previous 30 days", prev_calendar_week: "Previous calendar week",
-        prev_calendar_month: "Previous calendar month", month_to_date: "Month to date",
+        prev_calendar_month: "Previous calendar month", prev_calendar_quarter: "Previous calendar quarter",
+        month_to_date: "Month to date",
     };
 
     // an email-schedule card. Purpose-built: Edit / Pause / Delete only
@@ -2244,7 +2250,9 @@
     function syncFreqFields() {
         const f = $("esm-frequency").value;
         $("esm-dow-group").classList.toggle("rsm-hidden", !(f === "weekly" || f === "biweekly"));
-        $("esm-dom-group").classList.toggle("rsm-hidden", f !== "monthly");
+        $("esm-dom-group").classList.toggle("rsm-hidden", !(f === "monthly" || f === "quarterly"));
+        // a quarterly schedule fires on this day of Jan / Apr / Jul / Oct.
+        $("esm-dom-label").textContent = f === "quarterly" ? "Day of Jan, Apr, Jul, Oct" : "Day of month";
     }
 
     function applyProfileTimezone() {
@@ -2371,7 +2379,13 @@
         });
     }
 
-    $("esm-frequency").addEventListener("change", syncFreqFields);
+    $("esm-frequency").addEventListener("change", function () {
+        // picking Quarterly selects the matching window, so a new
+        // quarterly email covers the quarter that just ended, not the 7-day
+        // default. Only on a user change (prefill keeps the stored range).
+        if ($("esm-frequency").value === "quarterly") $("esm-range").value = "prev_calendar_quarter";
+        syncFreqFields();
+    });
     $("esm-close").addEventListener("click", close);
     $("esm-cancel").addEventListener("click", close);
     // No backdrop-click dismiss — this is a data-entry form; an accidental

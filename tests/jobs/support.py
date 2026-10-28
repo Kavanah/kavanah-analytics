@@ -280,7 +280,7 @@ ORG_URI = "https://data.global.church/org/riverside-media"
 DISPLAY_NAME = "Riverside Media (test data)"
 AGREEMENT_ID = "digital-aggregates"
 AGREEMENT_VERSION = "0.2"
-AGREEMENT_SHA256 = "e1057ffdf5e2b1865ea64f0658ad8b39fcad804a5433045dc923bb11023de22b"
+AGREEMENT_SHA256 = "edc19d7a2215457f0eed1a26ac093ce2e35ec1ccab983ba29a49020e5b3859ec"
 AGREEMENT_ACCEPTED_AT = "2026-10-19T00:00:00Z"
 NOW = datetime(2026, 10, 19, 12, 0, 0, tzinfo=timezone.utc)
 # the organisation's per-team label salt and the labels the rule

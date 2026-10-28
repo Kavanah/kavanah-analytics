@@ -105,7 +105,7 @@ from lib.es_helpers import build_data_index_name
 LOG_PREFIX = "export-release-product"
 
 EXPORTER_VERSION = "0.1.0"
-SCHEMA_VERSION = "0.1.0"
+SCHEMA_VERSION = "0.2.0"
 GENERATED_BY = f"kavanah-analytics export_release_product {EXPORTER_VERSION}"
 GRAIN = "country x month"
 SUPPRESSION = "none"

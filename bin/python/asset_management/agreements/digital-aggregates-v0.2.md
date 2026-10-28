@@ -14,7 +14,7 @@ Acceptance is recorded by the partner system with the accepting role (workspace 
 
 ## 2. What the Contributor shares
 
-A **release product**: a file of aggregate counts at **country × month** grain, one row per team label × country × month, for the teams and countries the Contributor chose, over at most the last 24 months.
+A **release product**: a file of aggregate counts at **country × month** grain, one row per team × country × month, for the teams and countries the Contributor chose, over at most the last 24 months.
 
 | Count | Definition | Source |
 |---|---|---|
@@ -23,7 +23,7 @@ A **release product**: a file of aggregate counts at **country × month** grain,
 | Touchpoints | Conversations started, by the seeker's country | Echo conversations |
 | Active | Conversations with a spiritual-conversation or multiplier outcome | Echo conversations |
 
-Each row carries an opaque per-team identifier assigned by the Contributor's system. No team title leaves with the row, and nothing in the file identifies a person or a team by name. The Steward holds the identifier as confidential provenance and never renders it.
+Each row carries an opaque identifier for its team in place of the team's title. No team title or name leaves with the row, and nothing in the file identifies a person or a team by name. The Steward holds the identifier only with the stored release and never publishes or renders it.
 
 The release also carries a manifest: schema version, the grain in words, the suppression rule (none, §4), the sources used, the countries included, the organization's directory identifier, whether the organization wants to be named, this agreement's id, version, hash and acceptance time, and when and by what software the file was generated.
 

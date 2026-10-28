@@ -1185,13 +1185,13 @@ def _assemble_from_body(body: dict) -> dict:
         "timezone": (body.get("timezone") or "UTC").strip(),
         "date_range_mode": (body.get("date_range_mode") or "rolling_7d").strip(),
     }
-    # DOW (weekly/biweekly) / DOM (monthly) only when relevant + numeric.
+    # DOW (weekly/biweekly) / DOM (monthly/quarterly) only when relevant + numeric.
     if frequency in ("weekly", "biweekly") and body.get("day_of_week") is not None:
         try:
             schedule["day_of_week"] = int(body["day_of_week"])
         except (TypeError, ValueError):
             return {"error": "Pick a day of the week."}
-    if frequency == "monthly" and body.get("day_of_month") is not None:
+    if frequency in ("monthly", "quarterly") and body.get("day_of_month") is not None:
         try:
             schedule["day_of_month"] = int(body["day_of_month"])
         except (TypeError, ValueError):
