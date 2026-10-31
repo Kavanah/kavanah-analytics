@@ -178,7 +178,7 @@ def test_get_renders_teams_countries_preview_counts_and_the_agreement_hash(app, 
     assert "could not be placed in a country" in page
     # the agreement: hashed from the file at request time, rendered, shown
     with open(routes.AGREEMENT_FILE, "rb") as fh:
-        sha = hashlib.sha256(fh.read()).hexdigest()
+        sha = hashlib.sha256(fh.read().decode("utf-8").strip().encode("utf-8")).hexdigest()
     assert sha == s.AGREEMENT_SHA256
     assert sha in page
     assert "Data Sharing Agreement" in page

@@ -144,5 +144,5 @@ locust>=2.46.6
 pygments>=2.20.0  # regex-DoS advisory fixed in 2.20.0; via rich / pip-audit
 idna>=3.20        # CVE-2026-45409; via requests
 httplib2>=0.32.0  # PYSEC-2026-3444 (unbounded gzip/deflate decompress); via google-api-python-client
-pyasn1>=0.6.4     # PYSEC-2026-3455/3456/3457 (ASN.1 parser DoS); via google-auth -> rsa / pyasn1-modules
+pyasn1>=0.6.5     # PYSEC-2026-3455/3456/3457 + CVE-2026-119194..119197 (ASN.1 parser DoS); via google-auth -> rsa / pyasn1-modules
 oauthlib>=4.0.0   # CVE-2026-49264/49265 (provider-side JSONP revocation, PKCE timing); via google-auth-oauthlib -> requests-oauthlib

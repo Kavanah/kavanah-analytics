@@ -280,7 +280,10 @@ ORG_URI = "https://data.global.church/org/riverside-media"
 DISPLAY_NAME = "Riverside Media (test data)"
 AGREEMENT_ID = "digital-aggregates"
 AGREEMENT_VERSION = "0.2"
-AGREEMENT_SHA256 = "edc19d7a2215457f0eed1a26ac093ce2e35ec1ccab983ba29a49020e5b3859ec"
+# Hash of record = SHA-256 of the text stripped of leading/trailing whitespace
+# (Global.Church, issue #2, 2026-10-31). The raw file with its final newline
+# hashes to edc19d7a...859ec, the value Paul first sent; the receiver checks this one.
+AGREEMENT_SHA256 = "9b35b96cec2dc2cab0038c196e5a6fc68d0ff635b25a6a090f4470e7006322c5"
 AGREEMENT_ACCEPTED_AT = "2026-10-19T00:00:00Z"
 NOW = datetime(2026, 10, 19, 12, 0, 0, tzinfo=timezone.utc)
 # the organisation's per-team label salt and the labels the rule

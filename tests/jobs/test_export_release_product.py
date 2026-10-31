@@ -425,4 +425,4 @@ def test_cli_parses_lists_and_passes_them_to_the_job(es, tmp_path, monkeypatch):
 def test_agreement_text_hash_matches_the_accepted_sha256():
     path = os.path.join(os.path.dirname(job.__file__), "..", "agreements", f"{s.AGREEMENT_ID}-v{s.AGREEMENT_VERSION}.md")
     with open(path, "rb") as fh:
-        assert hashlib.sha256(fh.read()).hexdigest() == s.AGREEMENT_SHA256
+        assert hashlib.sha256(fh.read().decode("utf-8").strip().encode("utf-8")).hexdigest() == s.AGREEMENT_SHA256

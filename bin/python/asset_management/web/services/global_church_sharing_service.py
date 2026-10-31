@@ -51,11 +51,19 @@ AGREEMENT_FILE = os.path.abspath(
 )
 
 
+def agreement_sha256(text: str) -> str:
+    """The hash of record: SHA-256 of the text with leading and trailing
+    whitespace stripped. Global.Church stores the agreement trimmed and its
+    receiver checks this value (Paul, issue #2, 2026-10-31), so a trailing
+    newline in our copy of the file does not change the hash."""
+    return hashlib.sha256(text.strip().encode("utf-8")).hexdigest()
+
+
 def load_agreement() -> tuple[str, str]:
-    """The agreement text and the SHA-256 of its exact bytes, read at request time."""
+    """The agreement text and its hash of record (``agreement_sha256``), read at request time."""
     with open(AGREEMENT_FILE, "rb") as fh:
-        raw = fh.read()
-    return raw.decode("utf-8"), hashlib.sha256(raw).hexdigest()
+        text = fh.read().decode("utf-8")
+    return text, agreement_sha256(text)
 
 
 def _inline(text: str) -> str:
